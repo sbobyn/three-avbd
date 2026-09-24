@@ -2,6 +2,40 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 8h: collision — separated pairs, and a reuse idea that did not pay
+
+### Where collision time goes (per-dispatch timestamps inside real steps)
+The narrowphase and findPairs are nearly all of it (ring 110k: 2.4 and 1.4 of 4.0 ms; gables
+506k: 5.3 and 2.2 of 8.4 ms, isolated passes at low clocks). Counting the narrowphase's paths:
+| scene | reused | tested, touching | tested, apart |
+|---|---|---|---|
+| Brick ring 110k | 11% | 17% | 72% |
+| Brick gables 506k | 43% | 55% | 3% |
+| Jointed drop 34k | 0% | 44% | 56% |
+| Settled pile 32k | 5% | 47% | 48% |
+| Box columns 100k | 97% | 3% | 0% |
+Rings of bricks overlap in world AABBs far more than they touch.
+
+### Face axes in the broadphase (kept)
+testPair now also rejects a pair when a face axis of either box separates them by more than
+1 mm (the narrowphase would reject it on that axis anyway; spheres use their radius), and
+findPairs loads the probing body's position, radius, axes and AABB once per thread instead of
+per candidate. The GPU broadphase test's CPU oracle applies the same rule. Against the
+previous commit (interleaved, AC): ring 110k -14.7%, ring 9k -9.7%, jointed drop 6k -5.1% /
+34k -3.6%, box columns -3.2%, wall smash -2.6%, settled pile -2.0%, chain mail +0.9%, gables
+506k -0.4%. The jointed drop and pile keep their apart pairs (separated along edge axes or
+turned), and the gables have almost none.
+
+### Reuse by the pair's relative offset (tried, reverted)
+Reuse fails mostly because bodies creep: unhit walls at 3-4 iterations drift past the 2 mm /
+2 mrad per-body tolerance (gables reuse 33% at step 30, 75% at 600). An upper bound (tolerance
+effectively infinite) made the 506k gables 13.5% faster. Checking translation per pair
+instead (the offset between the centres against its value at generation, 16 more bytes per
+manifold; turning still per body, since the normal is stored in world space) raised reuse a
+lot (gables 67% at step 30, 92% at 600; ring 78% at step 90), but steps got only 2% faster on
+the gables and ±2% elsewhere, at 60 steps in and at 300: the reuse path (hash lookup, copying
+every point) costs much of what the narrowphase did. Not worth the memory; reverted.
+
 ## 2026-09-24 — Stage 8g: primal lanes per colour; colour-cap overflow was hiding clashes
 
 ### Where the solve time went (110k brick ring, per-kernel timestamps)

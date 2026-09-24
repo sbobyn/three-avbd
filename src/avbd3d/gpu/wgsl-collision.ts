@@ -132,28 +132,78 @@ fn ignored(hi: u32, lo: u32) -> bool {
   return false;
 }
 
-/** Half extents of body i's world-space bounding box: |R|·h (a sphere's: its radius). */
-fn aabbHalf(i: u32) -> vec3f {
-  let h = bodies[i].size.xyz * 0.5;
-  if (bodies[i].angVel.w == SHAPE_SPHERE) { return vec3f(h.x); }
-  let q = bodies[i].rot;
-  let ax = abs(qrotate(q, vec3f(h.x, 0.0, 0.0)));
-  let ay = abs(qrotate(q, vec3f(0.0, h.y, 0.0)));
-  let az = abs(qrotate(q, vec3f(0.0, 0.0, h.z)));
-  return ax + ay + az;
+/** Body i as the broadphase sees it: world axes and half extents (a sphere: its radius). */
+struct Shape {
+  ax: array<vec3f, 3>,
+  h: vec3f,
+  sphere: bool,
 }
 
-fn testPair(i: u32, j: u32) {
-  let a = max(i, j);
-  let b = min(i, j);
-  if (bodies[a].size.w <= 0.0 && bodies[b].size.w <= 0.0) { return; }
-  let d = bodies[a].pos.xyz - bodies[b].pos.xyz;
-  let r = radius(a) + radius(b);
+fn shapeOf(i: u32) -> Shape {
+  let q = bodies[i].rot;
+  var s: Shape;
+  s.h = bodies[i].size.xyz * 0.5;
+  s.sphere = bodies[i].angVel.w == SHAPE_SPHERE;
+  s.ax[0] = qrotate(q, vec3f(1.0, 0.0, 0.0));
+  s.ax[1] = qrotate(q, vec3f(0.0, 1.0, 0.0));
+  s.ax[2] = qrotate(q, vec3f(0.0, 0.0, 1.0));
+  return s;
+}
+
+/** Half width of a shape along unit axis n. */
+fn extent(s: Shape, n: vec3f) -> f32 {
+  if (s.sphere) { return s.h.x; }
+  return s.h.x * abs(dot(n, s.ax[0])) + s.h.y * abs(dot(n, s.ax[1])) + s.h.z * abs(dot(n, s.ax[2]));
+}
+
+/** Half extents of a shape's world-space bounding box. */
+fn aabbHalf(s: Shape) -> vec3f {
+  if (s.sphere) { return vec3f(s.h.x); }
+  return abs(s.ax[0]) * s.h.x + abs(s.ax[1]) * s.h.y + abs(s.ax[2]) * s.h.z;
+}
+
+/**
+ * A face axis of either shape separates them by more than 1 mm (d: centre A minus centre B).
+ * The narrowphase rejects any pair a separating axis finds (it tests these axes and the edge
+ * axes), so this only drops pairs it would drop; the millimetre keeps round-off out of it.
+ */
+fn faceSeparated(A: Shape, B: Shape, d: vec3f) -> bool {
+  for (var k = 0u; k < 3u; k++) {
+    if (abs(dot(d, A.ax[k])) - extent(A, A.ax[k]) - extent(B, A.ax[k]) > 1e-3) { return true; }
+    if (abs(dot(d, B.ax[k])) - extent(A, B.ax[k]) - extent(B, B.ax[k]) > 1e-3) { return true; }
+  }
+  return false;
+}
+
+/** What the pair tests need of the body a findPairs thread starts from, loaded once. */
+struct Probe {
+  index: u32,
+  pos: vec3f,
+  radius: f32,
+  aabb: vec3f,
+  dynamic: bool,
+  shape: Shape,
+}
+
+fn probeOf(i: u32) -> Probe {
+  let shape = shapeOf(i);
+  return Probe(i, bodies[i].pos.xyz, radius(i), aabbHalf(shape), bodies[i].size.w > 0.0, shape);
+}
+
+fn testPair(P: Probe, j: u32) {
+  if (!P.dynamic && bodies[j].size.w <= 0.0) { return; }
+  let d = P.pos - bodies[j].pos.xyz;
+  let r = P.radius + radius(j);
   if (dot(d, d) > r * r) { return; }
   // Bounding spheres of boxes overlap far more often than the boxes do (neighbouring
   // columns, rows of bricks); world AABBs are a cheap, conservative second test (with a
-  // small pad for f32 round-off), so the narrowphase sees fewer pairs it would reject.
-  if (any(abs(d) > aabbHalf(a) + aabbHalf(b) + vec3f(1e-4))) { return; }
+  // small pad for f32 round-off), and face axes a third: rings of bricks and piles sent
+  // 48-72% of their pairs to the narrowphase only to be found apart.
+  let B = shapeOf(j);
+  if (any(abs(d) > P.aabb + aabbHalf(B) + vec3f(1e-4))) { return; }
+  if (faceSeparated(P.shape, B, d)) { return; }
+  let a = max(P.index, j);
+  let b = min(P.index, j);
   if (ignored(a, b)) { return; }
   let slot = atomicAdd(&counters[C_PAIRS], 1u);
   if (slot >= params.pairCapacity) {
@@ -168,6 +218,7 @@ fn findPairs(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
   if (i >= params.bodyCount) { return; }
   let small = !isLarge(i);
+  let P = probeOf(i);
   if (small) {
     // Every overlapping small pair is in the same or an adjacent cell; emit from the higher index
     let c = cellOf(i);
@@ -184,7 +235,7 @@ fn findPairs(@builtin(global_invocation_id) gid: vec3u) {
             let o = params.gridCellOffset + 3u * j;
             let cj = vec3i(bitcast<i32>(atomicLoad(&grid[o])), bitcast<i32>(atomicLoad(&grid[o + 1u])), bitcast<i32>(atomicLoad(&grid[o + 2u])));
             if (any(cj != cell)) { continue; }
-            testPair(i, j);
+            testPair(P, j);
           }
         }
       }
@@ -194,7 +245,7 @@ fn findPairs(@builtin(global_invocation_id) gid: vec3u) {
   for (var k = 0u; k < params.largeCount; k++) {
     let l = statics[k];
     if (l == i || (!small && l < i)) { continue; }
-    testPair(l, i);
+    testPair(P, l);
   }
 }
 `;

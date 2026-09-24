@@ -136,7 +136,7 @@ gpuTest('narrowphase finds the reference contacts for randomly posed box pairs',
   gpu.destroy();
 });
 
-gpuTest('GPU broadphase finds exactly the pairs with overlapping spheres and AABBs, ignored pairs excluded', async (device) => {
+gpuTest('GPU broadphase finds exactly the pairs whose spheres, AABBs and face axes overlap, ignored pairs excluded', async (device) => {
   let seed = 11;
   const rand = () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 2 ** 32);
   const ref = new Solver();
@@ -166,13 +166,19 @@ gpuTest('GPU broadphase finds exactly the pairs with overlapping spheres and AAB
     }
     return h;
   });
+  // World axes, for the face-axis test (separated by more than 1 mm along a face normal)
+  const axes = B.map((body) => [0, 1, 2].map((k) => rotate(vec3(), body.positionAng, [0, 1, 2].map((c) => (c === k ? 1 : 0)))));
+  const dot = (u: ArrayLike<number>, v: ArrayLike<number>) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+  const extent = (i: number, n: ArrayLike<number>) => [0, 1, 2].reduce((e, k) => e + B[i].size[k] * 0.5 * Math.abs(dot(n, axes[i][k])), 0);
   for (let i = 0; i < B.length; i++) {
     for (let j = 0; j < i; j++) {
       if (B[i].mass <= 0 && B[j].mass <= 0) continue;
       if (i === 2 && j === 1) continue;
-      const d = Math.hypot(B[i].positionLin[0] - B[j].positionLin[0], B[i].positionLin[1] - B[j].positionLin[1], B[i].positionLin[2] - B[j].positionLin[2]);
-      const apart = [0, 1, 2].some((k) => Math.abs(B[i].positionLin[k] - B[j].positionLin[k]) > half[i][k] + half[j][k]);
-      if (d <= B[i].radius + B[j].radius && !apart) expected.push(`${i}-${j}`);
+      const delta = [0, 1, 2].map((k) => B[i].positionLin[k] - B[j].positionLin[k]);
+      const d = Math.hypot(delta[0], delta[1], delta[2]);
+      const apart = [0, 1, 2].some((k) => Math.abs(delta[k]) > half[i][k] + half[j][k]);
+      const faceApart = [...axes[i], ...axes[j]].some((n) => Math.abs(dot(delta, n)) - extent(i, n) - extent(j, n) > 1e-3);
+      if (d <= B[i].radius + B[j].radius && !apart && !faceApart) expected.push(`${i}-${j}`);
     }
   }
   assert.deepEqual(got.sort(), expected.sort());
