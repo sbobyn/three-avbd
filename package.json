@@ -1,0 +1,33 @@
+{
+  "name": "three-avbd",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.18.0",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5317 --strictPort",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-transform-types --test tests/*.test.ts",
+    "check": "pnpm typecheck && pnpm test && pnpm test:gpu && pnpm build",
+    "bench2d": "node --experimental-transform-types --no-warnings scripts/bench2d.ts",
+    "fetch-reference": "sh scripts/fetch-reference.sh",
+    "test:gpu": "node --experimental-transform-types --test tests-gpu/*.gpu.test.ts",
+    "bench2d:gpu": "node --experimental-transform-types --no-warnings scripts/bench2d-gpu.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "@types/three": "0.186.0",
+    "@webgpu/types": "^0.1.74",
+    "lil-gui": "^0.21.0",
+    "three": "0.186.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.0",
+    "webgpu": "0.6.1"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "webgpu"
+    ]
+  }
+}

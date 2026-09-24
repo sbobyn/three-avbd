@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+.vite/
+.DS_Store
+# Upstream C++ demos, fetched by `pnpm fetch-reference` for side-by-side porting
+reference/
