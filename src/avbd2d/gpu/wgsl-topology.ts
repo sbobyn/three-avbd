@@ -122,7 +122,10 @@ fn state(offset: u32, i: u32) -> u32 {
   return atomicLoad(&color[offset + i]);
 }
 
-/** Smallest colour below colorCap not used by b's neighbours (optionally skipping pending ones). */
+/**
+ * Smallest colour not used by b's neighbours (optionally skipping pending ones); colorCap or
+ * more when every colour below the cap is taken.
+ */
 fn smallestFree(b: u32, src: u32, skipPending: bool) -> u32 {
   var lo = 0u;
   var hi = 0u;
@@ -138,7 +141,7 @@ fn smallestFree(b: u32, src: u32, skipPending: bool) -> u32 {
   var free = MAX_COLORS - 1u;
   if (~lo != 0u) { free = countTrailingZeros(~lo); }
   else if (~hi != 0u) { free = 32u + countTrailingZeros(~hi); }
-  return min(free, params.colorCap - 1u);
+  return free;
 }
 
 // 1. Compaction: a body whose priority beats all neighbours may drop to a smaller free colour.
@@ -186,8 +189,12 @@ fn round(b: u32, src: u32, dst: u32) {
     let j = neighbour(b, e);
     if (j >= 0 && (state(src, u32(j)) & PENDING) != 0u && !beats(b, u32(j))) { isMax = false; }
   }
-  if (isMax) { atomicStore(&color[dst + b], smallestFree(b, src, true)); }
-  else { atomicStore(&color[dst + b], s); }
+  if (isMax) {
+    // No colour left below the cap: take the last one but stay pending, so the clash is
+    // counted and the host grows the cap (committing it hid clashes between neighbours)
+    let free = smallestFree(b, src, true);
+    atomicStore(&color[dst + b], select(free, (params.colorCap - 1u) | PENDING, free >= params.colorCap));
+  } else { atomicStore(&color[dst + b], s); }
 }
 
 @compute @workgroup_size(64)

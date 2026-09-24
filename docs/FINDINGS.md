@@ -2,6 +2,45 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 8g: primal lanes per colour; colour-cap overflow was hiding clashes
+
+### Where the solve time went (110k brick ring, per-kernel timestamps)
+The primal reached only ~70-130 GB/s, so it is latency-bound, not bandwidth-bound: each
+contact is a chain of dependent loads (adjacency, pair, both bodies, point). Colours have a
+long tail (40k, 39k, 21k, 8k, 1.4k, 554, 213, 76, 19, 1 bodies) and a colour's time is its
+slowest body's chain: the tail colours took about a third of the primal. The colour cap also
+sat at 26 for 11 colours used (started from the degree over all broadphase pairs, and the
+bench lead-in is too short for three shrink votes).
+
+### One primal kernel, 1/2/4/8 lanes per body chosen per colour on the GPU
+`primal` (replacing `primal` and `primalWide`) splits each body's adjacency over
+lanesFor(colour size) threads and sums the partial systems in workgroup memory; the args
+kernel sizes each colour's dispatch the same way (a `colorThreads` hook in makeArgsWGSL).
+Rule `primalLanes` = [never 1, 2 from 32k bodies, 4 from 4k, else 8]. Sweep (interleaved in
+one process; the machine was loaded or on battery, so ratios only), against one lane:
+wall smash -53%, chain mail -15%, jointed drop 34k -35%, settled pile 32k -19%, ring 110k
+-14%, gables 506k -15%, box columns 100k +4% (4 contacts per box: one lane is enough there;
+colour size cannot tell it from the ring). Against the previous commit (which already used
+two lanes for small scenes), interleaved on battery: wall smash -28.5%, jointed drop 6k
+-24.1%, ring 9k -27.9%, settled pile 32k -3.5%. Large scenes still to be re-measured on AC.
+
+### Colour-cap overflow: a pre-existing bug found while testing this
+The GPU "stack and pyramid" test sat on its limit (top brick 7.55-7.57 vs >= 7.55) and one
+change or another tipped it. Tracing found the demo pyramid (bricks start apart and land)
+collapsing in 13 of 40 runs on the previous commit: the colour cap started at 2, landing
+needed 5, and a body with no colour left below the cap was committed to the last colour
+alongside a neighbour, uncounted (clashes 0), so those bricks ran Jacobi-style until a
+readback grew the cap and pushed into each other for good (top at 7.16, then collapse).
+Fixes: the shared colouring keeps such a body pending in the last colour, so it is counted
+as a clash and the host grows the cap at the next readback; the 3D cap keeps 3 spare colours
+(grows when fewer than 2 remain, shrinks to used + 3), starts at >= 8, and starts from the
+degree over touching pairs (the colouring's graph) rather than all broadphase pairs. With a
+start cap of 12 the old code collapsed 0 of 40 times; the new code 0 of 40.
+Tests: the pyramid height is now checked against the CPU reference's settled height (7.523,
+bit-identical to upstream: the reference itself ends 0.23 m below resting exactly, outside
+the old absolute 0.2 m bound), and a new check forces a cap of 2 and expects clashes to be
+reported (the previous commit reported 0).
+
 ## 2026-09-24 — Stage 8f: GPU memory, sized from touching pairs
 
 Manifold storage used to share the broadphase pair capacity (2x the estimated pairs, most of

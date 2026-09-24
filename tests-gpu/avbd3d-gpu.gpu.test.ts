@@ -207,13 +207,25 @@ gpuTest('GPU: stack and pyramid stand', async () => {
   }
   stack.destroy();
 
+  // Settles as the CPU reference does: at 10 iterations the 16 courses end 0.23 m short of
+  // resting exactly (7.75), and the reference's top brick is at 7.523 after 300 frames (bit-
+  // identical to upstream). A bad landing (colouring cap overflow) left it near 7.16, then fell.
   const pyr = await runGpu('Pyramid', 300);
   const top = at(pyr, pyr.bodyCount - 1);
-  assert.ok(Math.abs(top[2] - (0.25 + 15 * 0.5)) < 0.2, `top z ${top[2]}`);
+  assert.ok(Math.abs(top[2] - 7.523) < 0.05, `top z ${top[2]} (reference 7.523)`);
   const pb = await pyr.solver.readBodies();
   for (let i = 0; i < pyr.bodyCount; i++) assert.ok(speed(pb, i) < 0.1, `brick ${i} speed ${speed(pb, i)}`);
   assert.equal(pyr.stats().clashes, 0);
   pyr.destroy();
+
+  // A colour cap too small for the landing bricks is reported as clashes (so adapt grows it),
+  // not hidden by committing neighbours to the same last colour
+  const tight = createGpuSim3D(device!, 'Pyramid');
+  tight.solver.colorCap = 2;
+  for (let i = 0; i < 60; i++) tight.solver.step();
+  const counters = await tight.solver.readCounters();
+  assert.ok(counters.clashes > 0, `clashes ${counters.clashes} with ${counters.colors} colours in a cap of 2`);
+  tight.destroy();
 });
 
 

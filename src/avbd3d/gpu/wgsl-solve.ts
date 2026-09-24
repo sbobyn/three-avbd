@@ -3,10 +3,11 @@
 // ../ref (forces.ts, manifold.ts, solver.ts); rows are folded into a register accumulator as
 // outer products instead of the reference's 3x3 matrix products.
 
-import { PRELUDE_3D } from './layout.ts';
+import { PRELUDE_3D, PRIMAL_LANES_WGSL } from './layout.ts';
 
 export const solveWGSL = /* wgsl */ `
 ${PRELUDE_3D}
+${PRIMAL_LANES_WGSL}
 
 // Per-dispatch constants, selected with a dynamic uniform offset
 struct PassConstants {
@@ -257,57 +258,52 @@ fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
 
 // --- Primal: one colour -----------------------------------------------------------------------
 
-// Bodies of one colour share no constraint, so writing poses in place never races with a
-// neighbour's read (bodies left clashing by the colouring are the only, counted, exception).
-@compute @workgroup_size(64)
-fn primal(@builtin(global_invocation_id) gid: vec3u) {
-  let start = color[params.colorStartOffset + pc.color];
-  if (gid.x >= color[params.colorStartOffset + pc.color + 1u] - start) { return; }
-  solveBody(color[params.colorBodiesOffset + start + gid.x]);
-}
-
-/** A second lane's partial system per body slot (primalWide). */
-var<workgroup> partials: array<Acc, 64>;
+/** A partial system per body slot handed between lanes (primal). */
+var<workgroup> partials: array<Acc, 32>;
 
 /**
- * Two threads per body: each accumulates every other adjacency entry, the second lane's
- * partial system goes through workgroup memory, and the first solves. Halves the serial
- * chain of dependent loads per body, which bounds each colour's dispatch when a colour has
- * few bodies with many contacts (small scenes, walls). 64 bodies per workgroup, as primal.
+ * One colour's bodies, lanesFor(colour size) threads per body: each lane accumulates every
+ * lanes-th adjacency entry, the partial systems are summed in workgroup memory (halving the
+ * lanes each round), and lane 0 solves. Bodies of one colour share no constraint, so writing
+ * poses in place never races with a neighbour's read (bodies left clashing by the colouring
+ * are the only, counted, exception).
  */
-@compute @workgroup_size(128)
-fn primalWide(@builtin(local_invocation_id) lid: vec3u, @builtin(workgroup_id) wid: vec3u) {
-  let slot = lid.x >> 1u;
-  let lane = lid.x & 1u;
+@compute @workgroup_size(64)
+fn primal(@builtin(local_invocation_id) lid: vec3u, @builtin(workgroup_id) wid: vec3u) {
   let start = color[params.colorStartOffset + pc.color];
-  let k = wid.x * 64u + slot;
-  let live = k < color[params.colorStartOffset + pc.color + 1u] - start;
+  let count = color[params.colorStartOffset + pc.color + 1u] - start;
+  let lanes = lanesFor(count);
+  let slot = lid.x / lanes;
+  let lane = lid.x % lanes;
+  let k = wid.x * (64u / lanes) + slot;
+  let live = k < count;
   var i = 0u;
   var acc: Acc;
   if (live) {
     i = color[params.colorBodiesOffset + start + k];
-    acc = accumulate(i, lane, 2u);
+    acc = accumulate(i, lane, lanes);
   }
-  if (lane == 1u) { partials[slot] = acc; }
-  workgroupBarrier();
-  if (live && lane == 0u) {
-    let other = partials[slot];
-    acc.lin += other.lin;
-    acc.ang += other.ang;
-    acc.cross += other.cross;
-    acc.rLin += other.rLin;
-    acc.rAng += other.rAng;
-    finishBody(i, acc);
+  // Lanes s..2s-1 hand their sums to lanes 0..s-1 (constant bounds keep the barriers uniform)
+  for (var s = 4u; s > 0u; s >>= 1u) {
+    let merging = s < lanes;
+    if (merging && lane >= s && lane < 2u * s) { partials[slot * s + lane - s] = acc; }
+    workgroupBarrier();
+    if (merging && lane < s) {
+      let other = partials[slot * s + lane];
+      acc.lin += other.lin;
+      acc.ang += other.ang;
+      acc.cross += other.cross;
+      acc.rLin += other.rLin;
+      acc.rAng += other.rAng;
+    }
+    workgroupBarrier();
   }
-}
-
-fn solveBody(i: u32) {
-  finishBody(i, accumulate(i, 0u, 1u));
+  if (live && lane == 0u) { finishBody(i, acc); }
 }
 
 /**
  * Body i's Newton system from adjacency entries lane, lane + lanes, ... (lane 0 also adds the
- * inertia terms); lanes > 1 split a body's constraints across threads (primalWide).
+ * inertia terms); lanes > 1 split a body's constraints across threads.
  */
 fn accumulate(i: u32, lane: u32, lanes: u32) -> Acc {
   let pos = bodies[i].pos;

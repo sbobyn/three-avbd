@@ -64,15 +64,12 @@ export const bodyBufferSize = (n: number): number => Math.max(n, 1) * BODY_FLOAT
  */
 const LARGE_FACTOR = 2;
 
-/**
- * Two threads per body in the primal while colours average fewer bodies than this: at 4k per
- * colour (32k pile) it was 14-19% faster, at 11k (110k pile) even, at 33k (100k columns) 4-6%
- * slower.
- */
-const WIDE_PRIMAL_BODIES_PER_COLOR = 8192;
 const MAX_LARGE = 64;
 /** Contact points one manifold can hold (the narrowphase's MAX_CONTACTS). */
 const MAX_MANIFOLD_POINTS = 8;
+/** Colours kept free above those in use (see adapt), and the least the cap starts at. */
+const COLOR_SPARE = 3;
+const MIN_START_COLORS = 8;
 /** Headroom over the touching pairs the scene starts with, for manifold storage. */
 const START_HEADROOM = 1.6;
 /**
@@ -127,7 +124,8 @@ const TOUCH_TOLERANCE = 1e-3;
  * Pairs the GPU broadphase will report for these bodies (bounding spheres and world AABBs
  * overlap, not both static), counted on a CPU hash grid, and how many of them touch (the
  * narrowphase's separating-axis test, so each will need a manifold); used to size the
- * buffers. Also counts each body's pairs into `degree` (for the starting colour cap).
+ * buffers. Also counts each body's touching pairs into `degree` (for the starting colour cap:
+ * the colouring's graph is the touching pairs and the joints).
  */
 function estimatePairs(bodies: Rigid[], degree: Int32Array): { pairs: number; touching: number } {
   const n = bodies.length;
@@ -221,9 +219,11 @@ function estimatePairs(bodies: Rigid[], degree: Int32Array): { pairs: number; to
           for (const j of grid.get(key(x + dx, y + dy, z + dz)) ?? []) {
             if (j < i && overlap(i, j)) {
               count++;
-              if (touches(i, j)) touching++;
-              degree[i]++;
-              degree[j]++;
+              if (touches(i, j)) {
+                touching++;
+                degree[i]++;
+                degree[j]++;
+              }
             }
           }
         }
@@ -232,9 +232,11 @@ function estimatePairs(bodies: Rigid[], degree: Int32Array): { pairs: number; to
     for (let j = 0; j < n; j++) {
       if (j !== l && (!large.has(j) || j < l) && overlap(l, j)) {
         count++;
-        if (touches(l, j)) touching++;
-        degree[l]++;
-        degree[j]++;
+        if (touches(l, j)) {
+          touching++;
+          degree[l]++;
+          degree[j]++;
+        }
       }
     }
   }
@@ -297,13 +299,12 @@ export class GpuSolver3D {
    */
   fixedColors: Uint32Array<ArrayBuffer> | null = null;
   /**
-   * Primal kernel: one thread per body, or two splitting each body's constraints ('wide').
-   * Two threads halve each body's serial chain of loads, which is what bounds a colour with
-   * few bodies (wall smash 36-61% faster); a colour of tens of thousands already fills the
-   * GPU and the reduction costs 4-6%. 'auto' picks by bodies per colour.
+   * Threads per body in each colour's primal, by the colour's size (PRIMAL_LANES_WGSL): one
+   * from primalLanes[0] bodies up, two from [1], four from [2], else eight (rounded to powers
+   * of two). More lanes shorten a body's serial chain of dependent loads, which is what
+   * bounds a small colour; a big colour fills the GPU anyway and pays for the reduction.
    */
-  primalMode: 'body' | 'wide' | 'auto' = 'auto';
-  private bodiesPerColor = 0;
+  primalLanes: [number, number, number] = [2 ** 31, 2 ** 15, 2 ** 12];
   /** Encode each phase as its own compute pass even when not profiling. */
   splitPasses = false;
   private shrinkVotes = 0;
@@ -423,9 +424,11 @@ export class GpuSolver3D {
     // first steps drops pairs, and a freshly built wall then sinks into itself for good
     const degree = new Int32Array(ref.bodies.length);
     const { pairs, touching } = estimatePairs(ref.bodies, degree);
-    // Starting colour cap: a graph never needs more than max degree + 1 colours (+1 spare).
-    // Each colour below the cap is a dispatch per iteration, and the cap only adapts after
-    // readbacks, so a fixed 12 cost a 3-colour stack 4.5 ms a step until then.
+    // Starting colour cap: a graph never needs more than max degree + 1 colours, plus spares
+    // for contacts that form before the first readback, and at least MIN_START_COLORS for
+    // scenes whose bodies start apart (see adapt). The cap only adapts after readbacks: a
+    // fixed 12 cost a 3-colour stack 4.5 ms a step, and the degree over all broadphase pairs
+    // started the 110k brick ring at 26 for 11 used.
     const refIndex = new Map<Rigid, number>(ref.bodies.map((b, i) => [b, i]));
     for (const f of joints) {
       if (f.bodyA) degree[refIndex.get(f.bodyA)!]++;
@@ -435,7 +438,7 @@ export class GpuSolver3D {
     ref.bodies.forEach((b, i) => {
       if (b.mass > 0) maxDegree = Math.max(maxDegree, degree[i]);
     });
-    this.colorCap = Math.min(MAX_COLORS, Math.max(2, maxDegree + 2));
+    this.colorCap = Math.min(MAX_COLORS, Math.max(MIN_START_COLORS, maxDegree + 1 + COLOR_SPARE));
     // Pair entries are 8 bytes, so they stay roomy. Manifolds (32 bytes) and contacts (64) are
     // double-buffered and hold most of the solver's memory: the touching pairs with headroom,
     // and the most points those pairs can have. Floors for scenes that start apart (a falling
@@ -494,7 +497,7 @@ export class GpuSolver3D {
       'degreeJoints', 'degreeContacts', 'fillJoints', 'fillContacts',
       'colorCompact', 'colorMark', 'colorRoundAB', 'colorRoundBA', 'colorCount', 'colorStarts', 'colorScatter',
     ]);
-    make(shaders.solve ?? solveWGSL, [L.solve, L.pass], ['warmStartJoints', 'warmStartBodies', 'primal', 'primalWide', 'dual', 'updateVelocities']);
+    make(shaders.solve ?? solveWGSL, [L.solve, L.pass], ['warmStartJoints', 'warmStartBodies', 'primal', 'dual', 'updateVelocities']);
     make(makeArgsWGSL(PRELUDE_3D, ARGS_ITEMS_3D), [L.args], ['argsPrev', 'argsPairs', 'argsContacts', 'argsColors']);
   }
 
@@ -840,6 +843,8 @@ export class GpuSolver3D {
     u[28] = this.colorRounds;
     u[29] = this.manifoldCapacity;
     u[30] = this.stepCount;
+    const log2 = (x: number) => Math.min(31, Math.max(0, Math.round(Math.log2(x))));
+    u[31] = log2(this.primalLanes[0]) | (log2(this.primalLanes[1]) << 8) | (log2(this.primalLanes[2]) << 16);
     this.device.queue.writeBuffer(this.paramsBuffer, 0, buf);
   }
 
@@ -961,7 +966,7 @@ export class GpuSolver3D {
     pass.setPipeline(this.pipes.warmStartBodies);
     pass.dispatchWorkgroups(groups(N));
     for (let it = 0; it < p.iterations; it++) {
-      pass.setPipeline(this.useWidePrimal() ? this.pipes.primalWide : this.pipes.primal);
+      pass.setPipeline(this.pipes.primal);
       for (let col = 0; col < this.colorCap; col++) {
         setPass(it * perIteration + col);
         pass.dispatchWorkgroupsIndirect(this.argsBuffer, (IA_COLOR + 3 * col) * 4);
@@ -1067,31 +1072,25 @@ export class GpuSolver3D {
   }
 
   /** Bodies per colour below which two threads per body pay off (measured, docs/FINDINGS.md). */
-  private useWidePrimal(): boolean {
-    if (this.primalMode !== 'auto') return this.primalMode === 'wide';
-    const perColor = this.bodiesPerColor || this.bodyCount / 4;
-    return perColor < WIDE_PRIMAL_BODIES_PER_COLOR;
-  }
-
   /** Adapt the colour cap and pair/contact capacity to a recent counters readback. */
   adapt(counters: GpuCounters3D): void {
-    this.bodiesPerColor = this.bodyCount / Math.max(counters.colors, 1);
     if (this.fixedColors) return;
-    // Colour cap = colours in use + 2 (each colour below the cap costs a dispatch per
-    // iteration): grow at once when the colouring runs into it, shrink after three quiet reads
+    // Colour cap: colours in use + COLOR_SPARE. Each colour below the cap costs a dispatch per
+    // iteration, but a body with no colour left below the cap shares the last one with a
+    // neighbour until a readback grows it, and landing bricks updated Jacobi-style push into
+    // each other for good (the demo pyramid collapsed in 13 of 40 runs from a cap of 2). Grow
+    // at once when a spare runs out or the colouring clashes, shrink after three quiet reads.
     // Jones-Plassmann rounds: the colouring carries over between steps and rarely has much
     // left to do (16 -> 2 rounds saved ~3% with no clashes, docs/FINDINGS.md), so run few and
     // double them as soon as a readback reports clashes
     const used = counters.colors;
     if (counters.clashes > 0) this.colorRounds = Math.min(32, this.colorRounds * 2);
-    if (counters.clashes > 0 || used >= this.colorCap) {
-      this.colorCap = Math.min(MAX_COLORS, Math.max(used + 4, this.colorCap + 4));
+    if (counters.clashes > 0 || this.colorCap - used < 2) {
+      this.colorCap = Math.min(MAX_COLORS, Math.max(used + COLOR_SPARE + 2, this.colorCap + 4));
       this.shrinkVotes = 0;
-    } else if (used + 1 < this.colorCap || this.colorRounds > 4) {
-      // After three quiet readbacks: one spare colour (a new contact may need it before the
-      // next readback) and back down to 4 rounds
+    } else if (used + COLOR_SPARE + 2 < this.colorCap || this.colorRounds > 4) {
       if (++this.shrinkVotes >= 3) {
-        this.colorCap = Math.max(2, used + 1);
+        this.colorCap = used + COLOR_SPARE;
         this.colorRounds = Math.max(4, this.colorRounds - 4);
         this.shrinkVotes = 0;
       }

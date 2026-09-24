@@ -180,7 +180,7 @@ struct Params {
   rounds: u32,
   manifoldCapacity: u32,
   step: u32,           // steps since the solver was created (from 1)
-  pad2: u32,
+  primalLanes: u32,    // bytes 0-2: log2 of the colour sizes from which 1, 2, 4 lanes per body suffice
 }
 
 fn qmul(a: vec4f, b: vec4f) -> vec4f {
@@ -238,5 +238,29 @@ fn jointActive(j: u32) -> bool {
 }
 `;
 
-/** Indirect-argument items for the shared args kernels: contact pairs. */
-export const ARGS_ITEMS_3D = { counter: 'C_MANIFOLDS', prevCounter: 'C_PREV_MANIFOLDS', capacity: 'params.manifoldCapacity' };
+/**
+ * Threads per body in one colour's primal (primalLanes): big colours fill the GPU with one
+ * thread per body, smaller ones split each body's contacts over 2, 4 or 8 threads, since a
+ * small colour's time is the longest chain of dependent loads (the body with most contacts).
+ */
+export const PRIMAL_LANES_WGSL = /* wgsl */ `
+fn lanesFor(bodies: u32) -> u32 {
+  let rule = params.primalLanes;
+  if (bodies >= (1u << (rule & 255u))) { return 1u; }
+  if (bodies >= (1u << ((rule >> 8u) & 255u))) { return 2u; }
+  if (bodies >= (1u << ((rule >> 16u) & 255u))) { return 4u; }
+  return 8u;
+}
+
+fn colorThreads(bodies: u32) -> u32 {
+  return bodies * lanesFor(bodies);
+}
+`;
+
+/** Indirect-argument items for the shared args kernels: contact pairs, lanes per body. */
+export const ARGS_ITEMS_3D = {
+  counter: 'C_MANIFOLDS',
+  prevCounter: 'C_PREV_MANIFOLDS',
+  capacity: 'params.manifoldCapacity',
+  colorThreads: PRIMAL_LANES_WGSL,
+};
