@@ -9,6 +9,7 @@ export default defineConfig({
         main: 'index.html',
         demo3d: 'index3d.html',
         bench: 'bench.html',
+        bench3d: 'bench3d.html',
       },
     },
   },

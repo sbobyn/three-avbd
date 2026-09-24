@@ -1,62 +1,27 @@
-// GPU scaling for the 3D solver, headless through Dawn. Reports wall time per step (robust:
-// warm-up, drained batches, best median over rounds; ../src/avbd2d/gpu/timing.ts) and GPU time
-// per phase (timestamp queries, median of 10 isolated steps, which run at lower clocks and so
-// read high). Close other GPU work (browser tabs) while it runs.
-// Usage: pnpm bench3d:gpu [iterations] [case,case,...]
-import { boxColumns, boxPile, chainMail, wallSmash } from '../src/avbd3d/bench-scenes.ts';
-import { GpuSolver3D, PHASES, type StepProfile } from '../src/avbd3d/gpu/solver.ts';
-import { Solver } from '../src/avbd3d/ref/solver.ts';
-import { compare } from '../src/avbd2d/gpu/timing.ts';
+// The 3D GPU benchmark suite (../src/avbd3d/bench-cases.ts) headless through Dawn: wall time
+// per step (queue kept busy) and GPU time per phase (timestamp queries, median of 10 isolated
+// steps, which run at lower clocks and so read high). bench3d.html runs the same suite in a
+// browser on the target hardware. Close other GPU work (browser tabs) while it runs.
+// Usage: pnpm bench3d:gpu [tier,tier,...|case name,...]   (default: small,paper)
+import { BENCH_CASES, measureCase } from '../src/avbd3d/bench-cases.ts';
+import { PHASES } from '../src/avbd3d/gpu/solver.ts';
 import { device, skip } from '../tests-gpu/device.ts';
 
 if (!device) {
   console.log(`skipped: ${skip}`);
   process.exit(0);
 }
-const iterations = Number(process.argv[2] ?? 10);
-const only = process.argv[3]?.split(',');
-console.log(`adapter: ${device.adapterInfo?.vendor ?? '?'} ${device.adapterInfo?.architecture ?? ''}, ${iterations} iterations`);
+const only = (process.argv[2] ?? 'small,paper').split(',');
+console.log(`adapter: ${device.adapterInfo?.vendor ?? '?'} ${device.adapterInfo?.architecture ?? ''}`);
 
-const cases: [string, (s: Solver) => void][] = [
-  ['wall smash 2k', (s) => wallSmash(s)],
-  ['chain mail 1.6k', (s) => chainMail(s)],
-  ['columns 32x32x10', (s) => boxColumns(s, 32, 10)],
-  ['pile 40x40x20', (s) => boxPile(s, 40, 20)],
-  ['columns 50x50x20', (s) => boxColumns(s, 50, 20)],
-  ['columns 100x100x10', (s) => boxColumns(s, 100, 10)],
-  ['columns 100x100x25', (s) => boxColumns(s, 100, 25)],
-];
-
-for (const [name, build] of cases) {
-  if (only && !only.includes(name)) continue;
-  const ref = new Solver();
-  build(ref);
-  ref.iterations = iterations;
-  const gpu = new GpuSolver3D(device, ref, { bodyCapacity: ref.bodies.length + 16 });
-  // Settle into contact (and let capacities / colour cap adapt), as an app would
-  for (let i = 0; i < 180; i++) {
-    gpu.step();
-    if (i % 60 === 59) gpu.adapt(await gpu.readCounters());
-  }
-  await device.queue.onSubmittedWorkDone();
-  const profiles: StepProfile[] = [];
-  for (let i = 0; i < 10; i++) {
-    gpu.profileNextStep((p) => profiles.push(p));
-    gpu.step();
-    await device.queue.onSubmittedWorkDone();
-    await new Promise((r) => setTimeout(r, 2));
-  }
-  const wall = (await compare(device, () => gpu.step(), [{ name: 'wall', apply: () => {} }], { rounds: 3, warmup: 20 })).wall;
-  const c = await gpu.readCounters();
-  const median = (key: keyof StepProfile) => {
-    const v = profiles.map((p) => p[key]).sort((a, b) => a - b);
-    return v.length ? v[v.length >> 1].toFixed(2) : '—';
-  };
+for (const c of BENCH_CASES) {
+  if (!only.includes(c.tier) && !only.includes(c.name)) continue;
+  const r = await measureCase(device, c);
+  const gpu = r.gpu ? `GPU ${r.gpu.total.toFixed(2)} = ${PHASES.map((p) => `${p} ${r.gpu![p].toFixed(2)}`).join(', ')}` : 'GPU —';
   console.log(
-    `${name.padEnd(20)} ${String(gpu.bodyCount).padStart(7)} bodies ${String(c.contacts).padStart(8)} contacts ` +
-      `${String(c.colors).padStart(2)} colours (clashes ${c.clashes}, overflow ${c.overflow}): wall ${wall.toFixed(2)} ms/step | ` +
-      `GPU ${median('total')} = ${PHASES.map((ph) => `${ph} ${median(ph)}`).join(', ')}`,
+    `${r.scene.padEnd(30)} ${String(r.iterations).padStart(2)} it ${String(r.bodies).padStart(7)} bodies ${String(r.contacts).padStart(8)} contacts ` +
+      `${String(r.colors).padStart(2)} colours (clashes ${r.clashes}, overflow ${r.overflow}): wall ${r.wallMs.toFixed(2)} ms/step | ${gpu}` +
+      `${r.paper ? ` | paper ${r.paper}` : ''}${r.error ? ` | ERROR ${r.error}` : ''} [${(r.gpuBytes / 2 ** 20).toFixed(0)} MB of buffers, built in ${(r.buildMs / 1000).toFixed(1)} s]`,
   );
-  gpu.destroy();
 }
 process.exit(0);

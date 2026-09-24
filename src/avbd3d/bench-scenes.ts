@@ -48,6 +48,124 @@ export function boxPile(solver: Solver, n: number, h: number): void {
   }
 }
 
+/** A brick (1 × 0.5 × 0.5, as in the demo's pyramid) turned `angle` about z. */
+function brick(solver: Solver, x: number, y: number, z: number, angle = 0): Rigid {
+  const b = new Rigid(solver, [1, 0.5, 0.5], 1, 0.5, [x, y, z]);
+  b.positionAng.set([0, 0, Math.sin(angle / 2), Math.cos(angle / 2)]);
+  return b;
+}
+
+/**
+ * Paper Fig. 1: a ring wall of bricks smashed from inside by a sphere. `courses` courses of
+ * bricks laid tangentially in running bond on rings from `radius` outwards, `rows` bricks deep
+ * at the bottom and one fewer every `tier` courses, so the outside is stepped and the inside
+ * sheer. Bricks rest exactly on each other, so it stands from the first frame and a benchmark
+ * can time the smash without a settle. Defaults: 110,332 bricks, 20 m high, 160 m across.
+ */
+export function brickRing(solver: Solver, radius = 80, courses = 40, tier = 4, rows = 10): void {
+  solver.clear();
+  ground(solver, radius + rows);
+  for (let c = 0; c < courses; c++) {
+    const depth = Math.max(1, rows - Math.floor(c / tier));
+    for (let j = 0; j < depth; j++) {
+      // Rings 2 cm apart: a straight brick's corners reach past its ring's outer radius
+      const r = radius + 0.25 + 0.52 * j;
+      // As many bricks as fit on the ring's inner edge with 2% gaps; odd courses offset by half
+      const n = Math.floor((2 * Math.PI * (r - 0.25)) / 1.02);
+      for (let i = 0; i < n; i++) {
+        const a = ((i + (c % 2) * 0.5) / n) * 2 * Math.PI;
+        brick(solver, r * Math.cos(a), r * Math.sin(a), 0.75 + 0.5 * c, a + Math.PI / 2);
+      }
+    }
+  }
+  const ball = courses / 10;
+  sphere(solver, ball, 10, 0.5, [0, -(radius - ball - 2), ball + 0.5 + courses / 8], [0, -25, 0]);
+}
+
+/**
+ * Paper Fig. 3: a field of triangular brick walls, one brick thick, smashed by two spheres
+ * rolling through it. Each wall is a brick pyramid `base` bricks wide (course k: base − k
+ * bricks, offset by half a brick), facing ±y; `columns` × `rows` of them stand on a grid.
+ * Defaults: 1,088 walls of 465 bricks, 505,920 bricks.
+ */
+export function brickGables(solver: Solver, columns = 16, rows = 68, base = 30): void {
+  solver.clear();
+  const [pitchX, pitchY] = [base + 2, 5];
+  ground(solver, Math.max(columns * pitchX, rows * pitchY) / 2);
+  for (let cx = 0; cx < columns; cx++) {
+    for (let cy = 0; cy < rows; cy++) {
+      const x0 = (cx - (columns - 1) / 2) * pitchX;
+      const y = (cy - (rows - 1) / 2) * pitchY;
+      for (let k = 0; k < base; k++) {
+        const m = base - k;
+        for (let i = 0; i < m; i++) brick(solver, x0 + (i - (m - 1) / 2) * 1.01, y, 0.75 + 0.5 * k);
+      }
+    }
+  }
+  // Down two columns either side of the middle
+  const r = base / 7;
+  for (const cx of [columns / 2 - 2, columns / 2 + 1]) {
+    sphere(solver, r, 10, 0.5, [(cx - (columns - 1) / 2) * pitchX, -((rows - 1) / 2) * pitchY - r - 3, r + 0.5], [0, 25, 0]);
+  }
+}
+
+/**
+ * A stand-in for paper Fig. 14 (35,000 bodies joined by 72,000 joints falling onto a cloth; no
+ * cloth here). Plates of 5 × 5 × 2 small cubes ball-jointed at their shared face centres (50
+ * bodies, 105 joints each), `grid` × `grid` per layer, drop in `layers` staggered layers onto a
+ * chain-mail net of `net` × `net` links pinned along its border. Defaults: 34,096 bodies and
+ * 71,064 joints.
+ */
+export function jointedDrop(solver: Solver, grid = 10, layers = 6, net = 64): void {
+  solver.clear();
+  ground(solver, net * 0.5);
+  const s = 0.5;
+  const zNet = 4;
+  const links: Rigid[][] = [];
+  for (let x = 0; x < net; x++) {
+    links.push([]);
+    for (let y = 0; y < net; y++) {
+      const edge = x === 0 || y === 0 || x === net - 1 || y === net - 1;
+      links[x].push(new Rigid(solver, [s * 0.9, s * 0.9, 0.1], edge ? 0 : 1, 0.5, [(x - (net - 1) / 2) * s, (y - (net - 1) / 2) * s, zNet]));
+    }
+  }
+  for (let x = 0; x < net; x++) {
+    for (let y = 0; y < net; y++) {
+      if (x > 0) new Joint(solver, links[x - 1][y], links[x][y], [s / 2, 0, 0], [-s / 2, 0, 0]);
+      if (y > 0) new Joint(solver, links[x][y - 1], links[x][y], [0, s / 2, 0], [0, -s / 2, 0]);
+    }
+  }
+  const c = 0.4;
+  const [nx, ny, nz] = [5, 5, 2];
+  const pitch = 3;
+  for (let layer = 0; layer < layers; layer++) {
+    const offset = layer % 2 === 0 ? 0 : pitch / 2;
+    for (let gx = 0; gx < grid; gx++) {
+      for (let gy = 0; gy < grid; gy++) {
+        const origin = [(gx - (grid - 1) / 2) * pitch + offset - 0.75, (gy - (grid - 1) / 2) * pitch + offset - 0.75, zNet + 3 + layer * 2.5];
+        const cells: Rigid[] = [];
+        const at = (x: number, y: number, z: number) => cells[(x * ny + y) * nz + z];
+        for (let x = 0; x < nx; x++) {
+          for (let y = 0; y < ny; y++) {
+            for (let z = 0; z < nz; z++) {
+              cells.push(new Rigid(solver, [c, c, c], 1, 0.5, [origin[0] + (x - (nx - 1) / 2) * c, origin[1] + (y - (ny - 1) / 2) * c, origin[2] + z * c]));
+            }
+          }
+        }
+        for (let x = 0; x < nx; x++) {
+          for (let y = 0; y < ny; y++) {
+            for (let z = 0; z < nz; z++) {
+              if (x > 0) new Joint(solver, at(x - 1, y, z), at(x, y, z), [c / 2, 0, 0], [-c / 2, 0, 0]);
+              if (y > 0) new Joint(solver, at(x, y - 1, z), at(x, y, z), [0, c / 2, 0], [0, -c / 2, 0]);
+              if (z > 0) new Joint(solver, at(x, y, z - 1), at(x, y, z), [0, 0, c / 2], [0, 0, -c / 2]);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 /**
  * Paper Fig. 1/3: a wall of bricks (w wide, h high, two deep) smashed by a heavy ball.
  * Bricks rest exactly on each other; the ball is launched along +y.
@@ -162,5 +280,7 @@ export const gpuScenes3D: Scene3D[] = [
   { name: 'Heavy Pendulum 50000:1', build: (s) => heavyPendulum(s), gpuOnly: true, camera: { distance: 70, target: [0, 0, 16], azimuth: 90, elevation: 0.15 } },
   { name: 'Box Pile (4k)', build: (s) => boxPile(s, 20, 10), gpuOnly: true, camera: { distance: 55, target: [0, 0, 4], elevation: 0.45 } },
   { name: 'Box Pile (32k)', build: (s) => boxPile(s, 40, 20), gpuOnly: true, camera: { distance: 110, target: [0, 0, 6], elevation: 0.45 } },
+  { name: 'Brick Ring (110k)', build: (s) => brickRing(s), gpuOnly: true, camera: { distance: 190, target: [0, 0, 5], azimuth: -120, elevation: 0.35 } },
+  { name: 'Jointed Drop (34k)', build: (s) => jointedDrop(s), gpuOnly: true, camera: { distance: 55, target: [0, 0, 4], azimuth: -120, elevation: 0.5 } },
   { name: 'Box Columns (100k)', build: (s) => boxColumns(s, 100, 10), gpuOnly: true, camera: { distance: 190, target: [0, 0, 5], elevation: 0.5 } },
 ];

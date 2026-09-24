@@ -2,6 +2,58 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 8e: benchmark scenes after the paper's, and bench3d.html
+
+### What the paper's large scenes are
+Rendered from the paper's figures: Fig. 1 (110,000 blocks, 4 iterations) is a ring wall of bricks
+in running bond, stepped outside and sheer inside, smashed from inside by one sphere. Fig. 3
+(510,000 blocks; Table 1 says 3 iterations, the caption 4) is a field of triangular brick walls
+one brick thick, ploughed by two spheres. Fig. 14 is 35,000 rigid bodies with 72,000 joints
+falling onto a 10k-vertex cloth. The earlier comparison (Stage 8d) used settled random piles,
+which have fewer contacts and no motion.
+
+New scenes (`bench-scenes.ts`), all standing exactly from frame 0 so no settling is needed:
+- `brickRing`: 110,332 bricks [1, 0.5, 0.5], 40 courses, rows 10 deep at the base stepping in
+  every 4 courses, 160 m across; a 4 m sphere at 25 m/s from inside. Rings are 2 cm apart:
+  straight bricks' corners reach past the ring radius, and touching rings pushed each other
+  apart (a 9k ring slumped 0.46 m unhit; gapped, every brick stays within 2 cm).
+- `brickGables`: 16 × 68 triangular walls of 465 bricks (505,920), two 4.3 m spheres.
+- `jointedDrop` (stand-in for Fig. 14, no cloth): 600 plates of 5 × 5 × 2 ball-jointed cubes
+  falling in layers onto a border-pinned chain-mail net; 34,097 bodies, 71,064 joints.
+
+A first attempt, stepped pyramids of unit cubes, was wrong twice over: 69 courses slump at 4
+iterations (0.7 m spread in 1.5 s unhit), and face-to-face cubes make ~23 contacts per body,
+twice the bricks' ~11, so the 110k mound took 32 ms a step.
+
+### Against the paper, on its own scene shapes (M4 Max via Dawn, on AC, machine otherwise quiet)
+Timed over ~110 steps right after a 60-step lead-in, while the spheres are still breaking walls.
+
+| scene | ours: wall per step (GPU solve, collision) | paper, RTX 4090 | GPU buffers |
+|---|---|---|---|
+| Brick ring 110k, 4 it (Fig. 1) | **11.8 ms** (7.1, 4.3) | 9.8 ms (3.5, 6.3) | 608 MB |
+| Brick gables 506k, 3 it (Fig. 3) | **27.6 ms** (16.1, 9.0) | 17.6 ms (10.3, 7.2) | 1.85 GB |
+| Jointed drop 34k + 71k joints, 10 it (Fig. 14 stand-in) | **8.0 ms** (6.1, 1.0) | 16 ms incl. a 10k-vertex cloth | 102 MB |
+
+So on its own scenes we are 1.2x (110k) and 1.6x (510k) behind a GPU with ~2x the memory
+bandwidth; the gap is in the solve, while our collision is faster at 110k and 25% slower at
+510k. Our contact reuse helps here as it would not for the paper (most walls are untouched).
+Timing noise: another process's test run on the same machine made the same suite read 18.8 /
+17.5 / 29.9 ms; the numbers above are from a quiet rerun that matched an earlier quiet run.
+
+### GPU memory is the next constraint for 8 GB machines
+Peak buffer bytes per body: ~5.5 KB for brick scenes. Contact and manifold storage are sized
+from the CPU pair estimate (contacts 4x pairs, manifolds 2x pairs) and double-buffered: the 9k
+ring holds 282k contact slots for 95k contacts and 141k manifold slots for 18k manifolds. The
+510k field needs 1.85 GB, which should fit an 8 GB M1 or GTX 1080 but leaves little room.
+
+### bench3d.html
+Runs the suite (`src/avbd3d/bench-cases.ts`, shared with `pnpm bench3d:gpu`) in the browser:
+tiers small (≤ 9k bodies), paper scale (110k ring, 34k jointed), 510k, settled. It reports wall
+and per-phase GPU times, GPU buffer MB and the paper's times, uses a fresh device per case
+(an out-of-memory case cannot take the rest down), and copies JSON with the adapter, limits
+and user agent. In a hidden browser tab timings are unusable (the 34k jointed drop read 13-75 ms
+across runs in a hidden pane, 8 ms headless, ~7 ms in the visible viewer); the page says so.
+
 ## 2026-09-24 — Stage 8d: small scenes, rendering, and what was not worth it
 
 ### Small scenes are latency-bound, not dispatch-bound
@@ -52,7 +104,7 @@ with a collapse-sized speed bound (the exact rest state is checked on the CPU re
 spring mean is taken over six whole periods from the start. The CPU pyramid test was dropped:
 the reference is bit-exact with upstream, and the GPU suite checks the pyramid stands.
 
-### Against the paper (Table 1, Figs 1 and 3; RTX 4090)
+### Against the paper (Table 1, Figs 1 and 3; RTX 4090) — superseded by Stage 8e
 | scene | paper (RTX 4090) | ours (M4 Max, WebGPU) |
 |---|---|---|
 | 110k-block pile, 4 it | 9.8 ms (3.5 solve + 6.3 collision) | **8.2 ms** (~4.4 solve, ~3.3 collision, ~0.5 colouring/adjacency) |

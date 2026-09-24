@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AVBD 2D Benchmark</title>
+    <title>AVBD 3D Benchmark</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -61,6 +61,11 @@
       a {
         color: inherit;
       }
+      .error {
+        color: #d0463b;
+        text-align: left;
+        white-space: normal;
+      }
       .table-wrap {
         overflow-x: auto;
       }
@@ -83,29 +88,24 @@
   </head>
   <body>
     <main>
-      <h1>AVBD 2D — GPU benchmark</h1>
+      <h1>AVBD 3D — GPU benchmark</h1>
       <p>
-        Runs the whole 2D step (collision, colouring, solve) on this machine's GPU for a fixed scene suite. Close
-        other GPU-heavy tabs and keep this tab visible while it runs (hidden tabs are throttled). Takes a few
-        minutes. <a href="bench3d.html">3D benchmark</a>
+        Runs the whole 3D step (collision, colouring, solve) on this machine's GPU for a fixed scene suite, including
+        the paper's large scenes, and compares with the paper's RTX 4090 times. Close other GPU-heavy tabs and keep
+        this tab visible while it runs (hidden tabs are throttled). Small and paper-scale take about a minute; the
+        510k scene needs about 2 GB of GPU memory. <a href="bench.html">2D benchmark</a>
       </p>
       <div class="controls">
-        <label>Iterations <select id="iterations">
-          <option value="4,10">4 and 10</option>
-          <option value="4">4</option>
-          <option value="10">10</option>
-        </select></label>
-        <label>Primal <select id="primal">
-          <option value="bucket,scan">bucket and scan</option>
-          <option value="bucket">bucket</option>
-          <option value="scan">scan</option>
-        </select></label>
+        <label><input type="checkbox" name="tier" value="small" checked /> small</label>
+        <label><input type="checkbox" name="tier" value="paper" checked /> paper scale (110k, 34k)</label>
+        <label><input type="checkbox" name="tier" value="large" /> 510k</label>
+        <label><input type="checkbox" name="tier" value="steady" /> settled scenes</label>
         <button id="run">Run benchmark</button>
         <button id="copy" disabled>Copy results</button>
       </div>
       <div id="status"></div>
       <div id="results" class="table-wrap"></div>
     </main>
-    <script type="module" src="/src/bench2d/main.ts"></script>
+    <script type="module" src="/src/bench3d/main.ts"></script>
   </body>
 </html>

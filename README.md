@@ -14,19 +14,21 @@ pnpm dev        # 2D: http://127.0.0.1:5317  3D: /index3d.html  (?scene=Pyramid,
 pnpm check      # typecheck + CPU tests + GPU tests (headless Dawn) + production build
 pnpm bench2d    # CPU scaling baseline
 pnpm bench2d:gpu # GPU benchmark with per-phase timing (headless)
-pnpm bench3d:gpu # 3D GPU benchmark: showcase scenes and box piles up to 250k (args: iterations, cases)
+pnpm bench3d:gpu # 3D GPU benchmark: the paper's large scenes and small ones (args: tiers or case names)
 pnpm sweep2d    # iteration count: cost vs quality on the GPU
 pnpm scaling2d  # box rain 10k-250k, writes docs/data/scaling2d-<adapter>.json
 ```
 
-Browser benchmark for any machine: http://127.0.0.1:5317/bench.html (runs the GPU suite,
-"Copy results" gives JSON to paste back).
+Browser benchmarks for any machine: http://127.0.0.1:5317/bench.html (2D) and
+/bench3d.html (3D, including the paper's 110k and 510k scenes). Each runs the GPU suite;
+"Copy results" gives JSON to paste back. Keep the tab visible while it runs.
 
 2D demo controls: left-drag grabs a body, right-click spawns a box, wheel zooms,
 space/shift + drag or middle-drag pans, WASD/QE move the camera, P pauses, `.` steps, R resets.
 
 3D scenes: the 14 demo scenes (CPU reference or WebGPU) plus GPU-only showcase scenes after
-the paper's figures: Wall Smash, Breakable Wall, Chain Mail, Heavy Pendulum 50000:1, box piles.
+the paper's figures: Wall Smash, Breakable Wall, Chain Mail, Heavy Pendulum 50000:1, Brick Ring
+(110k, Fig. 1), Jointed Drop (34k bodies, 71k joints), box piles.
 
 3D demo controls: left-drag on a body grabs it, left-drag elsewhere orbits, right-drag pans,
 wheel zooms, middle-click or B shoots a box, P pauses, `.` steps, R resets.
@@ -44,6 +46,7 @@ wheel zooms, middle-click or B shoots a box, P pauses, `.` steps, R resets.
 | `src/avbd3d/gpu/` | 3D WebGPU solver: WGSL broadphase, OBB narrowphase, 6-DOF solve; reuses the 2D colouring kernels |
 | `src/avbd3d/sim.ts` | `Sim3D` interface the 3D app drives (CPU reference or WebGPU); scene registry |
 | `src/avbd3d/bench-scenes.ts`, `shapes.ts` | GPU showcase / benchmark scenes; spheres (GPU-only) |
+| `src/avbd3d/bench-cases.ts`, `src/bench3d` | 3D benchmark suite and its browser page (`bench3d.html`) |
 | `src/app3d/` | 3D demo app: z-up orbit camera, shadowed boxes (CPU instancing or zero-copy GPU bodies), drag, box shooting |
 | `tests/` | `node --test` suites; `fixtures/oracle2d`, `fixtures/oracle3d` hold golden trajectories from the C++ demos |
 | `tests-gpu/` | GPU tests on a real device through Dawn (`webgpu` package); skipped without an adapter |
