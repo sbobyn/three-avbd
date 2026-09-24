@@ -10,19 +10,19 @@
    "iterations": 10,
    "bodies": 2002,
    "joints": 0,
-   "contacts": 22495,
+   "contacts": 22718,
    "colors": 17,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 3.939558299999999,
+   "wallMs": 13.310749999999961,
    "gpu": {
-    "total": 3.407872,
-    "collision": 0.393216,
+    "total": 4.58752,
+    "collision": 0.524288,
     "adjacency": 0.065536,
     "coloring": 0.131072,
-    "solve": 2.818048
+    "solve": 3.93216
    },
-   "buildMs": 127.72104099999999,
+   "buildMs": 454.6302919999998,
    "gpuBytes": 15370532
   },
   {
@@ -30,19 +30,19 @@
    "iterations": 10,
    "bodies": 1602,
    "joints": 3120,
-   "contacts": 7,
+   "contacts": 9,
    "colors": 5,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 1.6268542000000026,
+   "wallMs": 3.3550874999999905,
    "gpu": {
-    "total": 1.376256,
+    "total": 1.441792,
     "collision": 0.196608,
     "adjacency": 0.065536,
     "coloring": 0.131072,
-    "solve": 0.98304
+    "solve": 1.048576
    },
-   "buildMs": 43.20441699999992,
+   "buildMs": 166.83579199999986,
    "gpuBytes": 2406788
   },
   {
@@ -50,59 +50,59 @@
    "iterations": 4,
    "bodies": 9132,
    "joints": 0,
-   "contacts": 94850,
-   "colors": 8,
+   "contacts": 49128,
+   "colors": 11,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 2.8031083999999966,
+   "wallMs": 4.645241600000008,
    "gpu": {
-    "total": 2.686976,
-    "collision": 0.98304,
-    "adjacency": 0.065536,
-    "coloring": 0.131072,
-    "solve": 1.441792
+    "total": 3.538944,
+    "collision": 1.245184,
+    "adjacency": 0.131072,
+    "coloring": 0.196608,
+    "solve": 1.769472
    },
-   "buildMs": 232.967709,
-   "gpuBytes": 23605040
+   "buildMs": 791.5723749999997,
+   "gpuBytes": 44712392
   },
   {
    "scene": "Brick gables 6.7k",
    "iterations": 3,
    "bodies": 6723,
    "joints": 0,
-   "contacts": 42306,
-   "colors": 9,
+   "contacts": 40859,
+   "colors": 8,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 1.7426625000000058,
+   "wallMs": 2.514600000000064,
    "gpu": {
-    "total": 1.703936,
-    "collision": 0.589824,
+    "total": 2.555904,
+    "collision": 0.65536,
     "adjacency": 0.065536,
-    "coloring": 0.131072,
-    "solve": 0.851968
+    "coloring": 0.196608,
+    "solve": 1.048576
    },
-   "buildMs": 96.90620799999988,
-   "gpuBytes": 16787096
+   "buildMs": 480.1083750000007,
+   "gpuBytes": 16787864
   },
   {
    "scene": "Jointed drop 6k",
    "iterations": 10,
    "bodies": 6025,
    "joints": 12484,
-   "contacts": 18896,
+   "contacts": 17931,
    "colors": 19,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 5.238483400000041,
+   "wallMs": 10.092662500000007,
    "gpu": {
-    "total": 4.980736,
-    "collision": 0.851968,
-    "adjacency": 0.065536,
-    "coloring": 0.131072,
-    "solve": 3.801088
+    "total": 6.750208,
+    "collision": 1.179648,
+    "adjacency": 0.131072,
+    "coloring": 0.196608,
+    "solve": 5.24288
    },
-   "buildMs": 160.43650000000025,
+   "buildMs": 1923.6526249999988,
    "gpuBytes": 13008988
   },
   {
@@ -110,20 +110,20 @@
    "iterations": 4,
    "bodies": 110442,
    "joints": 0,
-   "contacts": 1234534,
-   "colors": 10,
+   "contacts": 1237932,
+   "colors": 12,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 19.88627919999999,
+   "wallMs": 38.689849999999566,
    "gpu": {
-    "total": 19.98848,
-    "collision": 7.602176,
-    "adjacency": 0.589824,
-    "coloring": 0.786432,
-    "solve": 11.010048
+    "total": 38.600704,
+    "collision": 10.551296,
+    "adjacency": 1.048576,
+    "coloring": 2.62144,
+    "solve": 23.855104
    },
-   "buildMs": 3438.643708,
-   "gpuBytes": 291632072,
+   "buildMs": 23846.42,
+   "gpuBytes": 291633184,
    "paper": "9.8 ms (3.5 solve)"
   },
   {
@@ -131,20 +131,20 @@
    "iterations": 10,
    "bodies": 34097,
    "joints": 71064,
-   "contacts": 111163,
+   "contacts": 109058,
    "colors": 30,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 14.419858299999941,
+   "wallMs": 49.9841207999998,
    "gpu": {
-    "total": 13.631488,
-    "collision": 2.62144,
-    "adjacency": 0.32768,
-    "coloring": 0.32768,
-    "solve": 10.289152
+    "total": 23.199744,
+    "collision": 4.390912,
+    "adjacency": 0.458752,
+    "coloring": 0.720896,
+    "solve": 17.956864
    },
-   "buildMs": 807.9654579999988,
-   "gpuBytes": 101203868,
+   "buildMs": 3928.171957999999,
+   "gpuBytes": 101202204,
    "paper": "16 ms"
   },
   {
@@ -152,20 +152,20 @@
    "iterations": 3,
    "bodies": 505923,
    "joints": 0,
-   "contacts": 4421035,
-   "colors": 10,
+   "contacts": 4400271,
+   "colors": 11,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 58.79597080000021,
+   "wallMs": 91.43095000000031,
    "gpu": {
-    "total": 58.916864,
-    "collision": 22.9376,
-    "adjacency": 2.031616,
-    "coloring": 2.818048,
-    "solve": 31.064064
+    "total": 89.587712,
+    "collision": 27.131904,
+    "adjacency": 3.145728,
+    "coloring": 5.505024,
+    "solve": 52.4288
    },
-   "buildMs": 9567.158000000001,
-   "gpuBytes": 1272787560,
+   "buildMs": 146723.55108399998,
+   "gpuBytes": 1272786792,
    "paper": "17.6 ms (10.3 solve)"
   },
   {
@@ -173,20 +173,20 @@
    "iterations": 4,
    "bodies": 32001,
    "joints": 0,
-   "contacts": 151637,
+   "contacts": 151571,
    "colors": 9,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 6.846258300000045,
+   "wallMs": 9.267675000001327,
    "gpu": {
-    "total": 6.815744,
-    "collision": 3.407872,
-    "adjacency": 0.262144,
-    "coloring": 0.262144,
-    "solve": 2.883584
+    "total": 9.17504,
+    "collision": 3.670016,
+    "adjacency": 0.32768,
+    "coloring": 0.458752,
+    "solve": 4.849664
    },
-   "buildMs": 440.45150000000285,
-   "gpuBytes": 67823876
+   "buildMs": 1036.4311250000028,
+   "gpuBytes": 67914740
   },
   {
    "scene": "Box columns 100k",
@@ -197,15 +197,15 @@
    "colors": 3,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 8.424220899999636,
+   "wallMs": 12.909629100002348,
    "gpu": {
-    "total": 8.388608,
-    "collision": 3.342336,
-    "adjacency": 0.196608,
-    "coloring": 0.393216,
-    "solve": 4.325376
+    "total": 12.320768,
+    "collision": 4.128768,
+    "adjacency": 0.262144,
+    "coloring": 0.65536,
+    "solve": 7.405568
    },
-   "buildMs": 1763.5400420000005,
+   "buildMs": 2994.1707500000193,
    "gpuBytes": 144271644
   }
  ]
