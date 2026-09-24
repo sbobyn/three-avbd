@@ -1,24 +1,49 @@
-// 3D AVBD demo app: scene picker, solver parameters, orbit camera, mouse drag and box
-// shooting, mirroring the controls of the upstream avbd-demo3d.
+// 3D AVBD viewer: the site's landing page. A dock with the scene picker (the paper's showcase
+// scenes first) and settings (../ui/controls.ts), orbit camera, mouse drag and box shooting as
+// in the upstream avbd-demo3d, and a title card.
 
-import GUI from 'lil-gui';
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createGpuSim3D, GpuSim3D } from '../avbd3d/gpu/sim.ts';
 import { gpuParams3D, PHASES } from '../avbd3d/gpu/solver.ts';
 import { DEFAULT_SCENE } from '../avbd3d/ref/scenes.ts';
 import { allScenes3D, along, createSim3D, type Sim3D, sceneByName3D } from '../avbd3d/sim.ts';
+import { Controls, ICONS } from '../ui/controls.ts';
+import { otherDemoUrl, sceneMenu } from '../ui/scene-menu.ts';
 import { Renderer3D } from './renderer3d.ts';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const hud = document.querySelector<HTMLDivElement>('#hud')!;
+const timing = document.querySelector<HTMLDivElement>('#timing')!;
 
-if (!('gpu' in navigator)) {
-  hud.textContent = 'WebGPU is not available in this browser; rendering falls back to WebGL2.';
+// Title card, collapsed state remembered per viewer
+const card = document.querySelector<HTMLDivElement>('#card')!;
+const cardToggle = document.querySelector<HTMLButtonElement>('#card-toggle')!;
+const CARD_KEY = 'avbd3d-card-collapsed';
+const setCard = (collapsed: boolean) => {
+  card.classList.toggle('collapsed', collapsed);
+  cardToggle.textContent = collapsed ? '+' : '–';
+  cardToggle.title = collapsed ? 'About this demo' : 'Hide';
+};
+const NARROW = 760;
+try {
+  setCard(localStorage.getItem(CARD_KEY) === '1' || window.innerWidth < NARROW);
+} catch {
+  setCard(window.innerWidth < NARROW);
 }
+cardToggle.onclick = () => {
+  const collapsed = !card.classList.contains('collapsed');
+  setCard(collapsed);
+  try {
+    localStorage.setItem(CARD_KEY, collapsed ? '1' : '0');
+  } catch {
+    // Storage unavailable: the card just doesn't remember
+  }
+};
 
 // Ask for the adapter's full storage-binding size, as the 2D app does, for large GPU scenes
-const adapter = 'gpu' in navigator ? await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }) : null;
+const adapter = 'gpu' in navigator ? await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null) : null;
+if (!adapter) document.querySelector<HTMLElement>('#no-webgpu')!.hidden = false;
 const renderer = new Renderer3D(
   canvas,
   adapter ? { maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize, maxBufferSize: adapter.limits.maxBufferSize } : undefined,
@@ -28,23 +53,34 @@ await renderer.init();
 type Backend3D = 'ref' | 'gpu';
 const BACKENDS: Record<Backend3D, string> = { ref: 'Reference (CPU)', gpu: 'WebGPU' };
 const url = new URL(location.href);
-const sceneNames = allScenes3D.map((s) => s.name);
+const gpuAvailable = renderer.device !== null;
+// The paper's showcase scenes first (GPU only), then the upstream demo's scenes
+const sceneNames = [...allScenes3D.filter((s) => s.gpuOnly && gpuAvailable), ...allScenes3D.filter((s) => !s.gpuOnly)].map((s) => s.name);
+/** What a first visit shows: a quarter-size Fig. 1 smash, smooth on modest GPUs. */
+const LANDING_SCENE = gpuAvailable ? 'Brick Ring (28k)' : DEFAULT_SCENE;
 const backendParam = url.searchParams.get('backend');
 const state = {
-  scene: sceneNames.includes(url.searchParams.get('scene') ?? '') ? url.searchParams.get('scene')! : DEFAULT_SCENE,
-  backend: (backendParam === 'gpu' ? 'gpu' : 'ref') as Backend3D,
+  scene: sceneNames.includes(url.searchParams.get('scene') ?? '') ? url.searchParams.get('scene')! : LANDING_SCENE,
+  backend: ((backendParam ?? (gpuAvailable ? 'gpu' : 'ref')) === 'gpu' ? 'gpu' : 'ref') as Backend3D,
   paused: url.searchParams.has('paused'),
   boxFriction: 0.5,
   boxSize: { x: 1, y: 1, z: 1 },
   boxVelocity: 10,
-  showContacts: true,
-  showJoints: true,
+  showContacts: false,
+  showJoints: false,
+  details: false,
   // Shadow maps redraw every body again each frame; off helps older GPUs with big scenes
   shadows: url.searchParams.get('shadows') !== '0',
 };
 /** Solver parameters owned by the app, copied into the solver before every step. */
 const params = gpuParams3D();
-const defaults = () => ({ ...gpuParams3D(), matchNearest: state.backend === 'gpu', faceBias: state.backend === 'gpu' });
+/** The solver's defaults for the backend, with the scene's own settings (the paper's iterations). */
+const defaults = () => ({
+  ...gpuParams3D(),
+  matchNearest: state.backend === 'gpu',
+  faceBias: state.backend === 'gpu',
+  ...sceneByName3D(state.scene).params,
+});
 Object.assign(params, defaults());
 
 // The demo's orbit camera: distance 50, azimuth 90°, elevation 0.35 rad, looking at (0, 0, 5)
@@ -61,6 +97,7 @@ function resetCamera(): void {
   const elevation = view?.elevation ?? 0.35;
   const [tx, ty, tz] = view?.target ?? [0, 0, 5];
   controls.target.set(tx, ty, tz);
+  renderer.setViewScale(distance);
   camera.position.set(
     tx + distance * Math.cos(elevation) * Math.cos(azimuth),
     ty + distance * Math.cos(elevation) * Math.sin(azimuth),
@@ -91,58 +128,85 @@ let sim!: Sim3D;
 function loadScene(reset = true): void {
   endDrag();
   if (sim instanceof GpuSim3D) sim.destroy();
+  if (reset) Object.assign(params, defaults());
   sim = buildSim();
+  ui.setScene(state.scene);
+  ui.refresh();
   if (reset) resetCamera();
   url.searchParams.set('scene', state.scene);
   url.searchParams.set('backend', state.backend);
   history.replaceState(null, '', url);
 }
 
-// --- GUI -------------------------------------------------------------------------------
+// --- Controls --------------------------------------------------------------------------
 
-const refreshGui = () => gui.controllersRecursive().forEach((c) => c.updateDisplay());
-const gui = new GUI({ title: 'AVBD 3D' });
-gui.add(state, 'scene', sceneNames).name('Scene').listen().onChange(() => loadScene());
-gui
-  .add(state, 'backend', Object.fromEntries(Object.entries(BACKENDS).map(([k, v]) => [v, k])))
-  .name('Solver')
-  .listen()
-  .onChange(() => {
-    Object.assign(params, defaults());
-    refreshGui();
-    loadScene(false);
-  });
-gui.add({ reset: () => loadScene(false) }, 'reset').name('Reset scene');
-gui.add({ defaults: () => (Object.assign(params, defaults()), refreshGui()) }, 'defaults').name('Default params');
-gui.add(state, 'paused').name('Pause').listen();
-gui.add({ step: () => stepOnce() }, 'step').name('Step once');
-gui.add({ shoot: () => shootBox() }, 'shoot').name('Shoot box (B)');
-gui.add({ view: () => resetCamera() }, 'view').name('Reset camera');
-gui.add({ open2d: () => (location.href = '/') }, 'open2d').name('Open 2D demo');
-
-const box = gui.addFolder('Shot box');
-box.add(state, 'boxFriction', 0, 2).name('Friction');
-box.add(state.boxSize, 'x', 0.1, 5).name('Size x');
-box.add(state.boxSize, 'y', 0.1, 5).name('Size y');
-box.add(state.boxSize, 'z', 0.1, 5).name('Size z');
-box.add(state, 'boxVelocity', 0, 40).name('Velocity');
-box.close();
-
-const solverFolder = gui.addFolder('Solver');
-solverFolder.add(params, 'gravity', -20, 20).name('Gravity');
-solverFolder.add(params, 'dt', 0.001, 0.1).name('Dt');
-solverFolder.add(params, 'iterations', 1, 50, 1).name('Iterations');
-solverFolder.add(params, 'alpha', 0, 1).name('Alpha');
-solverFolder.add(params, 'betaLin', 0, 100000).name('Beta linear');
-solverFolder.add(params, 'betaAng', 0, 1000).name('Beta angular');
-solverFolder.add(params, 'gamma', 0, 1).name('Gamma');
-solverFolder.add(params, 'matchNearest').name('Nearest warm start (GPU)');
-solverFolder.add(params, 'faceBias').name('Face-biased SAT (GPU)');
-
-const view = gui.addFolder('View');
-view.add(state, 'showContacts').name('Contacts');
-view.add(state, 'showJoints').name('Joints / springs');
-view.add(state, 'shadows').name('Shadows');
+const toggle = (label: string, key: 'shadows' | 'showContacts' | 'showJoints' | 'details') =>
+  ({ kind: 'toggle', label, get: () => state[key], set: (v: boolean) => (state[key] = v) }) as const;
+const ui = new Controls({
+  scenes: sceneMenu('3d', sceneNames),
+  onScene: (value) => {
+    const other = otherDemoUrl(value);
+    if (other) {
+      location.href = other;
+      return;
+    }
+    state.scene = value;
+    loadScene();
+  },
+  buttons: [
+    { label: 'Play / pause (P)', icon: () => (state.paused ? ICONS.play : ICONS.pause), onClick: () => (state.paused = !state.paused) },
+    { label: 'Restart the scene (R)', icon: ICONS.restart, onClick: () => loadScene(false) },
+    { label: 'Shoot a box (B)', icon: ICONS.box, onClick: () => shootBox() },
+    { label: 'Reset the camera', icon: ICONS.focus, onClick: () => resetCamera() },
+  ],
+  settings: [
+    {
+      kind: 'select',
+      label: 'Solver',
+      options: Object.entries(BACKENDS)
+        .filter(([value]) => value !== 'gpu' || gpuAvailable)
+        .map(([value, label]) => ({ label, value })),
+      get: () => state.backend,
+      set: (v) => {
+        state.backend = v as Backend3D;
+        Object.assign(params, defaults());
+        loadScene(false);
+      },
+    },
+    { kind: 'range', label: 'Iterations', min: 1, max: 30, step: 1, get: () => params.iterations, set: (v) => (params.iterations = Math.round(v)), format: (v) => String(Math.round(v)) },
+    { kind: 'range', label: 'Gravity', min: -20, max: 0, step: 0.5, get: () => params.gravity, set: (v) => (params.gravity = v), format: (v) => `${v.toFixed(1)} m/s²` },
+    toggle('Shadows', 'shadows'),
+    toggle('Show contacts', 'showContacts'),
+    toggle('Show joints and springs', 'showJoints'),
+    toggle('Detailed stats', 'details'),
+    {
+      kind: 'section',
+      label: 'Advanced',
+      items: [
+        { kind: 'action', label: 'Step once (.)', run: () => ((state.paused = true), stepOnce()) },
+        { kind: 'range', label: 'Timestep', min: 1 / 240, max: 1 / 20, log: true, get: () => params.dt, set: (v) => (params.dt = v), format: (v) => `${(v * 1000).toFixed(1)} ms` },
+        { kind: 'range', label: 'Alpha (stabilisation)', min: 0, max: 1, step: 0.01, get: () => params.alpha, set: (v) => (params.alpha = v) },
+        { kind: 'range', label: 'Beta linear', min: 10, max: 1e6, log: true, get: () => params.betaLin, set: (v) => (params.betaLin = v) },
+        { kind: 'range', label: 'Beta angular', min: 1, max: 1e4, log: true, get: () => params.betaAng, set: (v) => (params.betaAng = v) },
+        { kind: 'range', label: 'Gamma (warm start)', min: 0, max: 1, step: 0.001, get: () => params.gamma, set: (v) => (params.gamma = v) },
+        { kind: 'toggle', label: 'Nearest warm start (GPU)', get: () => params.matchNearest, set: (v) => (params.matchNearest = v) },
+        { kind: 'toggle', label: 'Face-biased SAT (GPU)', get: () => params.faceBias, set: (v) => (params.faceBias = v) },
+        {
+          kind: 'range',
+          label: 'Shot box size',
+          min: 0.2,
+          max: 4,
+          step: 0.1,
+          get: () => state.boxSize.x,
+          set: (v) => Object.assign(state.boxSize, { x: v, y: v, z: v }),
+          format: (v) => `${v.toFixed(1)} m`,
+        },
+        { kind: 'range', label: 'Shot box speed', min: 0, max: 40, step: 1, get: () => state.boxVelocity, set: (v) => (state.boxVelocity = v), format: (v) => `${v.toFixed(0)} m/s` },
+      ],
+    },
+    { kind: 'action', label: 'Reset settings to defaults', run: () => Object.assign(params, defaults()) },
+  ],
+});
 
 // --- Input -----------------------------------------------------------------------------
 
@@ -202,11 +266,12 @@ canvas.addEventListener('pointerup', () => drag && endDrag());
 canvas.addEventListener('pointercancel', () => drag && endDrag());
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 window.addEventListener('keydown', (e) => {
-  if (e.target instanceof HTMLInputElement) return;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
   if (e.code === 'KeyP') state.paused = !state.paused;
   if (e.code === 'KeyR') loadScene(false);
   if (e.code === 'KeyB') shootBox();
   if (e.code === 'Period' && state.paused) stepOnce();
+  ui.refresh();
 });
 
 // OrbitControls listens after us, so a grab can disable it before it starts orbiting
@@ -237,10 +302,15 @@ function stepOnce(): void {
 const anchor = new THREE.Vector3();
 const q = new THREE.Quaternion();
 
+let viewScale = 0;
+
 function frame(now: number): void {
   const elapsed = Math.min((now - last) / 1000, 0.25);
   last = now;
   controls.update();
+  // Fog, shadow range and far plane follow the zoom
+  const distance = camera.position.distanceTo(controls.target);
+  if (Math.abs(distance - viewScale) > viewScale * 0.05) renderer.setViewScale((viewScale = distance));
 
   // Fixed-timestep stepping in real time; cap the catch-up so slow scenes degrade to slow
   // motion instead of a spiral of death.
@@ -280,18 +350,24 @@ function frame(now: number): void {
 }
 
 function updateHud(): void {
+  ui.refresh();
   const st = sim.stats();
   const gpu = sim instanceof GpuSim3D ? sim : null;
   const gs = gpu?.stats();
   const profile = gpu?.profile;
-  hud.textContent = [
-    `${sim.label} · ${renderer.isWebGPU ? 'WebGPU' : 'WebGL2'} render · ${fps.toFixed(0)} fps · ` +
-      (gs?.gpuStepMs === undefined ? `step ${stepMs.toFixed(2)} ms` : `GPU step ~${gs.gpuStepMs.toFixed(2)} ms (encode ${stepMs.toFixed(2)} ms)`),
-    `bodies ${sim.bodyCount} · joints ${st.joints} · contacts ${st.contacts}` + (gs ? ` · colours ${gs.colors} (clashes ${gs.clashes})` : ''),
-    `KE ${st.kineticEnergy.toFixed(3)} · max joint error ${st.maxJointError.toExponential(2)}`,
-    ...(profile ? [`GPU phases: ${PHASES.map((ph) => `${ph} ${profile[ph].toFixed(2)}`).join(' · ')} ms`] : []),
-    'drag body: left · orbit: left drag · pan: right drag · zoom: wheel · shoot: middle click / B · P pause · R reset',
-  ].join('\n');
+  // The simulation's own cost per step: GPU timestamps when the device has them
+  const simMs = gs?.gpuStepMs ?? (gpu ? undefined : stepMs);
+  timing.innerHTML = simMs === undefined ? '' : `<b>${simMs.toFixed(1)} ms</b> <span>/ step</span>`;
+  const summary = `${sim.bodyCount.toLocaleString('en')} bodies · ${fps.toFixed(0)} fps · ${gpu ? 'WebGPU solver' : 'CPU solver'}`;
+  hud.textContent = state.details
+    ? [
+        `${sim.label} · ${renderer.isWebGPU ? 'WebGPU' : 'WebGL2'} render · ${fps.toFixed(0)} fps · ` +
+          (gs?.gpuStepMs === undefined ? `step ${stepMs.toFixed(2)} ms` : `GPU step ~${gs.gpuStepMs.toFixed(2)} ms (encode ${stepMs.toFixed(2)} ms)`),
+        `bodies ${sim.bodyCount} · joints ${st.joints} · contacts ${st.contacts}` + (gs ? ` · colours ${gs.colors} (clashes ${gs.clashes})` : ''),
+        `KE ${st.kineticEnergy.toFixed(3)} · max joint error ${st.maxJointError.toExponential(2)} · iterations ${params.iterations}`,
+        ...(profile ? [`GPU phases: ${PHASES.map((ph) => `${ph} ${profile[ph].toFixed(2)}`).join(' · ')} ms`] : []),
+      ].join('\n')
+    : summary;
 }
 
 loadScene();

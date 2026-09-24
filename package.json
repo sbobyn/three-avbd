@@ -23,7 +23,6 @@
     "@types/node": "^25.0.0",
     "@types/three": "0.186.0",
     "@webgpu/types": "^0.1.74",
-    "lil-gui": "^0.21.0",
     "three": "0.186.0",
     "typescript": "^5.9.3",
     "vite": "^8.3.0",

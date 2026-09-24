@@ -17,7 +17,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: 'index.html',
-        demo3d: 'index3d.html',
+        demo2d: '2d.html',
         bench: 'bench.html',
         bench3d: 'bench3d.html',
         results: 'results.html',

@@ -3,15 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AVBD 2D</title>
+    <title>AVBD on WebGPU</title>
+    <meta
+      name="description"
+      content="Augmented Vertex Block Descent (SIGGRAPH 2025) running entirely on the GPU in your browser: brick walls, piles and chain mail at up to hundreds of thousands of bodies."
+    />
     <style>
+      :root {
+        --ink: #1f2328;
+        --muted: #5b6168;
+        --card: rgb(255 253 249 / 0.86);
+        --line: rgb(31 35 40 / 0.12);
+        --accent: #b8503f;
+      }
       html,
       body {
         margin: 0;
         height: 100%;
         overflow: hidden;
-        background: #f4f4f1;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: #f6f3ec;
+        color: var(--ink);
+        font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
       }
       #view {
         display: block;
@@ -19,24 +31,168 @@
         height: 100vh;
         touch-action: none;
       }
-      #hud {
+      .panel {
         position: fixed;
-        left: 12px;
-        bottom: 12px;
-        padding: 8px 10px;
+        background: var(--card);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        box-shadow: 0 6px 24px rgb(40 30 20 / 0.08);
+      }
+      #card {
+        left: 16px;
+        top: 16px;
+        width: min(360px, calc(100vw - 32px));
+        padding: 14px 16px 12px;
+        box-sizing: border-box;
+      }
+      #card h1 {
+        margin: 0 28px 4px 0;
+        font-size: 17px;
+        letter-spacing: 0.01em;
+      }
+      #card p {
+        margin: 0 0 8px;
+        color: var(--muted);
+      }
+      #card .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 14px;
+        margin: 10px 0 8px;
+      }
+      #card a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 550;
+      }
+      #card a:hover {
+        text-decoration: underline;
+      }
+      #card .credits {
         font-size: 12px;
-        line-height: 1.5;
-        white-space: pre;
-        color: #1d1d1f;
-        background: rgb(255 255 255 / 0.8);
+        border-top: 1px solid var(--line);
+        padding-top: 8px;
+        margin: 0;
+      }
+      #card .warning {
+        color: #8a3a12;
+        background: rgb(240 162 90 / 0.18);
         border-radius: 6px;
+        padding: 6px 8px;
+      }
+      #card-toggle {
+        position: absolute;
+        right: 10px;
+        top: 10px;
+        width: 26px;
+        height: 26px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      #card-toggle:hover {
+        background: var(--line);
+      }
+      #card.collapsed {
+        width: auto;
+        padding: 8px 44px 8px 14px;
+      }
+      #card.collapsed h1 {
+        margin: 0;
+        font-size: 15px;
+      }
+      #card.collapsed .body {
+        display: none;
+      }
+      #card.collapsed #card-toggle {
+        top: 4px;
+      }
+      #timing {
+        right: 16px;
+        bottom: 16px;
+        padding: 6px 12px;
+        font-variant-numeric: tabular-nums;
         pointer-events: none;
+        text-align: right;
+      }
+      #timing b {
+        font-size: 20px;
+        font-weight: 600;
+      }
+      #timing span {
+        color: var(--muted);
+      }
+      #hud {
+        left: 16px;
+        bottom: 16px;
+        max-width: calc(100vw - 200px);
+        padding: 6px 10px;
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: pre-wrap;
+        color: var(--muted);
+        pointer-events: none;
+      }
+      #hud:empty,
+      #timing:empty {
+        display: none;
+      }
+      /* Narrow screens: the controls take the top, the card sits at the bottom */
+      @media (max-width: 760px) {
+        #hud {
+          display: none;
+        }
+        #card {
+          left: 12px;
+          top: auto;
+          bottom: 12px;
+        }
+        #card:not(.collapsed) {
+          bottom: 64px;
+          width: calc(100vw - 24px);
+        }
+        #timing {
+          right: 12px;
+          bottom: 12px;
+        }
       }
     </style>
   </head>
   <body>
     <canvas id="view"></canvas>
-    <div id="hud"></div>
-    <script type="module" src="/src/app2d/main.ts"></script>
+    <div id="card" class="panel">
+      <h1>AVBD on WebGPU</h1>
+      <button id="card-toggle" title="Hide">–</button>
+      <div class="body">
+        <p>
+          <em>Augmented Vertex Block Descent</em> (Giles, Diaz &amp; Yuksel, SIGGRAPH 2025), simulated entirely on
+          your GPU in the browser: collision, graph colouring and the solve.
+        </p>
+        <p id="hint">Drag blocks to pull them · <b>B</b> shoots a box · drag to orbit, scroll to zoom</p>
+        <p id="no-webgpu" class="warning" hidden>
+          This browser doesn't support WebGPU, so only the small scenes run, on the CPU. For the GPU scenes use a recent
+          Chrome or Edge, or Safari 26 or later.
+        </p>
+        <div class="links">
+          <a href="https://doi.org/10.1145/3731195" target="_blank" rel="noopener">Paper</a>
+          <a href="results.html">Results vs the paper</a>
+          <a href="bench3d.html">Benchmark your GPU</a>
+          <a href="2d.html">2D demo</a>
+        </div>
+        <p class="credits">
+          Scenes after the paper's figures. Reference solver ported from the authors'
+          <a href="https://github.com/savant117/avbd-demo3d" target="_blank" rel="noopener">avbd-demo3d</a> (MIT).
+          Rendering with three.js. <a href="THIRD_PARTY_NOTICES.md">Notices</a>
+        </p>
+      </div>
+    </div>
+    <div id="timing" class="panel"></div>
+    <div id="hud" class="panel"></div>
+    <script type="module" src="/src/app3d/main.ts"></script>
   </body>
 </html>

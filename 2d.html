@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AVBD 3D</title>
+    <title>AVBD 2D</title>
     <style>
       html,
       body {
         margin: 0;
         height: 100%;
         overflow: hidden;
-        background: #e9ecef;
+        background: #f4f4f1;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       }
       #view {
@@ -26,7 +26,8 @@
         padding: 8px 10px;
         font-size: 12px;
         line-height: 1.5;
-        white-space: pre;
+        white-space: pre-wrap;
+        max-width: calc(100vw - 48px);
         color: #1d1d1f;
         background: rgb(255 255 255 / 0.8);
         border-radius: 6px;
@@ -37,6 +38,6 @@
   <body>
     <canvas id="view"></canvas>
     <div id="hud"></div>
-    <script type="module" src="/src/app3d/main.ts"></script>
+    <script type="module" src="/src/app2d/main.ts"></script>
   </body>
 </html>

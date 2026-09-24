@@ -10,7 +10,7 @@ Status and staged plan: [docs/PLAN.md](docs/PLAN.md). Measured results: [docs/FI
 
 ```bash
 pnpm install
-pnpm dev        # 2D: http://127.0.0.1:5317  3D: /index3d.html  (?scene=Pyramid, &backend=gpu, &paused)
+pnpm dev        # 3D: http://127.0.0.1:5317  2D: /2d.html  (?scene=Pyramid, &backend=gpu, &paused)
 pnpm check      # typecheck + CPU tests + GPU tests (headless Dawn) + production build
 pnpm bench2d    # CPU scaling baseline
 pnpm bench2d:gpu # GPU benchmark with per-phase timing (headless)
@@ -63,7 +63,7 @@ Yuksel, SIGGRAPH 2025). The CPU reference solvers are TypeScript ports of the au
 ([avbd-demo2d](https://github.com/savant117/avbd-demo2d),
 [avbd-demo3d](https://github.com/savant117/avbd-demo3d), MIT, © Chris Giles), whose 2D
 collision comes from [box2d-lite](https://github.com/erincatto/box2d-lite) (MIT, © Erin Catto).
-Their notices, and those of three.js and lil-gui, are in
+Their notices, and three.js's, are in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); the build copies both files into the site.
 
 ## Reference sources

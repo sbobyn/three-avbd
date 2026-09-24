@@ -70,7 +70,7 @@ static/dynamic μ switching, GPU coloring / LBVH / parallel everything.
 
 ## 2. Architecture decisions
 
-- **Stack:** Vite + TypeScript, `three` `WebGPURenderer` (r17x+), `lil-gui`, Vitest for
+- **Stack:** Vite + TypeScript, `three` `WebGPURenderer` (r17x+), `lil-gui` (since replaced by `src/ui/controls.ts`), Vitest for
   headless tests of the CPU solvers.
 - **Solver on GPU = raw WGSL compute on Three's `GPUDevice`** (`renderer.backend.device`).
   Raw WGSL rather than TSL because we need indirect dispatch, atomics, prefix scans,

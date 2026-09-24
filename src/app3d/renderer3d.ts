@@ -1,20 +1,21 @@
-// Three.js (WebGPU) renderer for the 3D solvers: instanced lit boxes with shadow mapping,
-// joint/spring lines, contact points and the mouse-drag line. Z is up, as in avbd-demo3d.
-// Instances are rewritten from solver state each frame, fine for the CPU reference.
+// Three.js (WebGPU) renderer for the 3D solvers: instanced lit boxes with shadow mapping under
+// a hazy sky, joint/spring lines, contact points and the mouse-drag line. Z is up, as in
+// avbd-demo3d. Instances are rewritten from solver state each frame, fine for the CPU
+// reference; the GPU solver's bodies are drawn straight from its buffer (gpu-bodies3d.ts).
 
+import { color, mix, normalize, positionGeometry, positionLocal, smoothstep, vec3 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import type { Sim3D } from '../avbd3d/sim.ts';
-import { GpuBodies3D } from './gpu-bodies3d.ts';
+import { GpuBodies3D, Shape } from './gpu-bodies3d.ts';
+import { BLOCK_PALETTE, edgeShade, FLOOR_EXTENT, floorChecker, isFloorSize, LOOK, SPHERE_PALETTE } from './look.ts';
 
-const COLORS = {
-  background: 0xe9ecef,
-  dynamic: 0xccd6e6, // the demo's (0.80, 0.84, 0.90)
-  static: 0x8f959c,
-  selected: 0xe0a33a,
-  joint: 0xbf0000,
-  contact: 0xbf0000,
-  drag: 0xe0a33a,
-};
+/** Integer hash (lowbias32) for picking a body's palette colour on the CPU path. */
+function hashIndex(i: number): number {
+  let x = i >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x7feb352d);
+  x = Math.imul(x ^ (x >>> 15), 0x846ca68b);
+  return (x ^ (x >>> 16)) >>> 0;
+}
 
 /** Instanced mesh that grows (by replacement) when more instances are needed. */
 class Instances {
@@ -69,10 +70,15 @@ export class Renderer3D {
   /** Body count the GPU meshes' index lists were built for. */
   private gpuBodiesShown = -1;
   private readonly boxes: Instances;
+  private readonly floors: Instances;
   private readonly contacts: Instances;
+  private readonly sky: THREE.Mesh;
+  private readonly fog: THREE.Fog;
+  /** Camera distance the fog, shadows and far plane are set for (setViewScale). */
+  private viewScale = 50;
   private readonly lines: THREE.LineSegments;
   private linePositions = new Float32Array(0);
-  private readonly light = new THREE.DirectionalLight(0xffffff, 2.2);
+  private readonly light = new THREE.DirectionalLight(LOOK.sun, LOOK.sunIntensity);
   private readonly matrix = new THREE.Matrix4();
   private readonly position = new THREE.Vector3();
   private readonly quaternion = new THREE.Quaternion();
@@ -84,24 +90,39 @@ export class Renderer3D {
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.scene.background = new THREE.Color(COLORS.background);
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    this.scene.background = new THREE.Color(LOOK.skyHorizon);
     this.camera.up.set(0, 0, 1);
 
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x6d737a, 1.2));
+    // Sky: a dome following the camera, pale blue overhead fading to a warm white haze at the
+    // horizon, which the fog matches so the floor dissolves into it
+    const skyMaterial = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide, depthWrite: false, fog: false });
+    skyMaterial.colorNode = mix(color(LOOK.skyHorizon), color(LOOK.skyZenith), smoothstep(0.02, 0.6, normalize(positionLocal).z));
+    this.sky = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), skyMaterial);
+    this.sky.renderOrder = -1;
+    this.sky.frustumCulled = false;
+    this.scene.add(this.sky);
+    this.fog = new THREE.Fog(LOOK.skyHorizon, 60, 300);
+    this.scene.fog = this.fog;
+
+    this.scene.add(new THREE.HemisphereLight(LOOK.skyLight, LOOK.groundLight, LOOK.hemisphereIntensity));
     const light = this.light;
     light.castShadow = true;
     light.shadow.mapSize.set(2048, 2048);
     light.shadow.bias = -0.0005;
     light.shadow.normalBias = 0.02;
-    const cam = light.shadow.camera;
-    cam.left = cam.bottom = -35;
-    cam.right = cam.top = 35;
-    cam.near = 1;
-    cam.far = 200;
     this.scene.add(light, light.target);
+    this.setViewScale(50);
 
-    this.boxes = new Instances(this.scene, new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardNodeMaterial({ roughness: 0.75, metalness: 0 }), true);
-    this.contacts = new Instances(this.scene, new THREE.BoxGeometry(0.08, 0.08, 0.08), new THREE.MeshBasicNodeMaterial({ color: COLORS.contact, depthTest: false }), false);
+    // CPU path: instance colours carry the palette; the edge shading multiplies them
+    const blockMaterial = new THREE.MeshStandardNodeMaterial({ roughness: 0.72, metalness: 0 });
+    blockMaterial.colorNode = vec3(edgeShade(positionGeometry, vec3(1)));
+    this.boxes = new Instances(this.scene, new THREE.BoxGeometry(1, 1, 1), blockMaterial, true);
+    const floorMaterial = new THREE.MeshStandardNodeMaterial({ roughness: 0.85, metalness: 0 });
+    floorMaterial.colorNode = floorChecker();
+    this.floors = new Instances(this.scene, new THREE.BoxGeometry(1, 1, 1), floorMaterial, true);
+    this.contacts = new Instances(this.scene, new THREE.BoxGeometry(0.08, 0.08, 0.08), new THREE.MeshBasicNodeMaterial({ color: LOOK.contact, depthTest: false }), false);
     this.contacts.mesh.renderOrder = 2;
 
     this.lines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicNodeMaterial({ vertexColors: true, depthTest: false }));
@@ -129,7 +150,7 @@ export class Renderer3D {
    */
   attachGpuBodies(count: number): GPUBuffer {
     this.detachGpuBodies();
-    this.gpuBodies = new GpuBodies3D(count, COLORS);
+    this.gpuBodies = new GpuBodies3D(count);
     this.gpuBodiesShown = -1;
     this.scene.add(this.gpuBodies.group);
     return this.gpuBodies.gpuBuffer(this.renderer);
@@ -138,6 +159,25 @@ export class Renderer3D {
   detachGpuBodies(): void {
     this.gpuBodies?.dispose();
     this.gpuBodies = null;
+  }
+
+  /**
+   * Size the fog, shadow frustum and far plane for a view at `distance` from its target, so a
+   * 40 m wall and a 160 m ring both fade into the haze and keep crisp shadows up close.
+   */
+  setViewScale(distance: number): void {
+    this.viewScale = distance;
+    this.fog.near = distance * 0.9;
+    this.fog.far = distance * 4.5;
+    this.camera.far = distance * 12;
+    this.camera.updateProjectionMatrix();
+    const cam = this.light.shadow.camera;
+    const extent = Math.max(20, distance * 0.9);
+    cam.left = cam.bottom = -extent;
+    cam.right = cam.top = extent;
+    cam.near = 1;
+    cam.far = distance * 6;
+    cam.updateProjectionMatrix();
   }
 
   resize(width: number, height: number): void {
@@ -152,9 +192,13 @@ export class Renderer3D {
    */
   private placeLight(target: THREE.Vector3): void {
     const view = Math.atan2(this.camera.position.y - target.y, this.camera.position.x - target.x);
-    const a = view + 0.7;
+    const a = view + 0.9;
+    // A warm, fairly low sun (about 40° up) for long soft shadows, as in the project's renders
+    const d = this.viewScale * 1.5;
     this.light.target.position.set(target.x, target.y, 0);
-    this.light.position.set(target.x + 25 * Math.cos(a), target.y + 25 * Math.sin(a), 40);
+    this.light.position.set(target.x + d * Math.cos(a), target.y + d * Math.sin(a), d * 0.85);
+    this.sky.position.copy(this.camera.position);
+    this.sky.scale.setScalar(this.camera.far * 0.9);
   }
 
   render(sim: Sim3D, target: THREE.Vector3): void {
@@ -162,11 +206,12 @@ export class Renderer3D {
     this.light.castShadow = this.shadows;
     if (this.gpuBodies) {
       if (sim.bodyCount !== this.gpuBodiesShown) {
-        this.gpuBodies.setBodies(sim.bodyCount, (i) => sim.isSphere?.(i) ?? false);
+        this.gpuBodies.setBodies(sim.bodyCount, (i) => this.shapeOf(sim, i));
         this.gpuBodiesShown = sim.bodyCount;
       }
       this.gpuBodies.selected.value = this.selected >= 0 ? this.selected : 0xffffffff;
       this.boxes.mesh.count = 0;
+      this.floors.mesh.count = 0;
     } else {
       this.drawBodies(sim);
     }
@@ -174,10 +219,17 @@ export class Renderer3D {
     this.renderer.render(this.scene, this.camera);
   }
 
+  private shapeOf(sim: Sim3D, i: number): Shape {
+    if (sim.isSphere?.(i)) return Shape.Sphere;
+    return !sim.isDynamic(i) && isFloorSize(sim.size(i)) ? Shape.Floor : Shape.Box;
+  }
+
   private drawBodies(sim: Sim3D): void {
     const n = sim.bodyCount;
     this.boxes.reserve(n);
-    const mesh = this.boxes.mesh;
+    this.floors.reserve(n);
+    const [boxes, floors] = [this.boxes.mesh, this.floors.mesh];
+    let [b, f] = [0, 0];
     for (let i = 0; i < n; i++) {
       const p = sim.position(i);
       const q = sim.orientation(i);
@@ -185,12 +237,25 @@ export class Renderer3D {
       this.position.set(p[0], p[1], p[2]);
       this.quaternion.set(q[0], q[1], q[2], q[3]);
       this.scale.set(s[0], s[1], s[2]);
-      mesh.setMatrixAt(i, this.matrix.compose(this.position, this.quaternion, this.scale));
-      mesh.setColorAt(i, this.color.setHex(i === this.selected ? COLORS.selected : sim.isDynamic(i) ? COLORS.dynamic : COLORS.static));
+      this.matrix.compose(this.position, this.quaternion, this.scale);
+      if (this.shapeOf(sim, i) === Shape.Floor) {
+        // Drawn on to the horizon, as the GPU path does
+        this.scale.set(FLOOR_EXTENT, FLOOR_EXTENT, s[2]);
+        floors.setMatrixAt(f++, this.matrix.compose(this.position, this.quaternion, this.scale));
+        continue;
+      }
+      const h = hashIndex(i);
+      const paint = sim.isSphere?.(i) ? SPHERE_PALETTE[h % SPHERE_PALETTE.length] : BLOCK_PALETTE[h % BLOCK_PALETTE.length];
+      this.color.setHex(i === this.selected ? LOOK.selected : sim.isDynamic(i) ? paint : LOOK.static);
+      if (i !== this.selected && sim.isDynamic(i)) this.color.multiplyScalar(0.92 + 0.16 * ((hashIndex(i + 7919) & 0xffff) / 0xffff));
+      boxes.setMatrixAt(b, this.matrix);
+      boxes.setColorAt(b++, this.color);
     }
-    mesh.count = n;
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.instanceColor!.needsUpdate = true;
+    boxes.count = b;
+    floors.count = f;
+    boxes.instanceMatrix.needsUpdate = true;
+    boxes.instanceColor!.needsUpdate = true;
+    floors.instanceMatrix.needsUpdate = true;
   }
 
   private readonly segments: number[] = [];
@@ -218,8 +283,8 @@ export class Renderer3D {
     this.linePositions.set(segments);
     const colors = this.lines.geometry.getAttribute('color') as THREE.BufferAttribute | undefined;
     if (colors) {
-      const joint = this.color.setHex(COLORS.joint).toArray();
-      const drag = new THREE.Color(COLORS.drag).toArray();
+      const joint = this.color.setHex(LOOK.joint).toArray();
+      const drag = new THREE.Color(LOOK.drag).toArray();
       for (let v = 0; v < verts; v++) (colors.array as Float32Array).set(v < jointVerts ? joint : drag, v * 3);
       colors.needsUpdate = true;
     }

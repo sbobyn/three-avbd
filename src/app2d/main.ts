@@ -1,11 +1,12 @@
-// 2D AVBD demo app: scene and backend picker, solver parameters, mouse interaction and
-// diagnostics, mirroring the controls of the upstream avbd-demo2d web demo.
+// 2D AVBD demo app: a dock with the scene picker and settings (../ui/controls.ts), mouse
+// interaction and diagnostics, mirroring the controls of the upstream avbd-demo2d web demo.
 
-import GUI from 'lil-gui';
 import { DEFAULT_SCENE } from '../avbd2d/ref/scenes.ts';
 import { createGpuSim, GpuSim } from '../avbd2d/gpu/sim.ts';
 import { PHASES } from '../avbd2d/gpu/solver.ts';
 import { defaultParams, parallelParams } from '../avbd2d/ref/solver.ts';
+import { Controls, ICONS } from '../ui/controls.ts';
+import { otherDemoUrl, sceneMenu } from '../ui/scene-menu.ts';
 import { allScenes2D, type Backend2D, BACKENDS, createSim, type Sim2D, sceneByName } from '../avbd2d/sim.ts';
 import { type Camera2D, Renderer2D } from './renderer2d.ts';
 
@@ -38,6 +39,7 @@ const state = {
   boxVelocityY: 0,
   showContacts: true,
   showJoints: true,
+  details: false,
 };
 /** The demo's defaults for the demo-order backends, measured parallel defaults otherwise. */
 const backendDefaults = (backend: Backend2D) => (backend === 'ref' || backend === 'soa-seq' ? defaultParams() : parallelParams());
@@ -83,59 +85,72 @@ let sim: Sim2D = buildSim();
 function loadScene(resetCamera = true): void {
   sim.endDrag();
   sim = buildSim();
+  ui.setScene(state.scene);
+  ui.refresh();
   if (resetCamera) Object.assign(camera, sceneCameras[state.scene] ?? { x: 0, y: 5, zoom: 25 });
   url.searchParams.set('scene', state.scene);
   url.searchParams.set('backend', state.backend);
   history.replaceState(null, '', url);
 }
 
-// --- GUI -------------------------------------------------------------------------------
+// --- Controls --------------------------------------------------------------------------
 
-const gui = new GUI({ title: 'AVBD 2D' });
-gui.add(state, 'scene', sceneNames).name('Scene').listen().onChange(() => loadScene());
-gui
-  .add(state, 'backend', Object.fromEntries(Object.entries(BACKENDS).map(([k, v]) => [v, k])))
-  .name('Solver')
-  .listen()
-  .onChange(() => {
-    Object.assign(params, backendDefaults(state.backend));
-    gui.controllersRecursive().forEach((c) => c.updateDisplay());
-    loadScene(false);
-  });
-gui.add({ reset: () => loadScene(false) }, 'reset').name('Reset scene');
-gui
-  .add({ defaults: () => { Object.assign(params, backendDefaults(state.backend)); gui.controllersRecursive().forEach((c) => c.updateDisplay()); } }, 'defaults')
-  .name('Default params');
-gui.add(state, 'paused').name('Pause').listen();
-gui.add({ step: () => stepOnce() }, 'step').name('Step once');
-gui.add({ open3d: () => (location.href = '/index3d.html') }, 'open3d').name('Open 3D demo');
-
-const spawn = gui.addFolder('Right-click box');
-spawn.add(state, 'boxFriction', 0, 2).name('Friction');
-spawn.add(state, 'boxWidth', 0.1, 10).name('Width');
-spawn.add(state, 'boxHeight', 0.1, 10).name('Height');
-spawn.add(state, 'boxVelocityX', -20, 20).name('Velocity x');
-spawn.add(state, 'boxVelocityY', -20, 20).name('Velocity y');
-spawn.close();
-
-const solverFolder = gui.addFolder('Solver');
-solverFolder.add(params, 'gravity', -20, 20).name('Gravity');
-solverFolder.add(params, 'dt', 0.001, 0.1).name('Dt');
-solverFolder.add(params, 'iterations', 1, 50, 1).name('Iterations');
-solverFolder.add(params, 'postStabilize').name('Post stabilize').onChange(() => alphaCtl.show(!params.postStabilize));
-const alphaCtl = solverFolder.add(params, 'alpha', 0, 1).name('Alpha').show(!params.postStabilize);
-solverFolder.add(params, 'beta', 0, 1000000).name('Beta');
-solverFolder.add(params, 'gamma', 0, 1).name('Gamma');
-
-const extras = gui.addFolder('Paper extras (not in demo)');
-extras.add(params, 'stiffnessRescale').name('Stiffness rescale (Eq 14)');
-extras.add(params, 'vbd').name('Plain VBD (no dual)');
-extras.add(params, 'vbdStiffness', 1000, 1e9).name('VBD hard stiffness');
-extras.close();
-
-const view = gui.addFolder('View');
-view.add(state, 'showContacts').name('Contacts');
-view.add(state, 'showJoints').name('Joints / springs');
+const resetParams = () => Object.assign(params, backendDefaults(state.backend));
+const ui = new Controls({
+  scenes: sceneMenu('2d', sceneNames),
+  onScene: (value) => {
+    const other = otherDemoUrl(value);
+    if (other) {
+      location.href = other;
+      return;
+    }
+    state.scene = value;
+    loadScene();
+  },
+  buttons: [
+    { label: 'Play / pause (P)', icon: () => (state.paused ? ICONS.play : ICONS.pause), onClick: () => (state.paused = !state.paused) },
+    { label: 'Restart the scene (R)', icon: ICONS.restart, onClick: () => loadScene(false) },
+  ],
+  settings: [
+    {
+      kind: 'select',
+      label: 'Solver',
+      options: Object.entries(BACKENDS).map(([value, label]) => ({ label, value })),
+      get: () => state.backend,
+      set: (v) => {
+        state.backend = v as Backend2D;
+        resetParams();
+        loadScene(false);
+      },
+    },
+    { kind: 'range', label: 'Iterations', min: 1, max: 50, step: 1, get: () => params.iterations, set: (v) => (params.iterations = Math.round(v)), format: (v) => String(Math.round(v)) },
+    { kind: 'range', label: 'Gravity', min: -20, max: 0, step: 0.5, get: () => params.gravity, set: (v) => (params.gravity = v), format: (v) => `${v.toFixed(1)} m/s²` },
+    { kind: 'toggle', label: 'Show contacts', get: () => state.showContacts, set: (v) => (state.showContacts = v) },
+    { kind: 'toggle', label: 'Show joints and springs', get: () => state.showJoints, set: (v) => (state.showJoints = v) },
+    { kind: 'toggle', label: 'Detailed stats', get: () => state.details, set: (v) => (state.details = v) },
+    {
+      kind: 'section',
+      label: 'Advanced',
+      items: [
+        { kind: 'action', label: 'Step once (.)', run: () => ((state.paused = true), stepOnce()) },
+        { kind: 'range', label: 'Timestep', min: 1 / 240, max: 1 / 20, log: true, get: () => params.dt, set: (v) => (params.dt = v), format: (v) => `${(v * 1000).toFixed(1)} ms` },
+        { kind: 'toggle', label: 'Post-stabilise (instead of alpha)', get: () => params.postStabilize, set: (v) => (params.postStabilize = v) },
+        { kind: 'range', label: 'Alpha (stabilisation)', min: 0, max: 1, step: 0.01, get: () => params.alpha, set: (v) => (params.alpha = v) },
+        { kind: 'range', label: 'Beta', min: 1, max: 1e6, log: true, get: () => params.beta, set: (v) => (params.beta = v) },
+        { kind: 'range', label: 'Gamma (warm start)', min: 0, max: 1, step: 0.001, get: () => params.gamma, set: (v) => (params.gamma = v) },
+        { kind: 'toggle', label: 'Stiffness rescale (paper Eq. 14)', get: () => params.stiffnessRescale, set: (v) => (params.stiffnessRescale = v) },
+        { kind: 'toggle', label: 'Plain VBD (no dual)', get: () => params.vbd, set: (v) => (params.vbd = v) },
+        { kind: 'range', label: 'VBD hard stiffness', min: 1e3, max: 1e9, log: true, get: () => params.vbdStiffness, set: (v) => (params.vbdStiffness = v) },
+        { kind: 'range', label: 'Right-click box width', min: 0.1, max: 10, step: 0.1, get: () => state.boxWidth, set: (v) => (state.boxWidth = v) },
+        { kind: 'range', label: 'Right-click box height', min: 0.1, max: 10, step: 0.1, get: () => state.boxHeight, set: (v) => (state.boxHeight = v) },
+        { kind: 'range', label: 'Right-click box friction', min: 0, max: 2, step: 0.05, get: () => state.boxFriction, set: (v) => (state.boxFriction = v) },
+        { kind: 'range', label: 'Right-click box velocity x', min: -20, max: 20, step: 0.5, get: () => state.boxVelocityX, set: (v) => (state.boxVelocityX = v) },
+        { kind: 'range', label: 'Right-click box velocity y', min: -20, max: 20, step: 0.5, get: () => state.boxVelocityY, set: (v) => (state.boxVelocityY = v) },
+      ],
+    },
+    { kind: 'action', label: 'Reset settings to defaults', run: resetParams },
+  ],
+});
 
 // --- Input -----------------------------------------------------------------------------
 
@@ -190,7 +205,7 @@ canvas.addEventListener(
   { passive: false },
 );
 window.addEventListener('keydown', (e) => {
-  if (e.target instanceof HTMLInputElement) return;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
   keys.add(e.code);
   if (e.code === 'Space') {
     spaceDown = true;
@@ -199,6 +214,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyP') state.paused = !state.paused;
   if (e.code === 'KeyR') loadScene(false);
   if (e.code === 'Period' && state.paused) stepOnce();
+  ui.refresh();
 });
 window.addEventListener('keyup', (e) => {
   keys.delete(e.code);
@@ -271,16 +287,23 @@ function frame(now: number): void {
 }
 
 function updateHud(): void {
+  ui.refresh();
   const st = sim.stats();
   const profile = sim instanceof GpuSim ? sim.profile : null;
   const coloring = st.colors === undefined ? '' : ` · colours ${st.colors} (rounds ${st.colorRounds}, clashes ${st.colorConflicts})`;
+  const hint = 'drag: left · box: right-click · pan: space/shift + drag · zoom: wheel · P pause · R restart';
+  if (!state.details) {
+    const ms = st.gpuStepMs ?? stepMs;
+    hud.textContent = `${sim.bodyCount.toLocaleString('en')} bodies · ${fps.toFixed(0)} fps · ${ms.toFixed(2)} ms/step · ${sim.label}\n${hint}`;
+    return;
+  }
   hud.textContent = [
     `${sim.label} · ${renderer.isWebGPU ? 'WebGPU' : 'WebGL2'} render · ${fps.toFixed(0)} fps · ` +
       (st.gpuStepMs === undefined ? `step ${stepMs.toFixed(2)} ms` : `GPU step ~${st.gpuStepMs.toFixed(2)} ms (encode ${stepMs.toFixed(2)} ms)`),
     `bodies ${sim.bodyCount} · joints ${st.joints} · contacts ${st.contacts}${coloring}`,
     `KE ${st.kineticEnergy.toFixed(3)} · max joint error ${st.maxJointError.toExponential(2)}`,
     ...(profile ? [`GPU phases: ${PHASES.map((ph) => `${ph} ${profile[ph].toFixed(2)}`).join(' · ')} ms`] : []),
-    'drag: left · box: right-click · pan: space/shift+drag · zoom: wheel · P pause · R reset',
+    hint,
   ].join('\n');
 }
 

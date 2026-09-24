@@ -4,12 +4,16 @@
 
 import { Rigid } from './ref/body.ts';
 import { Joint } from './ref/forces.ts';
-import type { Solver } from './ref/solver.ts';
+import type { Solver, SolverParams } from './ref/solver.ts';
 import { sphere } from './shapes.ts';
 
-/** A ground slab sized to hold `extent` metres of content, top face at z = 0.5. */
+/**
+ * A ground slab sized to hold `extent` metres of content with room for debris to scatter (the
+ * viewer draws the floor on to the horizon, so bodies must not slide off an unseen edge), top
+ * face at z = 0.5.
+ */
 function ground(solver: Solver, extent: number): Rigid {
-  const size = Math.max(100, 2 * extent + 20);
+  const size = Math.max(200, 4 * extent);
   return new Rigid(solver, [size, size, 1], 0, 0.5, [0, 0, 0]);
 }
 
@@ -88,7 +92,7 @@ export function brickRing(solver: Solver, radius = 80, courses = 40, tier = 4, r
  * bricks, offset by half a brick), facing ±y; `columns` × `rows` of them stand on a grid.
  * Defaults: 1,088 walls of 465 bricks, 505,920 bricks.
  */
-export function brickGables(solver: Solver, columns = 16, rows = 68, base = 30): void {
+export function brickGables(solver: Solver, columns = 16, rows = 68, base = 30, ballColumns = [columns / 2 - 2, columns / 2 + 1]): void {
   solver.clear();
   const [pitchX, pitchY] = [base + 2, 5];
   ground(solver, Math.max(columns * pitchX, rows * pitchY) / 2);
@@ -102,9 +106,9 @@ export function brickGables(solver: Solver, columns = 16, rows = 68, base = 30):
       }
     }
   }
-  // Down two columns either side of the middle
+  // Down two columns (by default either side of the middle)
   const r = base / 7;
-  for (const cx of [columns / 2 - 2, columns / 2 + 1]) {
+  for (const cx of ballColumns) {
     sphere(solver, r, 10, 0.5, [(cx - (columns - 1) / 2) * pitchX, -((rows - 1) / 2) * pitchY - r - 3, r + 0.5], [0, 25, 0]);
   }
 }
@@ -270,17 +274,41 @@ export interface Scene3D {
   /** Uses GPU-only features (spheres) or is too large for the CPU reference. */
   gpuOnly?: boolean;
   camera?: CameraView;
+  /** Solver settings the scene is shown with (the paper's iteration counts). */
+  params?: Partial<SolverParams>;
 }
 
 /** The viewer's GPU showcase scenes, after the paper's figures, plus scale tests. */
 export const gpuScenes3D: Scene3D[] = [
+  {
+    // Paper Fig. 1 at a quarter of the bricks (same proportions): smooth on modest GPUs
+    name: 'Brick Ring (28k)',
+    build: (s) => brickRing(s, 40, 20, 2, 10),
+    gpuOnly: true,
+    params: { iterations: 4 },
+    camera: { distance: 70, target: [0, -20, 2], azimuth: -138, elevation: 0.34 },
+  },
+  {
+    name: 'Brick Ring (110k)',
+    build: (s) => brickRing(s),
+    gpuOnly: true,
+    params: { iterations: 4 },
+    camera: { distance: 135, target: [0, -40, 4], azimuth: -138, elevation: 0.34 },
+  },
+  {
+    // Paper Fig. 3 at a twentieth of the bricks
+    name: 'Brick Walls (27k)',
+    build: (s) => brickGables(s, 8, 16, 20, [3, 4]),
+    gpuOnly: true,
+    params: { iterations: 3 },
+    camera: { distance: 62, target: [0, -18, 4], azimuth: -100, elevation: 0.2 },
+  },
   { name: 'Wall Smash (2k)', build: (s) => wallSmash(s), gpuOnly: true, camera: { distance: 55, target: [0, 0, 5], azimuth: -120, elevation: 0.3 } },
   { name: 'Breakable Wall (600)', build: (s) => breakableWall(s), gpuOnly: true, camera: { distance: 45, target: [0, 0, 5], azimuth: -120, elevation: 0.3 } },
   { name: 'Chain Mail (1.6k)', build: (s) => chainMail(s), gpuOnly: true, camera: { distance: 35, target: [0, 0, 9], azimuth: -120, elevation: 0.45 } },
   { name: 'Heavy Pendulum 50000:1', build: (s) => heavyPendulum(s), gpuOnly: true, camera: { distance: 70, target: [0, 0, 16], azimuth: 90, elevation: 0.15 } },
   { name: 'Box Pile (4k)', build: (s) => boxPile(s, 20, 10), gpuOnly: true, camera: { distance: 55, target: [0, 0, 4], elevation: 0.45 } },
   { name: 'Box Pile (32k)', build: (s) => boxPile(s, 40, 20), gpuOnly: true, camera: { distance: 110, target: [0, 0, 6], elevation: 0.45 } },
-  { name: 'Brick Ring (110k)', build: (s) => brickRing(s), gpuOnly: true, camera: { distance: 190, target: [0, 0, 5], azimuth: -120, elevation: 0.35 } },
   { name: 'Jointed Drop (34k)', build: (s) => jointedDrop(s), gpuOnly: true, camera: { distance: 55, target: [0, 0, 4], azimuth: -120, elevation: 0.5 } },
   { name: 'Box Columns (100k)', build: (s) => boxColumns(s, 100, 10), gpuOnly: true, camera: { distance: 190, target: [0, 0, 5], elevation: 0.5 } },
 ];
