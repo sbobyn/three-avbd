@@ -14,6 +14,7 @@
     "fetch-reference": "sh scripts/fetch-reference.sh",
     "test:gpu": "node --experimental-transform-types --test tests-gpu/*.gpu.test.ts",
     "bench2d:gpu": "node --experimental-transform-types --no-warnings scripts/bench2d-gpu.ts",
+    "bench3d:gpu": "node --experimental-transform-types --no-warnings scripts/bench3d-gpu.ts",
     "sweep2d": "node --experimental-transform-types --no-warnings scripts/sweep2d.ts",
     "scaling2d": "node --experimental-transform-types --no-warnings scripts/scaling2d.ts"
   },

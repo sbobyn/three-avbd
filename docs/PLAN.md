@@ -9,8 +9,10 @@
 | 2 GPU-shaped CPU solver | done 2026-09-23: SoA layout, grid broadphase, contact persistence, CSR, Jones-Plassmann colouring. Exact C++ parity in sequential mode; coloured f32 passes the behaviour suite. GPU defaults chosen (α 0.95). |
 | 3 2D WebGPU, fixed topology | done 2026-09-23: WGSL kernels match the CPU to f32 round-off; zero-copy rendering from the solver's buffer; GPU drag; 100k bodies / 204k joints at 3.3 ms GPU per step (M4 Max). |
 | 4 2D WebGPU with contacts | done 2026-09-23: whole step on the GPU (grid broadphase, narrowphase, hash persistence, adjacency, Jones-Plassmann colouring, indirect dispatch). Seeded single-step parity with the CPU (pairs, contacts, colours exact). Added `matchNearest` warm starts. |
-| 5 2D scaling study | done 2026-09-24: per-phase GPU timing; adaptive colour cap, merged dual, locality-preserving colour buckets, register-resident rows; limits and growth fixes; iteration sweep; 250k boxes / 600k contacts at ~7 ms (4 it) on the M4 Max. `bench.html` for target hardware. **Go for 3D** (see below). Awaiting check-in. |
-| 6 3D CPU reference port | next |
+| 5 2D scaling study | done 2026-09-24: per-phase GPU timing; adaptive colour cap, merged dual, locality-preserving colour buckets, register-resident rows; limits and growth fixes; iteration sweep; 250k boxes / 600k contacts at ~7 ms (4 it) on the M4 Max. `bench.html` for target hardware. **Go for 3D** (see below). |
+| 6 3D CPU reference port | done 2026-09-24: `src/avbd3d/ref` is bit-identical to the upstream C++ (f64, no FMA) on all 14 scenes over 600 frames; behaviour tests; `index3d.html` viewer (orbit camera, shadows, drag, shoot). |
+| 7 3D WebGPU | done 2026-09-24: `src/avbd3d/gpu`, whole step on the GPU (shares the 2D colouring/adjacency/args/scan kernels). Seeded single step matches the f64 reference to ≤ 3e-6; narrowphase matches on 300 random pairs; GPU behaviour suite passes; zero-copy rendering and a CPU/WebGPU switch in the viewer. 100k boxes at 22 ms (10 it, M4 Max). Awaiting check-in. |
+| 8 3D scale + showcase | done 2026-09-24 (first pass): per-kernel profiling and fixes (AABB pair filter, 8-vertex clipper, lean dual write-back, large-body cap); iteration sweep; GPU-only spheres; Box2D-style face bias; showcase scenes after paper Figs 1/3, 7, 12, 13 plus piles to 250k; `pnpm bench3d:gpu`. 100k boxes ≈ 6 ms (4 it) / 8.4-11 ms (10 it) on the M4 Max. Benchmark table to rerun on a fully charged machine (see FINDINGS). Awaiting check-in. |
 
 ### Stage 5 go/no-go for 3D: go
 Everything around the per-body solve carries over unchanged in design: SoA layout, grid
@@ -57,7 +59,7 @@ around x₀ cached once per step (Sec 4) — so contact rows only need `dq` per 
 | β | single β = 1e5 | split β_lin = 1e4, β_ang = 100 |
 | γ | 0.99 | 0.999 |
 | Contacts/pair | ≤ 2 (box2d-lite clipping) | ≤ 8 (OBB SAT + clipping) |
-| Up axis | +y | **+z** (we'll remap to Three's +y) |
+| Up axis | +y | **+z** (kept; the viewer sets `camera.up`) |
 | Angular joint C | angle diff × torqueArm | `2(qA·qB⁻¹).v` × torqueArm |
 | Warm-start location | solver loop | inside each `Force::initialize()` |
 
@@ -151,18 +153,27 @@ updateDual` stamping, ball-socket geometric stiffness, OBB SAT + clipping (≤8 
 cone friction, split β, spheres (paper's smash balls). z-up → y-up remap. 14 scenes
 (incl. Bridge, Breakable) + OrbitControls + ray-pick drag.
 **Check-in demo:** side by side with the official 3D web demo.
+*As built:* kept z-up (the viewer sets `camera.up`) so solver state stays comparable with
+the oracle. Spheres moved to Stage 7/8: the upstream demo has no sphere shapes, so there is
+no oracle for them.
 
 ### Stage 7 — 3D WebGPU
 Reuse Stage 4 pipeline (broadphase/persistence/CSR/colouring/indirect dispatch are
 dimension-agnostic by design); swap in 6-DOF body kernel, 3D narrowphase (box–box,
 sphere–box, sphere–sphere), quaternion integration. Validate against 3D CpuRef.
 **Check-in demo:** 3D Pyramid, Stack, Rope, Bridge, Breakable on GPU matching CPU.
+*As built:* no 3D SoA CPU solver. Instead the GPU can take fixed colours, one per body in
+the reference's newest-first order, which reproduces the reference's Gauss-Seidel sweep, so
+a seeded GPU step is compared with the f64 reference directly. Box-box only (spheres: Stage 8).
 
 ### Stage 8 — 3D scale + showcase
 Paper-figure recreations: block pile smashed by sphere (Fig 1/3), breakable brick wall
 (Fig 13), chain mail + heavy ball (Fig 12), 50-link pendulum w/ 50 000:1 mass ratio
 (Fig 7). Instanced rendering with shadows. Benchmarks vs paper Table 1.
 **Check-in:** benchmark report + showcase scenes.
+*As built:* spheres are a GPU-only extension (the reference has none). The chain mail is a
+net of plate links joined by ball joints rather than interlocked rings. Target-hardware (M1,
+GTX 1080) numbers are still deferred.
 
 ### Stretch
 3-DOF particle/cloth vertices mixed with rigid bodies (Fig 5/14 flag & cloth), LBVH

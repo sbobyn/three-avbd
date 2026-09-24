@@ -108,6 +108,7 @@ gui
   .name('Default params');
 gui.add(state, 'paused').name('Pause').listen();
 gui.add({ step: () => stepOnce() }, 'step').name('Step once');
+gui.add({ open3d: () => (location.href = '/index3d.html') }, 'open3d').name('Open 3D demo');
 
 const spawn = gui.addFolder('Right-click box');
 spawn.add(state, 'boxFriction', 0, 2).name('Friction');

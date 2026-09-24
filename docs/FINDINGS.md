@@ -2,6 +2,170 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 8: 3D scale and showcase (first pass)
+
+### Measurement caveat
+Absolute timings from late in this session are not trustworthy: the laptop ran its battery
+down to 11% under sustained GPU load (drawing from battery while on AC), and an unchanged
+kernel (warmStartBodies) then ran 5x slower than in the morning. Numbers below marked *full
+power* come from earlier runs; the final `pnpm bench3d:gpu` table must be rerun on a charged
+machine with no other GPU work (an open viewer tab alone added 30-100%). Also: my first
+reading of "multi-second shader compiles" was the same contention; measured alone, the
+largest pipeline (narrowphase) compiles in ~0.5 s cold and a 32k scene loads in ~0.3 s.
+
+### Where the time went, and what helped (100k box columns, 400k contacts, full power)
+Per-kernel timestamps on a settled scene (isolated kernels read high, ratios are what count):
+narrowphase 1.9 ms, primal 0.59 (all colours), dual 0.26, findPairs 0.52 per step/iteration.
+- **AABB pair filter.** Bounding spheres of neighbouring boxes overlap far more often than
+  the boxes: 388k pairs for 100k touching pairs. A conservative world-AABB test after the
+  sphere test cut that to 100k; step 11.4 → 9.8 ms (10 it), 50k boxes 5.2 → 3.4 ms.
+- **Dual writes back only lambda, penalty and stick** (not the 96-byte record): solve
+  5.96 → 5.64 ms.
+- **8-vertex ping-pong clipping** instead of copying a 16-vertex array per clip plane (a
+  quad clipped by four planes has at most 8 vertices; order and so feature keys unchanged):
+  narrowphase 1.18 → 0.79 ms.
+- Not kept: rewriting the contact rows through the relative contact displacement (fewer
+  cross products) did not change the solve time (bandwidth-bound) and moved f32 rounding
+  enough to push one lambda just past the parity test's bound, so it was reverted rather than
+  loosening the test. Unrolling the contact-row loops: identical time in an interleaved A/B
+  (11.19 vs 11.20 ms); kept for readability.
+- Large-body classification: a showcase ball (3x the median brick radius) stayed "small" at
+  the 2D factor of 4 and set 4 m grid cells; factor 2, capped at the 64 largest bodies, took
+  the 2k-body wall smash from ~8 to ~4-6 ms.
+- Best full-power figures, 100k boxes: **~6 ms at 4 iterations, 8.4-11 ms at 10** (robust
+  interleaved timing gave 11.2 ms at 10). The solve is bandwidth-bound (~250 GB/s moved per
+  the byte count); the next real gain needs smaller records (per-manifold normal/basis,
+  f16 anchors) rather than arithmetic.
+
+### Iterations (GPU, 600 frames)
+| iterations | Stack (10) | Pyramid (16 rows) | 20-high columns | Soft Body |
+|---|---|---|---|---|
+| 2 | collapsed (top 8.9) | sagging, KE 0.1 | stands, KE 20 | collapsed |
+| 4 | stands, KE 4e-7 | stands, KE 1e-2 | stands, KE 3e-4 | stands |
+| 10 | stands, KE 9e-7 | stands, KE 7e-6 | stands, KE 5e-5 | stands |
+4 iterations (the paper's benchmark setting) holds stacks and piles; 10 settles fully.
+
+### Narrowphase: Box2D-style face bias (GPU option, on by default)
+The demo picks an edge axis when `0.95·edgeSep > faceSep + 0.01`. With penetration the
+separations are negative, so scaling the *edge* value favours the edge: equal separations at
+-0.7 choose it, leaving a single contact and a box stuck 0.7 deep (the Stage 7 Breakable
+state). `faceBias` scales the face value instead (`edgeSep > 0.95·faceSep + 0.01`), as Box2D
+does. With it, GPU Breakable settles (KE 1e-7, like the CPU run); without, KE stays ~5e-2.
+The parity tests turn it off to compare against the faithful reference.
+
+### Spheres (GPU-only extension)
+A sphere is a reference `Rigid` (cubic bounds, solid-sphere mass and inertia) marked in
+`shapes.ts`; the shape code rides in `angVel.w`. Sphere-sphere and sphere-box give one
+contact. Two failures found and fixed on the way:
+- Static friction keeps a contact's old body-local anchors. For a rolling sphere the contact
+  point moves over both surfaces, so pinned anchors rotated away: it sank through the ground.
+  Sphere contacts always take fresh points (still warm-starting force and penalty).
+- The reference builds contact Jacobians at the *current* rotation while expanding C about
+  the step start. A sphere rolling 0.1 rad per step then sees a false separation in its
+  normal row every step; it sank and gained energy. Sphere contacts use the step-start
+  rotation (the Taylor point). Box contacts keep the reference's form.
+Result: a sphere launched sliding at 3 m/s rolls at 2.14 m/s (theory 5/7·v = 2.143) within
+0.2 s with no slip, then loses ~1% of its speed per second to numerical rolling resistance.
+
+### Showcase scenes (GPU-only, `bench-scenes.ts`)
+- Wall Smash (paper Fig. 1/3): 2,000 bricks in running bond, a 2 m ball at 30 m/s punches
+  through (10-12 colours).
+- Breakable Wall (Fig. 13): bricks welded by hard joints that fracture above 50 (holds under
+  its own weight at every strength tried, 50-400); the ball breaks dozens of joints (75 of
+  1,150 at strength 100).
+- Chain Mail (Fig. 12): 40x40 plate links on ball joints, hung by the corners, catches a ball
+  ~16,000x a link's mass; joint stretch ≤ 0.1 at 10 iterations (0.2 at 10 it with a
+  5x heavier ball, 0.11 at 20 it).
+- Heavy Pendulum (Fig. 7): 50 links and a 50,000:1 end mass swing coherently, joint error
+  ≤ 0.1.
+- Box piles to 250k and a 32k random pile (settles, 8-9 colours, no clashes).
+
+## 2026-09-24 — Stage 7: 3D WebGPU solver (src/avbd3d/gpu)
+
+The whole 3D step runs on the GPU with the 2D pipeline's structure. Adjacency, Jones-Plassmann
+colouring, indirect arguments and the prefix scan are shared (the topology and args WGSL are
+now generated from either dimension's prelude); broadphase (3D hashed grid, 27 cells),
+narrowphase (OBB SAT + clipping, up to 8 contacts per pair) and the solve (6x6 LDLᵀ per body,
+rows folded in as outer products) are new. Records: body 160 B, joint 128 B, contact 96 B.
+
+### Verification: seeded single step against the f64 reference
+There is no 3D SoA CPU solver. Instead `GpuSolver3D.fixedColors` can give every dynamic body
+its own colour in the reference's newest-first order, which makes the colour sweep the
+reference's Gauss-Seidel sweep. `seedFrom(ref)` copies the reference state mid-run (bodies,
+joints with penalties and lambdas, contacts as warm-start source), both take one step:
+- 10 scenes (≤ 64 dynamic bodies) at frames 60, 120, 300: every reference contact between
+  movable bodies is found at the same body-local points (1e-4), lambdas agree to 1e-3
+  relative, and poses agree to **≤ 2.7e-6** (f32 against f64), first try.
+- Exception, understood: a box lying flat on another has two SAT face axes with *equal*
+  separation. f64 and f32 break that tie differently, so the same contact points get other
+  feature keys, strict key matching loses the warm start, and that step differs (4.4e-4,
+  Dynamic Friction frames 60/120). The GPU runs with `matchNearest` (as in 2D), which recovers
+  those warm starts; it is off in the parity test because nearest matching also warm-starts
+  contacts the reference legitimately starts fresh (seen: 8.4e-4 at Dynamic Friction frame 1).
+- Narrowphase alone: 300 randomly posed overlapping box pairs (219 edge, 80 face manifolds,
+  530 contacts): same count, points (1e-3) and feature keys as `ref/collide.ts`.
+- Broadphase: 3000 random boxes incl. oversized ones and an IgnoreCollision pair: exactly the
+  brute-force bounding-sphere pairs.
+
+### Behaviour on the GPU's own colouring (tests-gpu/avbd3d-gpu.gpu.test.ts)
+The reference's calibrations hold: the stack rests at the same heights, the pyramid stands
+(3-7 colours, no clashes), Coulomb stopping distances within 15%, ramp boxes hold or slide on
+the same side of tan 30°, spring mean 9.2, rope/bridge joint error < 0.02-0.03, Breakable
+fractures, drag and shot boxes work. Over 600 frames the stable scenes agree with the CPU run
+(Stack to 1 mm); chaotic ones (rope swing, soft-body tumble, bridge) diverge as expected.
+
+### Two things that looked like GPU bugs and were not
+- Breakable on the GPU ended with the top box 0.7 inside the one below, jittering
+  (KE ~5e-2 for good). Handing the GPU's state to the CPU reference reproduces it exactly.
+  Cause, in the upstream narrowphase: an edge axis wins when `0.95·edgeSep > faceSep + 0.01`,
+  which for deep penetration (-0.7) favours an edge over an equally good face axis, leaving a
+  single contact point; with α = 0.99 only 1% of the penetration is removed per step. The
+  GPU run just took a different (chaotic) path into that state. A candidate fix for Stage 8,
+  GPU side only (the reference stays faithful).
+- Dragging a mid-stack box with an instant 9 m pointer jump launches the boxes above it
+  (KE ~3000). The CPU reference does the same: it is the demo's 5000 N/m drag spring.
+- Also: a 40-row brick pyramid (820 bricks) collapses on both CPU and GPU at 10 iterations
+  (rows start 0.35 apart and drop); the 16-row demo pyramid stands on both.
+
+### First scaling numbers (settled box columns, 10 iterations, M4 Max via Dawn)
+| boxes | contacts | ms / step |
+|---|---|---|
+| 1k | 4k | 2.5 |
+| 10k | 41k | 3.8 |
+| 50k | 200k | 10.1 |
+| 100k | 400k | 22.3 |
+| 250k | 1.0M | 51.7 |
+
+About 1.5x the 2D cost per contact at equal iterations. Nothing is tuned yet (Stage 8): the
+contact kernel recomputes the basis and reloads both bodies per row, records are wide, and
+the colour cap/iteration trade-offs from 2D have not been re-measured in 3D.
+
+## 2026-09-24 — Stage 6: 3D CPU reference (src/avbd3d/ref)
+
+### The TS port reproduces the upstream C++ bit for bit
+`tools/cpp-oracle/oracle3d.cpp` runs the unmodified avbd-demo3d solver headless; `build.sh`
+also compiles it with `float` rewritten to `double` and `-ffp-contract=off` (clang fuses
+`a*b + c` into FMAs by default, which JavaScript cannot do). Against that build the port is
+**exactly equal** (max pose difference 0, force counts equal) on all 14 scenes at frames 1,
+10, 60, 300 and 600 (`tests/fixtures/oracle3d`, `gen3d.sh`). This needed every expression
+kept in the C++ evaluation order, including full 3x3 products with their structural zeros.
+The test allows 1e-9 only as headroom for a libm difference in Static Friction's `sin`/`cos`.
+
+### Calibrated behaviour of the reference (tests/avbd3d-ref.test.ts)
+- Resting contacts sink one collision margin (0.01) each: a 10-box stack's top rests at 9.894.
+  The stack bounces on landing and is quasi-static (speed ~2e-4) only after ~800 frames.
+- Dynamic friction: stopping distances within 10% of Coulomb v²/(2μg), μ = √(μa μb).
+- Static friction on the 30° ramp: boxes with μ > tan 30° stop (the μ = 0.59 box slides
+  ~3 m down the ramp first, then holds; creep < 0.005 over 2 s); μ < tan 30° slide to the ground.
+- Spring (k 100, mass 8) oscillates undamped about 9.19 (static equilibrium 9.2).
+- Hard joint error after 10 s: rope 0.009, heavy rope (5 m end box) 0.016, bridge 0.014.
+- Breakable: 2 of 10 joints fracture within the first second, then the rest hold.
+
+### CPU cost
+Pyramid (137 boxes, ~1.1k contacts, 10 iterations): 13 ms per step as first written, 10 ms
+after unrolling the 3x3 products and removing per-contact allocations (Node, M4 Max). Enough
+for the 14 demo scenes in real time; scale is the GPU's job (Stage 7).
+
 ## 2026-09-24 — Stage 5: 2D scaling study
 
 All numbers from the M4 Max (40-core GPU) through headless Dawn, unless noted. Short GPU

@@ -66,25 +66,12 @@ export const PARAM_WORDS = 32;
 /** Bytes per per-dispatch uniform entry (dynamic offset alignment). */
 export const PASS_STRIDE = 256;
 
-export const PRELUDE = /* wgsl */ `
-// Shared by every 2D module (layout.ts)
+/**
+ * WGSL shared by the 2D and 3D pipelines: counters, indirect-argument slots, colouring and
+ * hashing constants. Each dimension's prelude starts with it and adds its own structs.
+ */
+export const CORE_WGSL = /* wgsl */ `
 const T_NONE = 0;
-const T_JOINT = 1;
-const T_SPRING = 2;
-const T_MOTOR = 3;
-
-const HARD = 1e30;
-const BIG = 3e38;
-const PENALTY_MIN = 1.0;
-const PENALTY_MAX = 1e9;
-const STICK_THRESH = 0.01;
-const COLLISION_MARGIN = 0.0005;
-
-const FLAG_VBD = ${FLAG_VBD}u;
-const FLAG_RESCALE = ${FLAG_RESCALE}u;
-const FLAG_POST_STABILIZE = ${FLAG_POST_STABILIZE}u;
-const FLAG_MATCH_NEAREST = ${FLAG_MATCH_NEAREST}u;
-const NEAREST_FRACTION = ${NEAREST_FRACTION};
 
 const MAX_COLORS = ${MAX_COLORS}u;
 const NO_COLOR = ${NO_COLOR}u;
@@ -105,6 +92,43 @@ const IA_COLOR = ${IA_COLOR}u;
 
 const WG = ${WORKGROUP_SIZE}u;
 const COLOR_WG = ${COLOR_WG}u;
+
+const BIG = 3e38;
+const HARD = 1e30;
+
+fn groupsFor(n: u32) -> u32 {
+  return (n + WG - 1u) / WG;
+}
+
+/** lowbias32 integer hash (same as the CPU colouring priorities). */
+fn hash32(v: u32) -> u32 {
+  var x = v;
+  x ^= x >> 16u;
+  x *= 0x7feb352du;
+  x ^= x >> 15u;
+  x *= 0x846ca68bu;
+  x ^= x >> 16u;
+  return x;
+}
+`;
+
+export const PRELUDE = /* wgsl */ `
+// Shared by every 2D module (layout.ts)
+${CORE_WGSL}
+const T_JOINT = 1;
+const T_SPRING = 2;
+const T_MOTOR = 3;
+
+const PENALTY_MIN = 1.0;
+const PENALTY_MAX = 1e9;
+const STICK_THRESH = 0.01;
+const COLLISION_MARGIN = 0.0005;
+
+const FLAG_VBD = ${FLAG_VBD}u;
+const FLAG_RESCALE = ${FLAG_RESCALE}u;
+const FLAG_POST_STABILIZE = ${FLAG_POST_STABILIZE}u;
+const FLAG_MATCH_NEAREST = ${FLAG_MATCH_NEAREST}u;
+const NEAREST_FRACTION = ${NEAREST_FRACTION};
 
 struct Body {
   pose: vec4f,      // x, y, angle, friction
@@ -176,25 +200,14 @@ fn rot(angle: f32, v: vec2f) -> vec2f {
   return vec2f(c * v.x - s * v.y, s * v.x + c * v.y);
 }
 
-fn groupsFor(n: u32) -> u32 {
-  return (n + WG - 1u) / WG;
-}
-
-/** lowbias32 integer hash (same as the CPU colouring priorities). */
-fn hash32(v: u32) -> u32 {
-  var x = v;
-  x ^= x >> 16u;
-  x *= 0x7feb352du;
-  x ^= x >> 15u;
-  x *= 0x846ca68bu;
-  x ^= x >> 16u;
-  return x;
-}
 `;
 
-/** Writes the indirect dispatch arguments from the counters and colour counts. */
-export const argsWGSL = /* wgsl */ `
-${PRELUDE}
+/**
+ * Writes the indirect dispatch arguments from the counters and colour counts. Works with
+ * either dimension's prelude (it only reads the shared Params fields).
+ */
+export const makeArgsWGSL = (prelude: string): string => /* wgsl */ `
+${prelude}
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> counters: array<u32>;
@@ -230,3 +243,5 @@ fn argsColors(@builtin(local_invocation_id) lid: vec3u) {
   setArgs(IA_COLOR + 3u * c, color[params.colorStartOffset + c + 1u] - color[params.colorStartOffset + c]);
 }
 `;
+
+export const argsWGSL = makeArgsWGSL(PRELUDE);

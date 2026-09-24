@@ -6,11 +6,31 @@
 // Colour state per body: colour in the low 8 bits (NO_COLOR = none) plus a PENDING bit.
 // Rounds read one state buffer and write the other (Jacobi), so bodies never see a
 // neighbour's colour from the same round.
+//
+// Dimension-agnostic: the 3D solver builds it from its own prelude and accessors.
 
 import { COLOR_WG, PRELUDE } from './layout.ts';
 
-export const topologyWGSL = /* wgsl */ `
-${PRELUDE}
+/** 2D record accessors the topology kernels need (see makeTopologyWGSL). */
+const ACCESSORS_2D = /* wgsl */ `
+fn dynamicBody(i: i32) -> bool {
+  return i >= 0 && bodies[i].shape.z > 0.0;
+}
+
+/** A joint takes part unless it was disabled (fracture, released drag). */
+fn jointActive(j: u32) -> bool {
+  let s = joints[j].stiff;
+  return info[j].x != T_NONE && (s.x != 0.0 || s.y != 0.0 || s.z != 0.0);
+}
+`;
+
+/**
+ * Adjacency and colouring kernels over a prelude defining Params, Body, Joint and Contact
+ * (with ids.xy = bodies), plus accessors defining dynamicBody(i32) and jointActive(u32).
+ */
+export const makeTopologyWGSL = (prelude: string, accessors: string): string => /* wgsl */ `
+${prelude}
+${accessors}
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> bodies: array<Body>;
@@ -23,18 +43,8 @@ ${PRELUDE}
 // Colours: stateA[bodies] | stateB[bodies] | start[65] | bodies[bodies] | hist[64 * groups + 1]
 @group(0) @binding(7) var<storage, read_write> color: array<atomic<u32>>;
 
-fn dynamicBody(i: i32) -> bool {
-  return i >= 0 && bodies[i].shape.z > 0.0;
-}
-
 fn contactCount() -> u32 {
   return min(atomicLoad(&counters[C_CONTACTS]), params.contactCapacity);
-}
-
-/** A joint takes part unless it was disabled (fracture, released drag). */
-fn jointActive(j: u32) -> bool {
-  let s = joints[j].stiff;
-  return info[j].x != T_NONE && (s.x != 0.0 || s.y != 0.0 || s.z != 0.0);
 }
 
 fn endpoints(id: u32) -> vec2i {
@@ -249,3 +259,5 @@ fn colorScatter(@builtin(global_invocation_id) gid: vec3u, @builtin(workgroup_id
   atomicStore(&color[params.colorBodiesOffset + slot], b);
 }
 `;
+
+export const topologyWGSL = makeTopologyWGSL(PRELUDE, ACCESSORS_2D);
