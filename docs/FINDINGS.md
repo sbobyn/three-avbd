@@ -2,6 +2,86 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 5: 2D scaling study
+
+All numbers from the M4 Max (40-core GPU) through headless Dawn, unless noted. Short GPU
+timings on this machine swing ±20–50% with clock changes, so comparisons use
+`src/avbd2d/gpu/timing.ts`: warm-up, many drained batches, variants interleaved over rounds,
+best median per variant. Per-phase GPU timestamps of isolated steps are noisier than wall
+time (the GPU drops its clocks between them), so wall time is the primary metric.
+
+### Where the time goes
+Per-phase timestamps (collision, adjacency, colouring, solve). At 10 iterations the solve is
+55–85% of the step. At 4 iterations, collision (0.4–2 ms) and colouring (0.5–2 ms) become a
+third to a half. Adjacency is always ≤ 0.4 ms.
+
+### Dispatch count is the first-order cost below ~100k bodies
+Every primal pass up to the colour cap is encoded (the count lives on the GPU). An empty one
+costs ~12 µs here: the 16k lattice at cap 32 vs 6 was 6.7 vs 3.5 ms. Changes:
+- colour cap = colours in use + 2, grown at once on clashes, shrunk after 3 quiet readbacks
+  (lattice −21%, piles −3…−16%);
+- one dual pass over joints and contacts per iteration instead of two.
+
+### Memory order inside a colour matters
+Bodies bucketed by atomic scatter (random order) against one thread per body in index order
+(skipping other colours): index order was 4–21% faster despite launching every body for
+every colour. Buckets now come from a stable counting sort: a per-workgroup colour histogram,
+a prefix scan over (colour, workgroup), in-chunk ranks from shared memory. That closed most
+of the gap. The index-scan variant is sometimes still faster on this 40-core GPU, where idle
+threads are nearly free; `primalMode` switches between them, and the browser benchmark runs
+both so the target hardware can decide.
+
+### Register-resident rows
+Constraint rows used to come back as a struct of `array<vec3f, 3>` indexed dynamically,
+which is spilled on Metal. Unrolled `addRow` calls into a register accumulator: 20k pyramid
+6.3 → 5.8 ms (10 it), 3.1 → 2.7 ms (4 it). Seeded parity with the CPU unchanged.
+
+### Not worth it (measured)
+- Splitting the step into one pass per phase: no measurable cost, so profiling does it.
+- Fewer Jones-Plassmann rounds: 16 → 4 saves only 0.2–0.4 ms, and 4 rounds let 3 clashes
+  through in box rain. Kept at 16.
+
+### Robustness fixes
+- Growing contact storage now copies both contact buffers and keeps the counters, so warm
+  starts survive. Before, a growth reset the counters, and one readback saw "0 colours".
+- Capacities are clamped to `maxStorageBufferBindingSize`. Past the 128 MB default, a
+  250k-body pile's contact storage made the bind groups invalid, and the step silently did
+  nothing. Devices now request the adapter's larger limits (app, benchmark, tests).
+
+### Iterations: cost and quality (GPU, `pnpm sweep2d`)
+Cost is ~3 ms of fixed per-step work plus ~0.3–0.4 ms per iteration at 20–90k bodies.
+
+| iterations | pyramid 20 | stack 20 | slope creep 20 s | rope joint err | pyramid 100 (drop) |
+|---|---|---|---|---|---|
+| 1 | collapses | falls | slides off | 0.29 | — |
+| 2 | 5.9 / 8.0 | drifts 0.5 | 7 mm | 0.087 | collapses |
+| 3 | 7.2 | stands | 2.7 mm | 0.037 | collapses |
+| 4 | 7.7 | stands | 4.0 mm | 0.023 | collapses |
+| 10 | 7.98 | stands | 1.9 mm | 0.011 | 148 of 5050 boxes off their row |
+
+A 100-row brick pyramid is the hard case, and it's the method, not the GPU. The demo's
+sequential reference loses 2756 boxes at 10 iterations. In coloured order, a pyramid spawned
+resting holds at 4 iterations (36 displaced), 3 partly collapses, and surviving the drop
+needs ~10. Sequential top-down order holds the drop at 4 (19 displaced): colours move load
+down about one row per colour pass. Alternating colour order each iteration was worse
+(explosive at 10). Heaps and rain piles (the paper's regime) are fine at 3–4 iterations.
+Iterations stay a per-scene choice; defaults remain 10.
+
+### Scaling (box rain, 100 rows, width varied; settled piles; `pnpm scaling2d`)
+
+| bodies | contacts | 4 it wall ms | 10 it wall ms |
+|---|---|---|---|
+| 10k | ~23k | 2.2 | 2.4 |
+| 25k | ~60k | 2.8 | 4.6 |
+| 50k | ~115k | 4.4 | 6.7 |
+| 90k | ~205k | 5.0 | 10.1 |
+| 160k | ~370k | 6.9 | 10.0 |
+| 250k | ~580k | ~6.5–8 | 15.1 |
+
+Raw data: `docs/data/scaling2d-apple-metal-3.json`. On this machine, 250k boxes with ~600k
+contacts fit 60 fps at 4 iterations. For the target hardware, `bench.html` runs the suite
+in a browser and copies the results out; no M1 or GTX 1080 measurement has been made yet.
+
 ## 2026-09-23 — Stage 4: the whole 2D step on the GPU
 
 Broadphase, narrowphase, contact persistence, adjacency, colouring and solve all run on the

@@ -8,8 +8,18 @@
 | 1 2D CPU reference | done 2026-09-23: port matches upstream C++ (f64) to round-off on all 19 scenes; Eq 14 + VBD mode added as opt-in. |
 | 2 GPU-shaped CPU solver | done 2026-09-23: SoA layout, grid broadphase, contact persistence, CSR, Jones-Plassmann colouring. Exact C++ parity in sequential mode; coloured f32 passes the behaviour suite. GPU defaults chosen (α 0.95). |
 | 3 2D WebGPU, fixed topology | done 2026-09-23: WGSL kernels match the CPU to f32 round-off; zero-copy rendering from the solver's buffer; GPU drag; 100k bodies / 204k joints at 3.3 ms GPU per step (M4 Max). |
-| 4 2D WebGPU with contacts | done 2026-09-23: whole step on the GPU (grid broadphase, narrowphase, hash persistence, adjacency, Jones-Plassmann colouring, indirect dispatch). Seeded single-step parity with the CPU (pairs, contacts, colours exact). 90k boxes / 121k contacts at 7.9 ms wall (M4 Max, headless). Added `matchNearest` warm starts. Awaiting check-in. |
-| 5 2D scaling study | next |
+| 4 2D WebGPU with contacts | done 2026-09-23: whole step on the GPU (grid broadphase, narrowphase, hash persistence, adjacency, Jones-Plassmann colouring, indirect dispatch). Seeded single-step parity with the CPU (pairs, contacts, colours exact). Added `matchNearest` warm starts. |
+| 5 2D scaling study | done 2026-09-24: per-phase GPU timing; adaptive colour cap, merged dual, locality-preserving colour buckets, register-resident rows; limits and growth fixes; iteration sweep; 250k boxes / 600k contacts at ~7 ms (4 it) on the M4 Max. `bench.html` for target hardware. **Go for 3D** (see below). Awaiting check-in. |
+| 6 3D CPU reference port | next |
+
+### Stage 5 go/no-go for 3D: go
+Everything around the per-body solve carries over unchanged in design: SoA layout, grid
+broadphase (27 neighbour cells), hash persistence, CSR adjacency, Jones-Plassmann colouring,
+colour buckets, indirect dispatch, per-phase profiling, seeded parity testing. What's new in
+3D: quaternion poses, a 6×6 LDLᵀ per body (register pressure: keep the accumulator
+unrolled), OBB SAT narrowphase with up to 8 contacts per pair (collision will weigh more,
+since it's already 0.4–2 ms in 2D), and cone friction. Expect 2–3× the per-body cost of 2D.
+Open risk: the target-hardware numbers (M1, GTX 1080) are still unmeasured.
 
 Sources read: SIGGRAPH '25 paper (Giles, Diaz, Yuksel), `savant117/avbd-demo2d`
 (~1.9k LOC C++), `savant117/avbd-demo3d` (~3.4k LOC C++), project page.

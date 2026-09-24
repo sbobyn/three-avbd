@@ -1,0 +1,152 @@
+{
+ "adapter": {
+  "subgroupMatrixConfigs": []
+ },
+ "scene": "box rain (settled pile)",
+ "rows": [
+  {
+   "iterations": 4,
+   "bodies": 10003,
+   "contacts": 24931,
+   "colors": 6,
+   "wallMs": 2.245,
+   "total": 3.08,
+   "collision": 0.786,
+   "adjacency": 0.066,
+   "coloring": 0.131,
+   "solve": 1.18
+  },
+  {
+   "iterations": 4,
+   "bodies": 25003,
+   "contacts": 64661,
+   "colors": 7,
+   "wallMs": 2.787,
+   "total": 5.374,
+   "collision": 0.786,
+   "adjacency": 0.131,
+   "coloring": 0.655,
+   "solve": 1.442
+  },
+  {
+   "iterations": 4,
+   "bodies": 50003,
+   "contacts": 121056,
+   "colors": 7,
+   "wallMs": 4.386,
+   "total": 6.685,
+   "collision": 1.18,
+   "adjacency": 0.131,
+   "coloring": 0.59,
+   "solve": 3.408
+  },
+  {
+   "iterations": 4,
+   "bodies": 90003,
+   "contacts": 215264,
+   "colors": 7,
+   "wallMs": 4.962,
+   "total": 7.274,
+   "collision": 1.245,
+   "adjacency": 0.131,
+   "coloring": 0.786,
+   "solve": 2.753
+  },
+  {
+   "iterations": 4,
+   "bodies": 160003,
+   "contacts": 391494,
+   "colors": 8,
+   "wallMs": 6.873,
+   "total": 8.192,
+   "collision": 1.901,
+   "adjacency": 0.393,
+   "coloring": 1.245,
+   "solve": 3.277
+  },
+  {
+   "iterations": 4,
+   "bodies": 250003,
+   "contacts": 611713,
+   "colors": 7,
+   "wallMs": 6.484,
+   "total": 13.304,
+   "collision": 2.032,
+   "adjacency": 0.393,
+   "coloring": 2.163,
+   "solve": 5.571
+  },
+  {
+   "iterations": 10,
+   "bodies": 10003,
+   "contacts": 21925,
+   "colors": 6,
+   "wallMs": 2.367,
+   "total": 6.619,
+   "collision": 0.262,
+   "adjacency": 0.066,
+   "coloring": 0.393,
+   "solve": 5.177
+  },
+  {
+   "iterations": 10,
+   "bodies": 25003,
+   "contacts": 54728,
+   "colors": 7,
+   "wallMs": 4.59,
+   "total": 6.029,
+   "collision": 0.852,
+   "adjacency": 0.131,
+   "coloring": 0.459,
+   "solve": 2.228
+  },
+  {
+   "iterations": 10,
+   "bodies": 50003,
+   "contacts": 110305,
+   "colors": 7,
+   "wallMs": 6.711,
+   "total": 8.52,
+   "collision": 1.18,
+   "adjacency": 0.066,
+   "coloring": 0.59,
+   "solve": 6.881
+  },
+  {
+   "iterations": 10,
+   "bodies": 90003,
+   "contacts": 198312,
+   "colors": 7,
+   "wallMs": 10.056,
+   "total": 8.913,
+   "collision": 1.769,
+   "adjacency": 0.131,
+   "coloring": 0.852,
+   "solve": 6.75
+  },
+  {
+   "iterations": 10,
+   "bodies": 160003,
+   "contacts": 352616,
+   "colors": 7,
+   "wallMs": 10.025,
+   "total": 12.19,
+   "collision": 1.376,
+   "adjacency": 0.197,
+   "coloring": 1.18,
+   "solve": 7.733
+  },
+  {
+   "iterations": 10,
+   "bodies": 250003,
+   "contacts": 551147,
+   "colors": 7,
+   "wallMs": 15.142,
+   "total": 15.139,
+   "collision": 1.901,
+   "adjacency": 0.393,
+   "coloring": 1.114,
+   "solve": 9.634
+  }
+ ]
+}

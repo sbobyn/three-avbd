@@ -51,117 +51,160 @@ fn jointC(k: Joint, a: i32, b: i32) -> vec3f {
   return vec3f(d, (angA - pb.z - k.param.x) * k.param.y);
 }
 
-/** Rows of one constraint at the current poses, with derivatives w.r.t. \`body\` (if >= 0). */
-struct Rows {
-  C: vec3f,
-  fmin: vec3f,
-  fmax: vec3f,
-  pen: vec3f,
-  lam: vec3f,
-  stiff: vec3f,
-  J: array<vec3f, 3>,  // Jacobian rows w.r.t. the solved body
-  G: array<vec3f, 3>,  // diagonal geometric-stiffness weights per row (Sec. 3.5)
-  n: u32,
+// Constraint rows are evaluated by small typed helpers and folded straight into a register
+// accumulator with explicit per-row calls: no arrays and no dynamic indexing, which Metal
+// and friends would otherwise keep in (slow) memory.
+
+/** Accumulated 3x3 Hessian (lower triangle) and right-hand side of one body's Newton step. */
+struct Acc {
+  h00: f32,
+  h10: f32,
+  h11: f32,
+  h20: f32,
+  h21: f32,
+  h22: f32,
+  rhs: vec3f,
 }
 
-fn evalJoint(j: u32, alpha: f32, body: i32) -> Rows {
+/**
+ * Fold one constraint row into the accumulator: J the row's Jacobian w.r.t. the body, g its
+ * diagonal geometric-stiffness weights (Sec. 3.5), then the row's state.
+ */
+fn addRow(acc: ptr<function, Acc>, j: vec3f, g: vec3f, C: f32, pen0: f32, lam: f32, stiff: f32, fmin: f32, fmax: f32) {
+  let vbd = (params.flags & FLAG_VBD) != 0u;
+  let lambda = select(0.0, lam, !vbd && stiff >= HARD);
+  var pen = pen0;
+  let fRaw = pen * C + lambda;
+  let f = clamp(fRaw, fmin, fmax);
+  let af = abs(f);
+  // Stiffness rescaling for clamped forces (Eq. 14), Hessian only
+  if ((params.flags & FLAG_RESCALE) != 0u && C != 0.0) {
+    if (fRaw < fmin) { pen = abs((fmin - lambda) / C); }
+    else if (fRaw > fmax) { pen = abs((fmax - lambda) / C); }
+  }
+  (*acc).rhs += j * f;
+  (*acc).h00 += j.x * j.x * pen + g.x * af;
+  (*acc).h10 += j.y * j.x * pen;
+  (*acc).h11 += j.y * j.y * pen + g.y * af;
+  (*acc).h20 += j.z * j.x * pen;
+  (*acc).h21 += j.z * j.y * pen;
+  (*acc).h22 += j.z * j.z * pen + g.z * af;
+}
+
+/** Per-row constraint values of joint/spring/motor j (rows beyond its count are unused). */
+fn jointRowsC(j: u32, alpha: f32) -> vec3f {
   let t = info[j].x;
   let a = info[j].y;
   let b = info[j].z;
   let k = joints[j];
-  var e: Rows;
-  e.n = rowCount(t);
-  e.fmin = k.fmin.xyz;
-  e.fmax = k.fmax.xyz;
-  e.pen = k.pen.xyz;
-  e.lam = k.lam.xyz;
-  e.stiff = k.stiff.xyz;
-  let isA = body == a;
+  if (t == T_JOINT) {
+    // Hard rows are stabilized (Eq. 18)
+    return jointC(k, a, b) - select(vec3f(0.0), k.c0.xyz * alpha, k.stiff.xyz >= vec3f(HARD));
+  }
+  if (t == T_SPRING) {
+    let pa4 = bodies[a].pose;
+    let pb4 = bodies[b].pose;
+    let d = (rot(pa4.z, k.anchors.xy) + pa4.xy) - (rot(pb4.z, k.anchors.zw) + pb4.xy);
+    return vec3f(length(d) - k.param.x, 0.0, 0.0);
+  }
+  if (t == T_MOTOR) {
+    var dA = 0.0;
+    if (a >= 0) { dA = bodies[a].pose.z - bodies[a].initial.z; }
+    let dB = bodies[b].pose.z - bodies[b].initial.z;
+    return vec3f(dA - dB - k.param.x * params.dt, 0.0, 0.0);
+  }
+  return vec3f(0.0);
+}
+
+/** Add the rows of joint/spring/motor j, differentiated w.r.t. body i. */
+fn addJoint(acc: ptr<function, Acc>, j: u32, alpha: f32, i: u32) {
+  let t = info[j].x;
+  let a = info[j].y;
+  let b = info[j].z;
+  let k = joints[j];
+  let isA = i32(i) == a;
   let sg = select(-1.0, 1.0, isA);
+  let C = jointRowsC(j, alpha);
 
   if (t == T_JOINT) {
-    e.C = jointC(k, a, b);
-    for (var r = 0; r < 3; r++) {
-      if (k.stiff[r] >= HARD) { e.C[r] -= k.c0[r] * alpha; }
-    }
-    if (body >= 0) {
-      let r = rot(bodies[body].pose.z, select(k.anchors.zw, k.anchors.xy, isA));
-      e.J[0] = vec3f(sg, 0.0, -sg * r.y);
-      e.J[1] = vec3f(0.0, sg, sg * r.x);
-      e.J[2] = vec3f(0.0, 0.0, sg * k.param.y);
-      e.G[0] = vec3f(0.0, 0.0, abs(r.x));
-      e.G[1] = vec3f(0.0, 0.0, abs(r.y));
-    }
+    let r = rot(bodies[i].pose.z, select(k.anchors.zw, k.anchors.xy, isA));
+    addRow(acc, vec3f(sg, 0.0, -sg * r.y), vec3f(0.0, 0.0, abs(r.x)), C.x, k.pen.x, k.lam.x, k.stiff.x, k.fmin.x, k.fmax.x);
+    addRow(acc, vec3f(0.0, sg, sg * r.x), vec3f(0.0, 0.0, abs(r.y)), C.y, k.pen.y, k.lam.y, k.stiff.y, k.fmin.y, k.fmax.y);
+    addRow(acc, vec3f(0.0, 0.0, sg * k.param.y), vec3f(0.0), C.z, k.pen.z, k.lam.z, k.stiff.z, k.fmin.z, k.fmax.z);
   } else if (t == T_SPRING) {
     let pa4 = bodies[a].pose;
     let pb4 = bodies[b].pose;
     let d = (rot(pa4.z, k.anchors.xy) + pa4.xy) - (rot(pb4.z, k.anchors.zw) + pb4.xy);
     let len2 = dot(d, d);
-    let len = sqrt(len2);
-    e.C = vec3f(len - k.param.x, 0.0, 0.0);
-    if (body >= 0 && len2 != 0.0) {
+    // A degenerate spring contributes nothing (the CPU zeroes its Jacobian the same way)
+    var J = vec3f(0.0);
+    var G = vec3f(0.0);
+    if (len2 != 0.0) {
+      let len = sqrt(len2);
       let n = d / len;
       let d00 = (1.0 - n.x * n.x) / len;
       let d01 = -n.x * n.y / len;
       let d11 = (1.0 - n.y * n.y) / len;
-      let ang = bodies[body].pose.z;
+      let ang = bodies[i].pose.z;
       let lr = select(k.anchors.zw, k.anchors.xy, isA);
       let sr = rot(ang, vec2f(-lr.y, lr.x));
       let r = rot(ang, lr);
       let dxr0 = d00 * sr.x + d01 * sr.y;
       let dxr1 = d01 * sr.x + d11 * sr.y;
       let nr = dot(n, r);
-      e.J[0] = sg * vec3f(n, dot(n, sr));
+      J = sg * vec3f(n, dot(n, sr));
       let drr = select(nr + nr, -nr - nr, isA);
-      e.G[0] = vec3f(length(vec3f(d00, d01, dxr0)), length(vec3f(d01, d11, dxr1)), length(vec3f(dxr0, dxr1, drr)));
+      G = vec3f(length(vec3f(d00, d01, dxr0)), length(vec3f(d01, d11, dxr1)), length(vec3f(dxr0, dxr1, drr)));
     }
+    addRow(acc, J, G, C.x, k.pen.x, k.lam.x, k.stiff.x, k.fmin.x, k.fmax.x);
   } else if (t == T_MOTOR) {
-    var dA = 0.0;
-    if (a >= 0) { dA = bodies[a].pose.z - bodies[a].initial.z; }
-    let dB = bodies[b].pose.z - bodies[b].initial.z;
-    e.C = vec3f(dA - dB - k.param.x * params.dt, 0.0, 0.0);
-    if (body >= 0) { e.J[0] = vec3f(0.0, 0.0, sg); }
+    addRow(acc, vec3f(0.0, 0.0, sg), vec3f(0.0), C.x, k.pen.x, k.lam.x, k.stiff.x, k.fmin.x, k.fmax.x);
   }
-  return e;
 }
 
-fn evalContact(c: u32, alpha: f32, body: i32) -> Rows {
-  let k = contacts[c];
-  let a = i32(k.ids.x);
-  let b = i32(k.ids.y);
-  var e: Rows;
-  e.n = 2u;
-  e.pen = vec3f(k.pl.xy, 0.0);
-  e.lam = vec3f(k.pl.zw, 0.0);
-  e.stiff = vec3f(BIG);
-  // Normal pushes only; friction bounded by the current normal force
-  let bound = abs(k.pl.z) * k.misc.x;
-  e.fmin = vec3f(-BIG, -bound, -BIG);
-  e.fmax = vec3f(0.0, bound, BIG);
+/** Contact geometry: Taylor-expanded C about x- (Sec. 4) and the Jacobians of both bodies. */
+struct ContactRows {
+  C: vec2f,  // normal, tangent
+  jAn: vec3f,
+  jAt: vec3f,
+  jBn: vec3f,
+  jBt: vec3f,
+}
 
-  // Taylor expansion about x- (Sec. 4): C = (1 - alpha) C0 + J (x - x-)
+fn contactRows(k: Contact, alpha: f32) -> ContactRows {
+  let a = k.ids.x;
+  let b = k.ids.y;
   let n = k.geo.zw;
   let tg = vec2f(n.y, -n.x);
-  let A = bodies[a];
-  let B = bodies[b];
-  let rA = rot(A.initial.z, k.anchors.xy);
-  let rB = rot(B.initial.z, k.anchors.zw);
-  let jAn = vec3f(n, rA.x * n.y - rA.y * n.x);
-  let jBn = -vec3f(n, rB.x * n.y - rB.y * n.x);
-  let jAt = vec3f(tg, rA.x * tg.y - rA.y * tg.x);
-  let jBt = -vec3f(tg, rB.x * tg.y - rB.y * tg.x);
-  let dA = A.pose.xyz - A.initial.xyz;
-  let dB = B.pose.xyz - B.initial.xyz;
-  e.C = vec3f(
-    k.geo.x * (1.0 - alpha) + dot(jAn, dA) + dot(jBn, dB),
-    k.geo.y * (1.0 - alpha) + dot(jAt, dA) + dot(jBt, dB),
-    0.0);
-  if (body >= 0) {
-    let isA = body == a;
-    e.J[0] = select(jBn, jAn, isA);
-    e.J[1] = select(jBt, jAt, isA);
-  }
-  return e;
+  // Only the poses are needed: load those fields, not the whole 96-byte body records
+  let poseA = bodies[a].pose.xyz;
+  let initA = bodies[a].initial.xyz;
+  let poseB = bodies[b].pose.xyz;
+  let initB = bodies[b].initial.xyz;
+  let rA = rot(initA.z, k.anchors.xy);
+  let rB = rot(initB.z, k.anchors.zw);
+  var r: ContactRows;
+  r.jAn = vec3f(n, rA.x * n.y - rA.y * n.x);
+  r.jBn = -vec3f(n, rB.x * n.y - rB.y * n.x);
+  r.jAt = vec3f(tg, rA.x * tg.y - rA.y * tg.x);
+  r.jBt = -vec3f(tg, rB.x * tg.y - rB.y * tg.x);
+  let dA = poseA - initA;
+  let dB = poseB - initB;
+  r.C = vec2f(
+    k.geo.x * (1.0 - alpha) + dot(r.jAn, dA) + dot(r.jBn, dB),
+    k.geo.y * (1.0 - alpha) + dot(r.jAt, dA) + dot(r.jBt, dB));
+  return r;
+}
+
+/** Add contact c's normal and friction rows, differentiated w.r.t. body i. */
+fn addContact(acc: ptr<function, Acc>, c: u32, alpha: f32, i: u32) {
+  let k = contacts[c];
+  let r = contactRows(k, alpha);
+  let isA = i == k.ids.x;
+  // Normal pushes only; friction is bounded by the current normal force
+  let bound = abs(k.pl.z) * k.misc.x;
+  addRow(acc, select(r.jBn, r.jAn, isA), vec3f(0.0), r.C.x, k.pl.x, k.pl.z, BIG, -BIG, 0.0);
+  addRow(acc, select(r.jBt, r.jAt, isA), vec3f(0.0), r.C.y, k.pl.y, k.pl.w, BIG, -bound, bound);
 }
 
 // --- Warm start ---------------------------------------------------------------------------
@@ -217,78 +260,63 @@ fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
 fn primal(@builtin(global_invocation_id) gid: vec3u) {
   let start = color[params.colorStartOffset + pc.color];
   if (gid.x >= color[params.colorStartOffset + pc.color + 1u] - start) { return; }
-  let i = color[params.colorBodiesOffset + start + gid.x];
-  let b = bodies[i];
+  solveBody(color[params.colorBodiesOffset + start + gid.x]);
+}
+
+// Variant for comparison: one thread per body in index order, skipping other colours. More
+// threads, but neighbouring threads touch neighbouring memory.
+@compute @workgroup_size(64)
+fn primalScan(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  if (i >= params.bodyCount || color[i] != pc.color || bodies[i].shape.z <= 0.0) { return; }
+  solveBody(i);
+}
+
+fn solveBody(i: u32) {
+  let pose = bodies[i].pose;
+  let inertial = bodies[i].inertial.xyz;
+  let shape = bodies[i].shape;
   let dt2 = params.dt * params.dt;
-  let mdt = b.shape.z / dt2;
-  let idt = b.shape.w / dt2;
-  var h00 = mdt;
-  var h10 = 0.0;
-  var h11 = mdt;
-  var h20 = 0.0;
-  var h21 = 0.0;
-  var h22 = idt;
-  var rhs = vec3f(mdt * (b.pose.x - b.inertial.x), mdt * (b.pose.y - b.inertial.y), idt * (b.pose.z - b.inertial.z));
-  let vbd = (params.flags & FLAG_VBD) != 0u;
-  let rescale = (params.flags & FLAG_RESCALE) != 0u;
+  let mdt = shape.z / dt2;
+  let idt = shape.w / dt2;
+  var acc = Acc(mdt, 0.0, mdt, 0.0, 0.0, idt, vec3f(mdt * (pose.x - inertial.x), mdt * (pose.y - inertial.y), idt * (pose.z - inertial.z)));
 
   let end = adj[i + 1u];
   for (var e = adj[i]; e < end; e++) {
     let id = adj[params.adjListOffset + e];
-    var ev: Rows;
-    if (id < params.jointCount) { ev = evalJoint(id, pc.alpha, i32(i)); }
-    else { ev = evalContact(id - params.jointCount, pc.alpha, i32(i)); }
-    for (var r = 0u; r < ev.n; r++) {
-      let lambda = select(0.0, ev.lam[r], !vbd && ev.stiff[r] >= HARD);
-      var pen = ev.pen[r];
-      let C = ev.C[r];
-      let fRaw = pen * C + lambda;
-      let f = clamp(fRaw, ev.fmin[r], ev.fmax[r]);
-      let af = abs(f);
-      // Stiffness rescaling for clamped forces (Eq. 14), Hessian only
-      if (rescale && C != 0.0) {
-        if (fRaw < ev.fmin[r]) { pen = abs((ev.fmin[r] - lambda) / C); }
-        else if (fRaw > ev.fmax[r]) { pen = abs((ev.fmax[r] - lambda) / C); }
-      }
-      let j = ev.J[r];
-      let g = ev.G[r];
-      rhs += j * f;
-      h00 += j.x * j.x * pen + g.x * af;
-      h10 += j.y * j.x * pen;
-      h11 += j.y * j.y * pen + g.y * af;
-      h20 += j.z * j.x * pen;
-      h21 += j.z * j.y * pen;
-      h22 += j.z * j.z * pen + g.z * af;
-    }
+    if (id < params.jointCount) { addJoint(&acc, id, pc.alpha, i); }
+    else { addContact(&acc, id - params.jointCount, pc.alpha, i); }
   }
 
   // LDLᵀ solve of the 3x3 SPD system
-  let D1 = h00;
-  let L21 = h10 / h00;
-  let L31 = h20 / h00;
-  let D2 = h11 - L21 * L21 * D1;
-  let L32 = (h21 - L21 * L31 * D1) / D2;
-  let D3 = h22 - (L31 * L31 * D1 + L32 * L32 * D2);
+  let D1 = acc.h00;
+  let L21 = acc.h10 / acc.h00;
+  let L31 = acc.h20 / acc.h00;
+  let D2 = acc.h11 - L21 * L21 * D1;
+  let L32 = (acc.h21 - L21 * L31 * D1) / D2;
+  let D3 = acc.h22 - (L31 * L31 * D1 + L32 * L32 * D2);
+  let rhs = acc.rhs;
   let y2 = rhs.y - L21 * rhs.x;
   let y3 = rhs.z - L31 * rhs.x - L32 * y2;
   let x2 = y3 / D3;
   let x1 = y2 / D2 - L32 * x2;
   let x0 = rhs.x / D1 - L21 * x1 - L31 * x2;
-  bodies[i].pose = vec4f(b.pose.xyz - vec3f(x0, x1, x2), b.pose.w);
+  bodies[i].pose = vec4f(pose.xyz - vec3f(x0, x1, x2), pose.w);
 }
 
 // --- Dual -----------------------------------------------------------------------------------
 
-@compute @workgroup_size(64)
-fn dualJoints(@builtin(global_invocation_id) gid: vec3u) {
-  let j = gid.x;
-  if (j >= params.jointCount || info[j].x == T_NONE) { return; }
-  let ev = evalJoint(j, pc.alpha, -1);
+fn dualJoint(j: u32) {
+  let t = info[j].x;
+  if (t == T_NONE) { return; }
+  let C = jointRowsC(j, pc.alpha);
   var k = joints[j];
   let vbd = (params.flags & FLAG_VBD) != 0u;
-  for (var r = 0u; r < ev.n; r++) {
+  for (var r = 0u; r < rowCount(t); r++) {
     let lambda = select(0.0, k.lam[r], !vbd && k.stiff[r] >= HARD);
-    let lam = clamp(k.pen[r] * ev.C[r] + lambda, ev.fmin[r], ev.fmax[r]);
+    let lam = clamp(k.pen[r] * C[r] + lambda, k.fmin[r], k.fmax[r]);
+    let lo = k.fmin[r];
+    let hi = k.fmax[r];
     k.lam[r] = lam;
     if (abs(lam) >= k.frac[r]) {
       // Fracture: the joint stops acting (and stays zero from now on)
@@ -296,34 +324,38 @@ fn dualJoints(@builtin(global_invocation_id) gid: vec3u) {
       k.lam = vec4f(0.0);
       k.stiff = vec4f(0.0);
     }
-    if (!vbd && lam > ev.fmin[r] && lam < ev.fmax[r]) {
-      k.pen[r] = min(k.pen[r] + params.beta * abs(ev.C[r]), min(PENALTY_MAX, k.stiff[r]));
+    if (!vbd && lam > lo && lam < hi) {
+      k.pen[r] = min(k.pen[r] + params.beta * abs(C[r]), min(PENALTY_MAX, k.stiff[r]));
     }
   }
   joints[j] = k;
 }
 
-@compute @workgroup_size(64)
-fn dualContacts(@builtin(global_invocation_id) gid: vec3u) {
-  let c = gid.x;
-  if (c >= contactCount()) { return; }
-  let ev = evalContact(c, pc.alpha, -1);
+fn dualContact(c: u32) {
   var k = contacts[c];
+  let r = contactRows(k, pc.alpha);
   let vbd = (params.flags & FLAG_VBD) != 0u;
-  // Stick test with the bounds from before this update, like the reference
-  k.ids.w = select(0u, 1u, abs(k.pl.w) < ev.fmax.y && abs(k.geo.y) < STICK_THRESH);
-  var pen = k.pl.xy;
-  var lamv = k.pl.zw;
-  for (var r = 0; r < 2; r++) {
-    let lambda = select(0.0, lamv[r], !vbd);
-    let lam = clamp(pen[r] * ev.C[r] + lambda, ev.fmin[r], ev.fmax[r]);
-    lamv[r] = lam;
-    if (!vbd && lam > ev.fmin[r] && lam < ev.fmax[r]) {
-      pen[r] = min(pen[r] + params.beta * abs(ev.C[r]), PENALTY_MAX);
-    }
-  }
-  k.pl = vec4f(pen, lamv);
+  // Friction bounds (and the stick test) use the normal force from before this update
+  let bound = abs(k.pl.z) * k.misc.x;
+  k.ids.w = select(0u, 1u, abs(k.pl.w) < bound && abs(k.geo.y) < STICK_THRESH);
+  // Normal row: bounds (-BIG, 0]
+  let lamN = clamp(k.pl.x * r.C.x + select(k.pl.z, 0.0, vbd), -BIG, 0.0);
+  var penN = k.pl.x;
+  if (!vbd && lamN > -BIG && lamN < 0.0) { penN = min(penN + params.beta * abs(r.C.x), PENALTY_MAX); }
+  // Friction row: bounds [-bound, bound]
+  let lamT = clamp(k.pl.y * r.C.y + select(k.pl.w, 0.0, vbd), -bound, bound);
+  var penT = k.pl.y;
+  if (!vbd && lamT > -bound && lamT < bound) { penT = min(penT + params.beta * abs(r.C.y), PENALTY_MAX); }
+  k.pl = vec4f(penN, penT, lamN, lamT);
   contacts[c] = k;
+}
+
+/** Dual update of every constraint: joints first, then contacts (one dispatch). */
+@compute @workgroup_size(64)
+fn dual(@builtin(global_invocation_id) gid: vec3u) {
+  let id = gid.x;
+  if (id < params.jointCount) { dualJoint(id); }
+  else if (id - params.jointCount < contactCount()) { dualContact(id - params.jointCount); }
 }
 
 /** With post stabilization the stick flags come from the final lambdas (see soa refreshStick). */

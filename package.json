@@ -13,7 +13,9 @@
     "bench2d": "node --experimental-transform-types --no-warnings scripts/bench2d.ts",
     "fetch-reference": "sh scripts/fetch-reference.sh",
     "test:gpu": "node --experimental-transform-types --test tests-gpu/*.gpu.test.ts",
-    "bench2d:gpu": "node --experimental-transform-types --no-warnings scripts/bench2d-gpu.ts"
+    "bench2d:gpu": "node --experimental-transform-types --no-warnings scripts/bench2d-gpu.ts",
+    "sweep2d": "node --experimental-transform-types --no-warnings scripts/sweep2d.ts",
+    "scaling2d": "node --experimental-transform-types --no-warnings scripts/scaling2d.ts"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

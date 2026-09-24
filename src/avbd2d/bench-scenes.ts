@@ -86,7 +86,7 @@ export const benchScenes: SceneDef[] = [
   { name: 'Joint Lattice 64x64 (4k)', build: (s) => jointLattice(s, 64, 64) },
   { name: 'Wrecking Ball 100x40 (4k)', build: (s) => wreckingBall(s, 100, 40) },
   { name: 'Pyramid 200 (20k)', build: (s) => pyramid(s, 200), gpuOnly: true },
-  { name: 'Box Rain 300x300 (90k)', build: (s) => boxRain(s, 300, 300), gpuOnly: true },
+  { name: 'Box Rain 900x100 (90k)', build: (s) => boxRain(s, 900, 100), gpuOnly: true },
   { name: 'Wrecking Ball 400x100 (40k)', build: (s) => wreckingBall(s, 400, 100), gpuOnly: true },
   { name: 'Joint Lattice 320x320 (100k)', buildSoa: (s) => jointLatticeSoa(s, 320, 320), gpuOnly: true },
   { name: 'Joint Lattice 512x512 (262k)', buildSoa: (s) => jointLatticeSoa(s, 512, 512), gpuOnly: true },
@@ -111,6 +111,24 @@ export function jointLatticeSoa(s: SoaSolver2D, W: number, H: number): void {
     for (let y = 1; y < H; y++) {
       s.addIgnoreCollision(id(x - 1, y - 1), id(x, y));
       s.addIgnoreCollision(id(x, y - 1), id(x - 1, y));
+    }
+  }
+}
+
+/** `boxRain` built straight into a SoA solver (same container, boxes and random sequence). */
+export function boxRainSoa(s: SoaSolver2D, cols: number, rows: number): void {
+  s.clear();
+  const width = cols * 1.2 + 4;
+  s.addBody([width + 2, 1], 0, 0.5, [0, -0.5, 0]);
+  s.addBody([1, rows * 1.4 + 10], 0, 0.5, [-width / 2, (rows * 1.4 + 10) / 2, 0]);
+  s.addBody([1, rows * 1.4 + 10], 0, 0.5, [width / 2, (rows * 1.4 + 10) / 2, 0]);
+  let seed = 1;
+  const rand = () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 2 ** 32);
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const w = 0.6 + rand() * 0.5;
+      const h = 0.6 + rand() * 0.5;
+      s.addBody([w, h], 1, 0.5, [x * 1.2 - (cols - 1) * 0.6, 2 + y * 1.4, rand() * 0.5]);
     }
   }
 }

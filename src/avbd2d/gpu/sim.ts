@@ -7,7 +7,7 @@ import { parallelParams, Solver } from '../ref/solver.ts';
 import { DRAG_STIFFNESS, type Sim2D, type SimStats, sceneByName } from '../sim.ts';
 import { SoaSolver2D } from '../soa/solver.ts';
 import { BODY_FLOATS } from './layout.ts';
-import { GpuSolver2D } from './solver.ts';
+import { GpuSolver2D, type StepProfile } from './solver.ts';
 
 /** Steps between asynchronous readbacks of body poses and stats. */
 const READBACK_EVERY = 10;
@@ -24,6 +24,8 @@ export class GpuSim implements Sim2D {
   private dragSlot = -1;
   private dragTarget = -1;
   private gpuStepMs: number | undefined;
+  /** Latest per-phase GPU timing (timestamp queries), refreshed every TIME_EVERY steps. */
+  profile: StepProfile | null = null;
 
   constructor(solver: GpuSolver2D) {
     this.solver = solver;
@@ -42,7 +44,12 @@ export class GpuSim implements Sim2D {
 
   step(): void {
     this.steps++;
-    if (this.steps % TIME_EVERY === 0) this.solver.timeNextStep((ms) => (this.gpuStepMs = ms));
+    if (this.steps % TIME_EVERY === 0) {
+      this.solver.profileNextStep((profile) => {
+        this.gpuStepMs = profile.total;
+        this.profile = profile;
+      });
+    }
     this.solver.step();
     if (this.steps % READBACK_EVERY === 0) this.refresh();
   }

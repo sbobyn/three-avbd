@@ -3,7 +3,8 @@
 
 import GUI from 'lil-gui';
 import { DEFAULT_SCENE } from '../avbd2d/ref/scenes.ts';
-import { createGpuSim } from '../avbd2d/gpu/sim.ts';
+import { createGpuSim, GpuSim } from '../avbd2d/gpu/sim.ts';
+import { PHASES } from '../avbd2d/gpu/solver.ts';
 import { defaultParams, parallelParams } from '../avbd2d/ref/solver.ts';
 import { allScenes2D, type Backend2D, BACKENDS, createSim, type Sim2D, sceneByName } from '../avbd2d/sim.ts';
 import { type Camera2D, Renderer2D } from './renderer2d.ts';
@@ -15,7 +16,12 @@ if (!('gpu' in navigator)) {
   hud.textContent = 'WebGPU is not available in this browser; rendering falls back to WebGL2.';
 }
 
-const renderer = new Renderer2D(canvas);
+// Ask for the adapter's full storage-binding size: the large GPU scenes exceed the 128 MB default
+const adapter = 'gpu' in navigator ? await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }) : null;
+const renderer = new Renderer2D(
+  canvas,
+  adapter ? { maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize, maxBufferSize: adapter.limits.maxBufferSize } : undefined,
+);
 await renderer.init();
 
 const url = new URL(location.href);
@@ -54,7 +60,7 @@ const sceneCameras: Record<string, Camera2D> = {
   'Joint Lattice 64x64 (4k)': { x: 32, y: 20, zoom: 7 },
   'Wrecking Ball 100x40 (4k)': { x: -10, y: 10, zoom: 8 },
   'Pyramid 200 (20k)': { x: 0, y: 45, zoom: 2.8 },
-  'Box Rain 300x300 (90k)': { x: 0, y: 180, zoom: 1.4 },
+  'Box Rain 900x100 (90k)': { x: 0, y: 60, zoom: 0.7 },
   'Wrecking Ball 400x100 (40k)': { x: -80, y: 25, zoom: 2.2 },
   'Joint Lattice 320x320 (100k)': { x: 160, y: 120, zoom: 1.6 },
   'Joint Lattice 512x512 (262k)': { x: 256, y: 180, zoom: 1 },
@@ -265,12 +271,14 @@ function frame(now: number): void {
 
 function updateHud(): void {
   const st = sim.stats();
+  const profile = sim instanceof GpuSim ? sim.profile : null;
   const coloring = st.colors === undefined ? '' : ` · colours ${st.colors} (rounds ${st.colorRounds}, clashes ${st.colorConflicts})`;
   hud.textContent = [
     `${sim.label} · ${renderer.isWebGPU ? 'WebGPU' : 'WebGL2'} render · ${fps.toFixed(0)} fps · ` +
       (st.gpuStepMs === undefined ? `step ${stepMs.toFixed(2)} ms` : `GPU step ~${st.gpuStepMs.toFixed(2)} ms (encode ${stepMs.toFixed(2)} ms)`),
     `bodies ${sim.bodyCount} · joints ${st.joints} · contacts ${st.contacts}${coloring}`,
     `KE ${st.kineticEnergy.toFixed(3)} · max joint error ${st.maxJointError.toExponential(2)}`,
+    ...(profile ? [`GPU phases: ${PHASES.map((ph) => `${ph} ${profile[ph].toFixed(2)}`).join(' · ')} ms`] : []),
     'drag: left · box: right-click · pan: space/shift+drag · zoom: wheel · P pause · R reset',
   ].join('\n');
 }

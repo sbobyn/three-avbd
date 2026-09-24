@@ -2,7 +2,7 @@
 // piles (the full contact pipeline). Reports GPU time (timestamp queries, median of 10 steps)
 // and wall time per step with the queue drained. Usage: pnpm bench2d:gpu [iterations]
 import { boxRain, jointLatticeSoa, pyramid, wreckingBall } from '../src/avbd2d/bench-scenes.ts';
-import { GpuSolver2D } from '../src/avbd2d/gpu/solver.ts';
+import { GpuSolver2D, PHASES, type StepProfile } from '../src/avbd2d/gpu/solver.ts';
 import { parallelParams, Solver } from '../src/avbd2d/ref/solver.ts';
 import { SoaSolver2D } from '../src/avbd2d/soa/solver.ts';
 import { device, skip } from '../tests-gpu/device.ts';
@@ -36,7 +36,7 @@ const cases: [string, () => SoaSolver2D][] = [
   ['pyramid 100', fromRef((s) => pyramid(s, 100))],
   ['pyramid 200', fromRef((s) => pyramid(s, 200))],
   ['wrecking ball 400x100', fromRef((s) => wreckingBall(s, 400, 100))],
-  ['box rain 300x300', fromRef((s) => boxRain(s, 300, 300))],
+  ['box rain 900x100', fromRef((s) => boxRain(s, 900, 100))],
 ];
 
 for (const [name, make] of cases) {
@@ -47,9 +47,9 @@ for (const [name, make] of cases) {
     if (i % 60 === 59) gpu.adapt(await gpu.readCounters());
   }
   await device.queue.onSubmittedWorkDone();
-  const times: number[] = [];
+  const profiles: StepProfile[] = [];
   for (let i = 0; i < 10; i++) {
-    gpu.timeNextStep((ms) => times.push(ms));
+    gpu.profileNextStep((p) => profiles.push(p));
     gpu.step();
     await device.queue.onSubmittedWorkDone();
     await new Promise((r) => setTimeout(r, 2));
@@ -60,11 +60,15 @@ for (const [name, make] of cases) {
   await device.queue.onSubmittedWorkDone();
   const wall = (performance.now() - t) / frames;
   const c = await gpu.readCounters();
-  times.sort((a, b) => a - b);
+  // Median per phase over the profiled steps
+  const median = (key: keyof StepProfile) => {
+    const v = profiles.map((p) => p[key]).sort((a, b) => a - b);
+    return v.length ? v[v.length >> 1].toFixed(2) : '—';
+  };
   console.log(
     `${name.padEnd(22)} ${String(gpu.bodyCount).padStart(7)} bodies ${String(c.contacts).padStart(7)} contacts ` +
-      `${String(c.colors).padStart(2)} colours (clashes ${c.clashes}, overflow ${c.overflow}): ` +
-      `GPU ${times[times.length >> 1]?.toFixed(2) ?? '—'} ms, wall ${wall.toFixed(2)} ms/step`,
+      `${String(c.colors).padStart(2)} colours (clashes ${c.clashes}, overflow ${c.overflow}): wall ${wall.toFixed(2)} ms/step | ` +
+      `GPU ${median('total')} = ${PHASES.map((ph) => `${ph} ${median(ph)}`).join(', ')}`,
   );
   gpu.destroy();
 }

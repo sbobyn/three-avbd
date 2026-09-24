@@ -15,8 +15,8 @@ import { parallelParams, type SolverParams } from '../ref/solver.ts';
 import { PAIR_SHIFT } from '../soa/broadphase.ts';
 import { C0, CS, FMAX, FMIN, FRAC, INFO_STRIDE, LAM, P0, P1, P2, PEN, RA, RB, type SoaSolver2D, STICK, STIFF, T_JOINT } from '../soa/solver.ts';
 import {
-  ARGS_WORDS, argsWGSL, BIG, BODY_FLOATS, C_CLASHES, C_CONTACTS, C_NUM_COLORS, C_OVERFLOW, C_PAIRS, CONTACT_WORDS,
-  COUNTER_WORDS, FLAG_MATCH_NEAREST, FLAG_POST_STABILIZE, FLAG_RESCALE, FLAG_VBD, IA_COLOR, IA_CONTACTS, IA_PAIRS, IA_PREV, J_ANCHORS, J_C0,
+  ARGS_WORDS, argsWGSL, BIG, BODY_FLOATS, COLOR_WG, C_CLASHES, C_CONTACTS, C_NUM_COLORS, C_OVERFLOW, C_PAIRS, CONTACT_WORDS,
+  COUNTER_WORDS, FLAG_MATCH_NEAREST, FLAG_POST_STABILIZE, FLAG_RESCALE, FLAG_VBD, IA_COLOR, IA_CONSTRAINTS, IA_CONTACTS, IA_PAIRS, IA_PREV, J_ANCHORS, J_C0,
   J_FMAX, J_FMIN, J_FRAC, J_LAM, J_PARAM, J_PEN, J_STIFF, JOINT_FLOATS, MAX_COLORS, NO_COLOR, PARAM_WORDS, PASS_STRIDE,
   WORKGROUP_SIZE,
 } from './layout.ts';
@@ -44,6 +44,13 @@ export interface GpuSolverOptions {
   colorRounds?: number;
 }
 
+/** The step's phases, each encoded as its own compute pass (so each can be timestamped). */
+export const PHASES = ['collision', 'adjacency', 'coloring', 'solve'] as const;
+export type Phase = (typeof PHASES)[number];
+
+/** GPU milliseconds per phase, and from the first phase's start to the last one's end. */
+export type StepProfile = Record<Phase, number> & { total: number };
+
 export interface GpuCounters {
   pairs: number;
   contacts: number;
@@ -69,6 +76,18 @@ export class GpuSolver2D {
   contactCapacity = 0;
   /** Colours the colouring may use and the solver dispatches (grows via `adapt`). */
   colorCap = 12;
+  /**
+   * Encode each phase as its own compute pass even when not profiling. Pass boundaries cost
+   * time on some drivers, so by default the step is one pass unless a profile is requested.
+   */
+  splitPasses = false;
+  /** Primal dispatch: 'bucket' (bodies of the colour, compact) or 'scan' (all bodies, skip others). */
+  primalMode: 'bucket' | 'scan' = 'bucket';
+  private shrinkVotes = 0;
+
+  private get colorHistOffset(): number {
+    return 3 * this.bodyCapacity + 65;
+  }
   readonly colorRounds: number;
 
   readonly bodyBuffer: GPUBuffer;
@@ -109,11 +128,14 @@ export class GpuSolver2D {
   };
   private passGroup: GPUBindGroup | null = null;
   private readonly gridScan: PrefixScan;
+  private readonly colorHistScan: PrefixScan;
+  private readonly colorGroups: number;
   private adjScan: PrefixScan | null = null;
 
-  // GPU timing with timestamp queries (when the device has 'timestamp-query')
+  // GPU timing with timestamp queries (when the device has 'timestamp-query'): a begin/end
+  // pair around each phase's compute pass
   private readonly timing: { querySet: GPUQuerySet; resolve: GPUBuffer; read: GPUBuffer } | null;
-  private timingCallback: ((ms: number) => void) | null = null;
+  private timingCallback: ((profile: StepProfile) => void) | null = null;
   private timingBusy = false;
 
   constructor(device: GPUDevice, topology: SoaSolver2D, options: GpuSolverOptions = {}) {
@@ -135,22 +157,25 @@ export class GpuSolver2D {
     this.gridBuffer = device.createBuffer({ label: 'grid', size: (2 * this.tableSize + 1 + 3 * cap) * 4, usage: storageUsage() });
     this.counterBuffer = device.createBuffer({ label: 'counters', size: COUNTER_WORDS * 4, usage: storageUsage() });
     this.argsBuffer = device.createBuffer({ label: 'indirect args', size: ARGS_WORDS * 4, usage: storageUsage() | GPUBufferUsage.INDIRECT });
-    this.colorBuffer = device.createBuffer({ label: 'colours', size: (3 * cap + 194) * 4, usage: storageUsage() });
+    this.colorGroups = Math.ceil(cap / COLOR_WG);
+    this.colorBuffer = device.createBuffer({ label: 'colours', size: (3 * cap + 65 + MAX_COLORS * this.colorGroups + 1) * 4, usage: storageUsage() });
     this.paramsBuffer = device.createBuffer({ label: 'params', size: PARAM_WORDS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     // Every body starts uncoloured
     device.queue.writeBuffer(this.colorBuffer, 0, new Uint32Array(cap).fill(NO_COLOR));
 
+    const stamps = 2 * PHASES.length;
     this.timing = device.features.has('timestamp-query')
       ? {
-          querySet: device.createQuerySet({ type: 'timestamp', count: 2 }),
-          resolve: device.createBuffer({ size: 16, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC }),
-          read: device.createBuffer({ size: 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }),
+          querySet: device.createQuerySet({ type: 'timestamp', count: stamps }),
+          resolve: device.createBuffer({ size: stamps * 8, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC }),
+          read: device.createBuffer({ size: stamps * 8, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }),
         }
       : null;
 
     this.layouts = this.createLayouts();
     this.createPipelines();
     this.gridScan = new PrefixScan(device, this.gridBuffer, 0, this.tableSize + 1);
+    this.colorHistScan = new PrefixScan(device, this.colorBuffer, this.colorHistOffset, MAX_COLORS * this.colorGroups + 1);
 
     this.jointCount = topology.jointCount;
     this.allocateJoints(topology.jointCount + 256);
@@ -196,9 +221,9 @@ export class GpuSolver2D {
     make(contactsWGSL, [L.contacts], ['hashInsert', 'narrowphase']);
     make(topologyWGSL, [L.topo], [
       'degreeJoints', 'degreeContacts', 'fillJoints', 'fillContacts',
-      'colorCompact', 'colorMark', 'colorRoundAB', 'colorRoundBA', 'colorCount', 'colorScan', 'colorScatter',
+      'colorCompact', 'colorMark', 'colorRoundAB', 'colorRoundBA', 'colorCount', 'colorStarts', 'colorScatter',
     ]);
-    make(solveWGSL, [L.solve, L.pass], ['warmStartJoints', 'warmStartBodies', 'primal', 'dualJoints', 'dualContacts', 'refreshStick', 'updateVelocities']);
+    make(solveWGSL, [L.solve, L.pass], ['warmStartJoints', 'warmStartBodies', 'primal', 'primalScan', 'dual', 'refreshStick', 'updateVelocities']);
     make(argsWGSL, [L.args], ['argsPrev', 'argsPairs', 'argsContacts', 'argsColors']);
   }
 
@@ -222,12 +247,20 @@ export class GpuSolver2D {
 
   /**
    * (Re)allocate pair and contact storage. Pairs get twice the room (8 bytes each against 80
-   * per contact; box piles have ~4 bounding-circle pairs per body). Contacts restart without
-   * warm starts.
+   * per contact; box piles have ~4 bounding-circle pairs per body). When growing, both contact
+   * buffers are copied over and the counters are left alone, so warm starts and the colour
+   * statistics survive the reallocation.
    */
-  private allocateContacts(capacity: number, pairCapacity = 2 * capacity): void {
+  private allocateContacts(requested: number, requestedPairs = 2 * requested): void {
     const d = this.device;
-    for (const b of [this.pairBuffer, this.tableBuffer, ...(this.contactBuffers ?? [])]) b?.destroy();
+    // Never exceed what one storage binding may hold (128 MB by default): beyond that the
+    // bind groups would be invalid. Overflow is then reported through the counters instead.
+    const maxBinding = d.limits.maxStorageBufferBindingSize;
+    const capacity = Math.min(requested, Math.floor(maxBinding / (CONTACT_WORDS * 4)), Math.floor(maxBinding / 16));
+    const pairCapacity = Math.min(requestedPairs, Math.floor(maxBinding / 8));
+    const old = this.contactBuffers;
+    const oldCapacity = this.contactCapacity;
+    for (const b of [this.pairBuffer, this.tableBuffer]) b?.destroy();
     this.contactCapacity = capacity;
     this.pairCapacity = pairCapacity;
     // Up to one entry per contact plus one per manifold: keep the load factor below ~1/2
@@ -237,8 +270,13 @@ export class GpuSolver2D {
     this.contactBuffers = [0, 1].map((i) =>
       d.createBuffer({ label: `contacts ${i}`, size: capacity * CONTACT_WORDS * 4, usage: storageUsage() }),
     ) as [GPUBuffer, GPUBuffer];
-    // Forget last step's contacts (their buffer is gone)
-    d.queue.writeBuffer(this.counterBuffer, 0, new Uint32Array(COUNTER_WORDS));
+    if (old) {
+      const encoder = d.createCommandEncoder();
+      const bytes = Math.min(oldCapacity, capacity) * CONTACT_WORDS * 4;
+      old.forEach((buffer, i) => encoder.copyBufferToBuffer(buffer, 0, this.contactBuffers[i], 0, bytes));
+      d.queue.submit([encoder.finish()]);
+      old.forEach((buffer) => buffer.destroy());
+    }
     this.rebuildBindings();
   }
 
@@ -445,10 +483,10 @@ export class GpuSolver2D {
   // --- Step ------------------------------------------------------------------------------------
 
   /**
-   * Time the next step on the GPU (timestamp queries) and report its duration in ms. Ignored
-   * without 'timestamp-query' or while a previous timing is still being read back.
+   * Time the next step's phases on the GPU (timestamp queries). Ignored without
+   * 'timestamp-query' or while a previous profile is still being read back.
    */
-  timeNextStep(callback: (ms: number) => void): void {
+  profileNextStep(callback: (profile: StepProfile) => void): void {
     if (this.timing && !this.timingBusy) this.timingCallback = callback;
   }
 
@@ -486,10 +524,10 @@ export class GpuSolver2D {
     u[21] = 2 * this.tableSize + 1; // gridSortedOffset
     u[22] = 2 * this.tableSize + 1 + cap; // gridCellOffset
     u[23] = cap; // stateBOffset
-    u[24] = 2 * cap; // colorCountOffset
-    u[25] = 2 * cap + 65; // colorStartOffset
-    u[26] = 2 * cap + 130; // colorCursorOffset
-    u[27] = 2 * cap + 194; // colorBodiesOffset
+    u[24] = this.colorHistOffset;
+    u[25] = 2 * cap; // colorStartOffset
+    u[26] = this.colorGroups;
+    u[27] = 2 * cap + 65; // colorBodiesOffset
     u[28] = this.colorRounds;
     this.device.queue.writeBuffer(this.paramsBuffer, 0, buf);
   }
@@ -535,13 +573,20 @@ export class GpuSolver2D {
     encoder.clearBuffer(this.gridBuffer, 0, (2 * this.tableSize + 1) * 4);
     encoder.clearBuffer(this.tableBuffer);
     encoder.clearBuffer(this.adjBuffer!, 0, (2 * cap + 1) * 4);
-    encoder.clearBuffer(this.colorBuffer, 2 * cap * 4, 65 * 4);
 
     const timed = this.timingCallback !== null && this.timing !== null;
-    const pass = encoder.beginComputePass({
-      label: 'avbd2d step',
-      timestampWrites: timed ? { querySet: this.timing!.querySet, beginningOfPassWriteIndex: 0, endOfPassWriteIndex: 1 } : undefined,
-    });
+    let pass!: GPUComputePassEncoder;
+    let phase = 0;
+    const split = timed || this.splitPasses;
+    const beginPhase = () => {
+      if (pass && !split) return;
+      pass?.end();
+      pass = encoder.beginComputePass({
+        label: split ? PHASES[phase] : 'avbd2d step',
+        timestampWrites: timed ? { querySet: this.timing!.querySet, beginningOfPassWriteIndex: 2 * phase, endOfPassWriteIndex: 2 * phase + 1 } : undefined,
+      });
+      phase++;
+    };
     const G = this.groups;
     const run = (name: string, group: GPUBindGroup, x: number) => {
       if (x <= 0) return;
@@ -556,6 +601,7 @@ export class GpuSolver2D {
     };
 
     // Collision: previous contacts into the hash table, grid, pairs, narrowphase
+    beginPhase();
     run('beginFrame', G.broad, 1);
     run('argsPrev', G.args, 1);
     runIndirect('hashInsert', G.contacts[cur], IA_PREV);
@@ -567,21 +613,27 @@ export class GpuSolver2D {
     runIndirect('narrowphase', G.contacts[cur], IA_PAIRS);
     run('argsContacts', G.args, 1);
 
-    // Adjacency and colouring
+    // Adjacency
+    beginPhase();
     run('degreeJoints', G.topo[cur], groups(J));
     runIndirect('degreeContacts', G.topo[cur], IA_CONTACTS);
     this.adjScan!.encode(pass);
     run('fillJoints', G.topo[cur], groups(J));
     runIndirect('fillContacts', G.topo[cur], IA_CONTACTS);
+
+    // Colouring
+    beginPhase();
     run('colorCompact', G.topo[cur], groups(N));
     run('colorMark', G.topo[cur], groups(N));
     for (let r = 0; r < this.colorRounds; r++) run(r % 2 === 0 ? 'colorRoundAB' : 'colorRoundBA', G.topo[cur], groups(N));
-    run('colorCount', G.topo[cur], groups(N));
-    run('colorScan', G.topo[cur], 1);
+    run('colorCount', G.topo[cur], this.colorGroups);
+    this.colorHistScan.encode(pass);
+    run('colorStarts', G.topo[cur], 1);
     run('argsColors', G.args, 1);
-    run('colorScatter', G.topo[cur], groups(N));
+    run('colorScatter', G.topo[cur], this.colorGroups);
 
     // Solve
+    beginPhase();
     const perIteration = this.colorCap + 1;
     const setPass = (entry: number) => pass.setBindGroup(1, this.passGroup!, [entry * PASS_STRIDE]);
     pass.setBindGroup(0, G.solve[cur]);
@@ -593,19 +645,18 @@ export class GpuSolver2D {
     pass.setPipeline(this.pipes.warmStartBodies);
     pass.dispatchWorkgroups(groups(N));
     for (let it = 0; it < totalIterations; it++) {
-      pass.setPipeline(this.pipes.primal);
+      const scan = this.primalMode === 'scan';
+      pass.setPipeline(scan ? this.pipes.primalScan : this.pipes.primal);
       for (let col = 0; col < this.colorCap; col++) {
         setPass(it * perIteration + col);
-        pass.dispatchWorkgroupsIndirect(this.argsBuffer, (IA_COLOR + 3 * col) * 4);
+        if (scan) pass.dispatchWorkgroups(groups(N));
+        else pass.dispatchWorkgroupsIndirect(this.argsBuffer, (IA_COLOR + 3 * col) * 4);
       }
       if (it < p.iterations) {
+        // One dual pass over joints and contacts together
         setPass(it * perIteration + this.colorCap);
-        if (J > 0) {
-          pass.setPipeline(this.pipes.dualJoints);
-          pass.dispatchWorkgroups(groups(J));
-        }
-        pass.setPipeline(this.pipes.dualContacts);
-        pass.dispatchWorkgroupsIndirect(this.argsBuffer, IA_CONTACTS * 4);
+        pass.setPipeline(this.pipes.dual);
+        pass.dispatchWorkgroupsIndirect(this.argsBuffer, IA_CONSTRAINTS * 4);
       }
       if (it === p.iterations - 1) {
         pass.setPipeline(this.pipes.updateVelocities);
@@ -618,10 +669,11 @@ export class GpuSolver2D {
     }
     pass.end();
 
+    const stamps = 2 * PHASES.length;
     if (timed) {
       const { querySet, resolve, read } = this.timing!;
-      encoder.resolveQuerySet(querySet, 0, 2, resolve, 0);
-      encoder.copyBufferToBuffer(resolve, 0, read, 0, 16);
+      encoder.resolveQuerySet(querySet, 0, stamps, resolve, 0);
+      encoder.copyBufferToBuffer(resolve, 0, read, 0, stamps * 8);
     }
     this.device.queue.submit([encoder.finish()]);
     this.parity = 1 - cur;
@@ -632,11 +684,13 @@ export class GpuSolver2D {
       this.timingBusy = true;
       const read = this.timing!.read;
       void read.mapAsync(GPUMapMode.READ).then(() => {
-        const t = new BigUint64Array(read.getMappedRange());
-        const ms = Number(t[1] - t[0]) / 1e6;
+        const t = new BigUint64Array(read.getMappedRange()).slice();
         read.unmap();
         this.timingBusy = false;
-        callback(ms);
+        const ms = (a: number, b: number) => Number(t[b] - t[a]) / 1e6;
+        const profile = { total: ms(0, stamps - 1) } as StepProfile;
+        PHASES.forEach((name, i) => (profile[name] = ms(2 * i, 2 * i + 1)));
+        callback(profile);
       });
     }
   }
@@ -684,17 +738,36 @@ export class GpuSolver2D {
 
   /**
    * Adapt the colour cap and pair/contact capacity to what the GPU reported (pass a recent
-   * counters readback; changes apply from the next step). Growing the contact storage drops
-   * one step of warm starts.
+   * counters readback; changes apply from the next step).
    */
   adapt(counters: GpuCounters): void {
-    // Keep head-room above the colours in use so the colouring never has to clash
-    if (counters.colors >= this.colorCap - 1 && this.colorCap < MAX_COLORS) this.colorCap = Math.min(MAX_COLORS, this.colorCap + 8);
+    // Colour cap = colours in use + 2. Each colour below the cap costs one (possibly empty)
+    // primal dispatch per iteration (~12 µs each on an M4 Max), so keep it tight: grow at once
+    // when the colouring runs into it, shrink only after three quiet readbacks.
+    const used = counters.colors;
+    if (counters.clashes > 0 || used >= this.colorCap - 1) {
+      this.colorCap = Math.min(MAX_COLORS, Math.max(used + 4, this.colorCap + 4));
+      this.shrinkVotes = 0;
+    } else if (used + 2 < this.colorCap) {
+      if (++this.shrinkVotes >= 3) {
+        this.colorCap = Math.max(4, used + 2);
+        this.shrinkVotes = 0;
+      }
+    } else {
+      this.shrinkVotes = 0;
+    }
     const contactsFull = (counters.overflow & 2) !== 0 || counters.contacts > 0.8 * this.contactCapacity;
     const pairsFull = (counters.overflow & 1) !== 0 || counters.pairs > 0.8 * this.pairCapacity;
-    if (contactsFull || pairsFull) {
-      this.allocateContacts(this.contactCapacity * (contactsFull ? 2 : 1), this.pairCapacity * (pairsFull ? 2 : 1));
-    }
+    const contacts = this.contactCapacity * (contactsFull ? 2 : 1);
+    const pairs = this.pairCapacity * (pairsFull ? 2 : 1);
+    if ((contactsFull || pairsFull) && this.capacityCanGrow(contacts, pairs)) this.allocateContacts(contacts, pairs);
+  }
+
+  /** Whether a reallocation to these capacities would actually grow anything (limits apply). */
+  private capacityCanGrow(contacts: number, pairs: number): boolean {
+    const maxBinding = this.device.limits.maxStorageBufferBindingSize;
+    const maxContacts = Math.min(Math.floor(maxBinding / (CONTACT_WORDS * 4)), Math.floor(maxBinding / 16));
+    return Math.min(contacts, maxContacts) > this.contactCapacity || Math.min(pairs, Math.floor(maxBinding / 8)) > this.pairCapacity;
   }
 
   /** Kinetic energy, hard-joint error and live joint count, from a readback (async, slow). */
@@ -753,6 +826,7 @@ export class GpuSolver2D {
     for (const b of buffers) b?.destroy();
     this.timing?.querySet.destroy();
     this.gridScan.destroy();
+    this.colorHistScan.destroy();
     this.adjScan?.destroy();
   }
 }

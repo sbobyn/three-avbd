@@ -4,6 +4,8 @@
 // hard when its stiffness is >= HARD.
 
 export const WORKGROUP_SIZE = 64;
+/** Bodies per workgroup in the colour bucketing kernels (one histogram per workgroup). */
+export const COLOR_WG = 256;
 export const BIG = 3.0e38;
 
 /** Floats per body: pose (x, y, angle, friction), initial, inertial, vel, prevVel, shape. */
@@ -55,7 +57,8 @@ export const COUNTER_WORDS = 16;
 export const IA_PAIRS = 0;
 export const IA_CONTACTS = 3;
 export const IA_PREV = 6;
-export const IA_COLOR = 9; // + 3 * colour
+export const IA_CONSTRAINTS = 9; // joints + contacts (the dual pass)
+export const IA_COLOR = 12; // + 3 * colour
 export const ARGS_WORDS = IA_COLOR + 3 * MAX_COLORS;
 
 /** Words in the Params uniform (see the struct in PRELUDE). */
@@ -97,9 +100,11 @@ const C_NUM_COLORS = ${C_NUM_COLORS}u;
 const IA_PAIRS = ${IA_PAIRS}u;
 const IA_CONTACTS = ${IA_CONTACTS}u;
 const IA_PREV = ${IA_PREV}u;
+const IA_CONSTRAINTS = ${IA_CONSTRAINTS}u;
 const IA_COLOR = ${IA_COLOR}u;
 
 const WG = ${WORKGROUP_SIZE}u;
+const COLOR_WG = ${COLOR_WG}u;
 
 struct Body {
   pose: vec4f,      // x, y, angle, friction
@@ -155,9 +160,9 @@ struct Params {
   gridSortedOffset: u32,
   gridCellOffset: u32,
   stateBOffset: u32,
-  colorCountOffset: u32,
+  colorHistOffset: u32,   // per (colour, workgroup) body counts, scanned into slot offsets
   colorStartOffset: u32,
-  colorCursorOffset: u32,
+  colorGroups: u32,       // workgroups of COLOR_WG bodies covering the body capacity
   colorBodiesOffset: u32,
   rounds: u32,
   pad0: u32,
@@ -214,11 +219,14 @@ fn argsPairs() {
 
 @compute @workgroup_size(1)
 fn argsContacts() {
-  setArgs(IA_CONTACTS, min(counters[C_CONTACTS], params.contactCapacity));
+  let contacts = min(counters[C_CONTACTS], params.contactCapacity);
+  setArgs(IA_CONTACTS, contacts);
+  setArgs(IA_CONSTRAINTS, params.jointCount + contacts);
 }
 
 @compute @workgroup_size(64)
 fn argsColors(@builtin(local_invocation_id) lid: vec3u) {
-  setArgs(IA_COLOR + 3u * lid.x, color[params.colorCountOffset + lid.x]);
+  let c = lid.x;
+  setArgs(IA_COLOR + 3u * c, color[params.colorStartOffset + c + 1u] - color[params.colorStartOffset + c]);
 }
 `;

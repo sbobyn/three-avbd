@@ -75,8 +75,8 @@ export class Renderer2D {
   private readonly matrix = new THREE.Matrix4();
   private readonly color = new THREE.Color();
 
-  constructor(canvas: HTMLCanvasElement) {
-    this.renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
+  constructor(canvas: HTMLCanvasElement, requiredLimits?: Record<string, number>) {
+    this.renderer = new THREE.WebGPURenderer({ canvas, antialias: true, requiredLimits });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.scene.background = new THREE.Color(COLORS.background);
 
