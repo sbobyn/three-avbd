@@ -21,7 +21,9 @@ pnpm scaling2d  # box rain 10k-250k, writes docs/data/scaling2d-<adapter>.json
 
 Browser benchmarks for any machine: http://127.0.0.1:5317/bench.html (2D) and
 /bench3d.html (3D, including the paper's 110k and 510k scenes). Each runs the GPU suite;
-"Copy results" gives JSON to paste back. Keep the tab visible while it runs.
+"Copy results" gives JSON to paste back. Keep the tab visible while it runs. Results against
+the paper, one column per machine: /results.html (reports in `docs/data/bench3d/`; add one
+with bench3d.html's "Download results" or `pnpm bench3d:gpu <tiers> --json <file> --machine <name>`).
 
 2D demo controls: left-drag grabs a body, right-click spawns a box, wheel zooms,
 space/shift + drag or middle-drag pans, WASD/QE move the camera, P pauses, `.` steps, R resets.

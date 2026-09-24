@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AVBD 3D Results</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f4f4f1;
+        --fg: #1d1d1f;
+        --muted: #6b6b70;
+        --line: #d8d8d4;
+        --paper: #8a8f98;
+        --solve: #3a6fd8;
+        --rest: #9db8ec;
+        --good: #2e8540;
+        --bad: #c0562b;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #161618;
+          --fg: #ececee;
+          --muted: #9a9aa0;
+          --line: #333338;
+          --paper: #6f747c;
+          --solve: #6b98f0;
+          --rest: #34507f;
+          --good: #5cc26f;
+          --bad: #e58a5f;
+        }
+      }
+      body {
+        margin: 0;
+        padding: 24px 16px 48px;
+        background: var(--bg);
+        color: var(--fg);
+        font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      h2 {
+        font-size: 15px;
+        margin: 32px 0 8px;
+      }
+      h3 {
+        font-size: 14px;
+        margin: 20px 0 6px;
+      }
+      p,
+      li {
+        color: var(--muted);
+      }
+      p {
+        margin: 0 0 12px;
+      }
+      a {
+        color: inherit;
+      }
+      .table-wrap {
+        overflow-x: auto;
+        margin-bottom: 8px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        text-align: right;
+        padding: 4px 10px;
+        border-bottom: 1px solid var(--line);
+        white-space: nowrap;
+        vertical-align: top;
+      }
+      th:first-child,
+      td:first-child {
+        text-align: left;
+      }
+      th {
+        font-weight: 600;
+      }
+      td.wrap {
+        white-space: normal;
+        min-width: 16em;
+        text-align: left;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .good {
+        color: var(--good);
+      }
+      .bad {
+        color: var(--bad);
+      }
+      .error {
+        color: var(--bad);
+        white-space: normal;
+        text-align: left;
+      }
+      .chart {
+        display: grid;
+        grid-template-columns: minmax(8em, 14em) 1fr;
+        gap: 4px 12px;
+        align-items: center;
+        margin: 8px 0 20px;
+      }
+      .chart .label {
+        color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .bar span {
+        white-space: nowrap;
+      }
+      .bar .fill {
+        display: flex;
+        height: 16px;
+        border-radius: 2px;
+        overflow: hidden;
+        flex: none;
+      }
+      .bar .solve {
+        background: var(--solve);
+      }
+      .bar .rest {
+        background: var(--rest);
+      }
+      .bar .paper-solve {
+        background: var(--paper);
+      }
+      .bar .paper-rest {
+        background: var(--paper);
+        opacity: 0.45;
+      }
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .swatch {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        margin-right: 6px;
+        vertical-align: middle;
+      }
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        min-height: 8em;
+        font: inherit;
+        background: transparent;
+        color: inherit;
+        border: 1px solid var(--line);
+        padding: 8px;
+      }
+      button {
+        font: inherit;
+        padding: 6px 12px;
+        margin: 8px 8px 0 0;
+      }
+      code {
+        color: var(--fg);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>AVBD 3D — results against the paper</h1>
+      <p>
+        Our WebGPU implementation of Augmented Vertex Block Descent (Giles, Diaz, Yuksel, SIGGRAPH 2025), timed on
+        the scenes of the paper's performance figures, against the times the paper reports on an NVIDIA RTX 4090.
+        One column per machine; each is a report in <code>docs/data/bench3d/</code>. Run the suite with
+        <a href="bench3d.html">bench3d.html</a> (or <code>pnpm bench3d:gpu</code>).
+      </p>
+      <div id="machines"></div>
+
+      <h2>Against the paper</h2>
+      <p>
+        Per frame, whole step (collision, colouring, solve). Paper times include collision detection; the solve part is
+        from its Table 1. Ratio = ours / paper: below 1× is faster.
+      </p>
+      <div id="paper"></div>
+
+      <h2>All scenes</h2>
+      <p>Wall time per step (the queue kept busy), ms. Small scenes run on anything; settled scenes track the development notes.</p>
+      <div id="scenes" class="table-wrap"></div>
+
+      <h2>Per machine</h2>
+      <p>
+        GPU time per phase is the median of 10 isolated steps (timestamp queries), which run at lower clocks than
+        back-to-back steps, so the phases can add up to more than the wall time.
+      </p>
+      <div id="details"></div>
+
+      <h2>The paper's Table 1 (RTX 4090, solver only)</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>scene</th><th>Seq. Impulse</th><th>XPBD</th><th>VBD</th><th>AVBD</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Fig. 1, 110,000 bodies</td><td>14.1 ms (15 it)</td><td>19.5 ms (6 sub)</td><td>10.8 ms (15 it)</td><td>3.5 ms (4 it)</td></tr>
+            <tr><td>Fig. 3, 510,000 bodies</td><td>78.4 ms (27 it)</td><td>524.7 ms (26 sub)</td><td>26.5 ms (8 it)</td><td>10.3 ms (3 it)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Iteration counts are what each method needed to keep the piles standing. Timestep 1/60 s throughout.</p>
+
+      <h2>How to read this</h2>
+      <ul>
+        <li>
+          The scenes follow the paper's figures but are ours: the paper does not publish its scene files. Each has a
+          note in the table above. Fig. 14's scene includes a 10,000-vertex cloth we do not simulate.
+        </li>
+        <li>
+          Moving scenes are timed in a short window (about 110 steps) right after a 60-step lead-in, while the spheres
+          are still breaking walls, so every machine times the same stretch of the simulation.
+        </li>
+        <li>
+          Still pairs keep their contact points between steps (<code>reuseContacts</code>), which helps most in the
+          parts of a scene nothing has hit yet. The paper doesn't mention doing this.
+        </li>
+        <li>
+          Wall times depend on clocks: close other GPU work, keep the tab visible, and prefer AC power. A hidden tab or
+          battery power can read several times slower.
+        </li>
+        <li>GPU MB is the peak size of the solver's buffers for the scene.</li>
+      </ul>
+
+      <h2>Add a machine</h2>
+      <p>
+        Run <a href="bench3d.html">bench3d.html</a> on it with a machine name, press "Download results", and put the
+        file in <code>docs/data/bench3d/</code> (commit it to keep it). To preview without committing, paste the
+        copied JSON here; it stays in this browser only.
+      </p>
+      <textarea id="paste" placeholder="Paste a report from bench3d.html (Copy results)"></textarea>
+      <div>
+        <button id="add">Add to the page</button>
+        <button id="clear">Remove pasted reports</button>
+        <span id="paste-status" class="muted"></span>
+      </div>
+    </main>
+    <script type="module" src="/src/results/main.ts"></script>
+  </body>
+</html>

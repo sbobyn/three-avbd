@@ -2,7 +2,7 @@
 // this machine's GPU, with results to copy back. Meant for measuring the target hardware (M1,
 // GTX 1080) directly instead of extrapolating from the development machine.
 
-import { BENCH_CASES, type BenchResult, measureCase, type Tier } from '../avbd3d/bench-cases.ts';
+import { BENCH_CASES, type BenchReport, type BenchResult, measureCase, type Tier } from '../avbd3d/bench-cases.ts';
 import { PHASES } from '../avbd3d/gpu/solver.ts';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -68,11 +68,26 @@ async function run(): Promise<void> {
     log(`Failed: ${e instanceof Error ? e.message : String(e)}`);
   }
   $<HTMLButtonElement>('#run').disabled = false;
-  $<HTMLButtonElement>('#copy').disabled = results.length === 0;
-  const limits = gpu && { maxStorageBufferBindingSize: gpu.adapter.limits.maxStorageBufferBindingSize, maxBufferSize: gpu.adapter.limits.maxBufferSize };
+  $<HTMLButtonElement>('#copy').disabled = $<HTMLButtonElement>('#download').disabled = results.length === 0;
+  const report = (): BenchReport => ({
+    machine: $<HTMLInputElement>('#machine').value.trim() || gpu?.info || 'unknown machine',
+    adapter: gpu?.info ?? 'unknown adapter',
+    source: navigator.userAgent,
+    date: new Date().toISOString().slice(0, 10),
+    timestamps,
+    results,
+  });
   $<HTMLButtonElement>('#copy').onclick = () => {
-    const text = JSON.stringify({ adapter: gpu?.info, limits, timestamps, userAgent: navigator.userAgent, results }, null, 1);
-    void navigator.clipboard.writeText(text).then(() => log('Results copied to the clipboard.'));
+    void navigator.clipboard.writeText(JSON.stringify(report(), null, 1)).then(() => log('Results copied to the clipboard.'));
+  };
+  $<HTMLButtonElement>('#download').onclick = () => {
+    const r = report();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([`${JSON.stringify(r, null, 1)}\n`], { type: 'application/json' }));
+    a.download = `${r.machine.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'results'}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    log(`Saved ${a.download}: put it in docs/data/bench3d/ and it shows up on results.html.`);
   };
 }
 

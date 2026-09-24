@@ -16,6 +16,49 @@ import { Solver } from './ref/solver.ts';
  */
 export type Tier = 'small' | 'paper' | 'large' | 'steady';
 
+/** What the paper reports for a scene one of ours stands in for (RTX 4090). */
+export interface PaperScene {
+  figure: string;
+  description: string;
+  bodies: number;
+  iterations: number;
+  /** Per frame, including collision detection. */
+  totalMs: number;
+  /** The solver alone (Table 1), when reported. */
+  solveMs?: number;
+  /** How our scene differs. */
+  note: string;
+}
+
+export const PAPER_SCENES = {
+  fig1: {
+    figure: 'Fig. 1, Table 1',
+    description: 'A pile of 110,000 blocks (a stepped ring wall of bricks) smashed by a sphere',
+    bodies: 110_000,
+    iterations: 4,
+    totalMs: 9.8,
+    solveMs: 3.5,
+    note: 'Ours: a stepped ring wall of 110,332 bricks, 160 m across, hit from inside by one sphere.',
+  },
+  fig3: {
+    figure: 'Fig. 3, Table 1',
+    description: 'Piles of 510,000 blocks (a field of triangular brick walls) smashed by two spheres',
+    bodies: 510_000,
+    iterations: 3,
+    totalMs: 17.6,
+    solveMs: 10.3,
+    note: 'Ours: 1,088 triangular walls of 465 bricks (505,920) and two spheres. Table 1 gives 3 iterations, the caption 4.',
+  },
+  fig14: {
+    figure: 'Fig. 14',
+    description: '35,000 rigid bodies joined by 72,000 joints falling onto a 10,000-vertex cloth',
+    bodies: 35_000,
+    iterations: 10,
+    totalMs: 16,
+    note: 'Ours has no cloth: 600 jointed plates (34,097 bodies, 71,064 joints) fall onto a chain-mail net pinned at its edges.',
+  },
+} satisfies Record<string, PaperScene>;
+
 export interface BenchCase {
   name: string;
   tier: Tier;
@@ -23,8 +66,8 @@ export interface BenchCase {
   build: (solver: Solver) => void;
   /** Steps before timing starts (capacities and the colour cap adapt meanwhile). */
   lead: number;
-  /** The paper's reported time for this scene on an RTX 4090, if it has one. */
-  paper?: string;
+  /** The paper's scene this one stands in for, if any. */
+  paper?: PaperScene;
 }
 
 export const BENCH_CASES: BenchCase[] = [
@@ -33,17 +76,17 @@ export const BENCH_CASES: BenchCase[] = [
   { name: 'Brick ring 9k', tier: 'small', iterations: 4, build: (s) => brickRing(s, 12, 20, 2, 10), lead: 60 },
   { name: 'Brick gables 6.7k', tier: 'small', iterations: 3, build: (s) => brickGables(s, 4, 8, 20), lead: 60 },
   { name: 'Jointed drop 6k', tier: 'small', iterations: 10, build: (s) => jointedDrop(s, 5, 4, 32), lead: 60 },
-  { name: 'Brick ring 110k', tier: 'paper', iterations: 4, build: (s) => brickRing(s), lead: 60, paper: '9.8 ms (3.5 solve)' },
+  { name: 'Brick ring 110k', tier: 'paper', iterations: 4, build: (s) => brickRing(s), lead: 60, paper: PAPER_SCENES.fig1 },
   {
     name: 'Jointed drop 34k (71k joints)',
     tier: 'paper',
     iterations: 10,
     build: (s) => jointedDrop(s),
     lead: 60,
-    paper: '16 ms (35k bodies, 72k joints, onto cloth)',
+    paper: PAPER_SCENES.fig14,
   },
   // Table 1 lists 3 iterations for this scene, the Fig. 3 caption 4
-  { name: 'Brick gables 506k', tier: 'large', iterations: 3, build: (s) => brickGables(s), lead: 60, paper: '17.6 ms (10.3 solve)' },
+  { name: 'Brick gables 506k', tier: 'large', iterations: 3, build: (s) => brickGables(s), lead: 60, paper: PAPER_SCENES.fig3 },
   { name: 'Settled pile 32k', tier: 'steady', iterations: 4, build: (s) => boxPile(s, 40, 20), lead: 180 },
   { name: 'Box columns 100k', tier: 'steady', iterations: 4, build: (s) => boxColumns(s, 100, 10), lead: 180 },
 ];
@@ -64,9 +107,25 @@ export interface BenchResult {
   buildMs: number;
   /** Peak bytes of GPU buffers the solver held. */
   gpuBytes: number;
+  /** The paper's time for the scene this stands in for (display text). */
   paper?: string;
   error?: string;
 }
+
+/** One machine's run of the suite: what bench3d.html downloads and results.html reads. */
+export interface BenchReport {
+  /** A short name for the machine, e.g. "MacBook Pro M1". */
+  machine: string;
+  adapter: string;
+  /** How it was run: a browser (user agent) or the headless script. */
+  source: string;
+  /** ISO date of the run. */
+  date: string;
+  timestamps: boolean;
+  results: BenchResult[];
+}
+
+export const paperText = (p: PaperScene): string => `${p.totalMs} ms${p.solveMs ? ` (${p.solveMs} solve)` : ''}`;
 
 const yieldToEventLoop = () => new Promise((r) => setTimeout(r, 0));
 
@@ -91,7 +150,7 @@ export async function measureCase(device: GPUDevice, c: BenchCase, log: (text: s
     gpu: null,
     buildMs: 0,
     gpuBytes: 0,
-    paper: c.paper,
+    paper: c.paper && paperText(c.paper),
   };
   // Count the solver's buffer bytes: wrap createBuffer for the duration of the case
   const createBuffer = device.createBuffer;

@@ -2,6 +2,23 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 8i: the solve at 506k is near the M4 Max's bandwidth
+
+In-step per-dispatch timestamps (5 untimed steps between timed ones keep the clocks up; the
+sum matched the bench's solve phase): gables 506k, 3 iterations, 14.7 ms = dual 4.85 (33%),
+the two biggest colours (173k, 164k bodies) 5.2 (35%), the rest of the colours 4.0, warm start
+and velocities 0.6. Ring 110k: dual 28%, biggest two colours 39%.
+The dual pass streams ~700 MB an iteration (pairs, both bodies, 4.45M 64-byte points read, the
+changed fields written) in 1.6 ms: ~440 GB/s against the M4 Max's 546 GB/s. The RTX 4090 has
+~1 TB/s; our solve is 1.43x the paper's at 506k (14.8 vs 10.3 ms) on about half the bandwidth.
+
+Tried: running each pair's dual in primal, by the body that closes the pair (the later colour:
+both poses are final then and nothing reads the pair again that iteration, so the maths is the
+same; the seeded parity test passed). Interleaved against the previous commit: gables -1.9%,
+ring 110k -2.9%, columns -4.5%, chain mail -8.4%, but jointed drop 34k +7.3%, settled pile
++3.5%. The points are not in cache any more by then, and the dual work lengthens each colour's
+dependent-load chain. Reverted.
+
 ## 2026-09-24 — Stage 8h: collision — separated pairs, and a reuse idea that did not pay
 
 ### Where collision time goes (per-dispatch timestamps inside real steps)
