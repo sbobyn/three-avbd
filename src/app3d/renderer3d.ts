@@ -59,6 +59,8 @@ export class Renderer3D {
   readonly scene = new THREE.Scene();
   showContacts = true;
   showJoints = true;
+  /** Cast shadows (the shadow pass draws every body a second time). */
+  shadows = true;
   selected = -1;
   /** World-space drag line (anchor on the body, then the target), or null. */
   dragLine: [ArrayLike<number>, ArrayLike<number>] | null = null;
@@ -157,6 +159,7 @@ export class Renderer3D {
 
   render(sim: Sim3D, target: THREE.Vector3): void {
     this.placeLight(target);
+    this.light.castShadow = this.shadows;
     if (this.gpuBodies) {
       if (sim.bodyCount !== this.gpuBodiesShown) {
         this.gpuBodies.setBodies(sim.bodyCount, (i) => sim.isSphere?.(i) ?? false);

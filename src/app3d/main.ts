@@ -39,6 +39,8 @@ const state = {
   boxVelocity: 10,
   showContacts: true,
   showJoints: true,
+  // Shadow maps redraw every body again each frame; off helps older GPUs with big scenes
+  shadows: url.searchParams.get('shadows') !== '0',
 };
 /** Solver parameters owned by the app, copied into the solver before every step. */
 const params = gpuParams3D();
@@ -140,6 +142,7 @@ solverFolder.add(params, 'faceBias').name('Face-biased SAT (GPU)');
 const view = gui.addFolder('View');
 view.add(state, 'showContacts').name('Contacts');
 view.add(state, 'showJoints').name('Joints / springs');
+view.add(state, 'shadows').name('Shadows');
 
 // --- Input -----------------------------------------------------------------------------
 
@@ -254,6 +257,7 @@ function frame(now: number): void {
 
   renderer.showContacts = state.showContacts;
   renderer.showJoints = state.showJoints;
+  renderer.shadows = state.shadows;
   renderer.selected = sim.dragBody;
   renderer.dragLine = null;
   if (drag && sim.dragBody >= 0) {

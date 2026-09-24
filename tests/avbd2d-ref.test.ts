@@ -44,6 +44,7 @@ test('matches the upstream C++ solver on every scene', () => {
   });
 });
 
+// Blow-ups show within a few dozen frames (all scenes are in contact or swinging by then)
 test('every scene stays finite in each solver mode', () => {
   const modes: Partial<Solver>[] = [
     { postStabilize: false, alpha: 0.95 },
@@ -53,7 +54,7 @@ test('every scene stays finite in each solver mode', () => {
   ];
   for (const mode of modes) {
     for (const scene of scenes) {
-      const s = run(scene.name, 120, (solver) => Object.assign(solver, mode));
+      const s = run(scene.name, 40, (solver) => Object.assign(solver, mode));
       for (const b of s.bodies) assert.ok(b.position.every(Number.isFinite), `${scene.name} ${JSON.stringify(mode)}`);
     }
   }

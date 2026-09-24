@@ -111,9 +111,10 @@ interface BodyInfo {
 
 /**
  * Pairs the GPU broadphase will report for these bodies (bounding spheres and world AABBs
- * overlap, not both static), counted on a CPU hash grid; used to size the buffers.
+ * overlap, not both static), counted on a CPU hash grid; used to size the buffers. Also counts
+ * each body's pairs into `degree` (for the starting colour cap).
  */
-function estimatePairs(bodies: Rigid[]): number {
+function estimatePairs(bodies: Rigid[], degree: Int32Array): number {
   const n = bodies.length;
   const half = bodies.map((b) => {
     if (isSphere(b)) return [b.radius, b.radius, b.radius];
@@ -126,8 +127,14 @@ function estimatePairs(bodies: Rigid[]): number {
     }
     return h;
   });
+  // The GPU's classification (uploadStatics): up to MAX_LARGE bodies above LARGE_FACTOR x the
+  // median radius are tested against everything; the rest size the grid cells
   const radii = bodies.map((b) => b.radius).sort((x, y) => x - y);
-  const cell = Math.max(2 * (radii[Math.floor(n * 0.99)] ?? 1), 1e-3);
+  const median = radii[n >> 1] ?? 1;
+  let maxSmall = 0;
+  for (const r of radii) if (r <= LARGE_FACTOR * median) maxSmall = Math.max(maxSmall, r);
+  if (n > MAX_LARGE) maxSmall = Math.max(maxSmall, radii[n - MAX_LARGE - 1]);
+  const cell = Math.max(2 * maxSmall, 1e-3);
   const overlap = (i: number, j: number) => {
     const a = bodies[i];
     const b = bodies[j];
@@ -137,14 +144,13 @@ function estimatePairs(bodies: Rigid[]): number {
     if (d[0] * d[0] + d[1] * d[1] + d[2] * d[2] > r * r) return false;
     return d.every((x, k) => Math.abs(x) <= half[i][k] + half[j][k]);
   };
-  // Bodies larger than a cell are tested against everything
-  const large: number[] = [];
+  const large = new Set<number>();
   const grid = new Map<number, number[]>();
   const key = (x: number, y: number, z: number) => ((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) >>> 0;
   const cellOf = (i: number) => [0, 1, 2].map((k) => Math.floor(bodies[i].positionLin[k] / cell));
   for (let i = 0; i < n; i++) {
-    if (2 * bodies[i].radius > cell) {
-      large.push(i);
+    if (bodies[i].radius > maxSmall) {
+      large.add(i);
       continue;
     }
     const [x, y, z] = cellOf(i);
@@ -155,19 +161,30 @@ function estimatePairs(bodies: Rigid[]): number {
   }
   let count = 0;
   for (let i = 0; i < n; i++) {
-    if (large.includes(i)) continue;
+    if (large.has(i)) continue;
     const [x, y, z] = cellOf(i);
-    const seen = new Set<number>();
+    // Two cells sharing a hash bucket can count a pair twice: fine for an estimate
     for (let dz = -1; dz <= 1; dz++)
       for (let dy = -1; dy <= 1; dy++)
         for (let dx = -1; dx <= 1; dx++) {
           for (const j of grid.get(key(x + dx, y + dy, z + dz)) ?? []) {
-            if (j < i && !seen.has(j) && overlap(i, j)) count++;
-            seen.add(j);
+            if (j < i && overlap(i, j)) {
+              count++;
+              degree[i]++;
+              degree[j]++;
+            }
           }
         }
   }
-  for (const l of large) for (let j = 0; j < n; j++) if (j !== l && (!large.includes(j) || j < l) && overlap(l, j)) count++;
+  for (const l of large) {
+    for (let j = 0; j < n; j++) {
+      if (j !== l && (!large.has(j) || j < l) && overlap(l, j)) {
+        count++;
+        degree[l]++;
+        degree[j]++;
+      }
+    }
+  }
   return count;
 }
 
@@ -351,7 +368,21 @@ export class GpuSolver3D {
     // first steps drops pairs, and a freshly built wall then sinks into itself for good
     // (floors: a settled random pile has ~3 pairs per body, a brick wall ~6 per brick, ~4
     // contacts per touching pair)
-    const pairs = estimatePairs(ref.bodies);
+    const degree = new Int32Array(ref.bodies.length);
+    const pairs = estimatePairs(ref.bodies, degree);
+    // Starting colour cap: a graph never needs more than max degree + 1 colours (+1 spare).
+    // Each colour below the cap is a dispatch per iteration, and the cap only adapts after
+    // readbacks, so a fixed 12 cost a 3-colour stack 4.5 ms a step until then.
+    const refIndex = new Map<Rigid, number>(ref.bodies.map((b, i) => [b, i]));
+    for (const f of joints) {
+      if (f.bodyA) degree[refIndex.get(f.bodyA)!]++;
+      degree[refIndex.get(f.bodyB)!]++;
+    }
+    let maxDegree = 0;
+    ref.bodies.forEach((b, i) => {
+      if (b.mass > 0) maxDegree = Math.max(maxDegree, degree[i]);
+    });
+    this.colorCap = Math.min(MAX_COLORS, Math.max(2, maxDegree + 2));
     this.allocateContacts(Math.max(8192, 4 * cap, 4 * pairs), Math.max(4096, 4 * cap, 2 * pairs));
     this.writeBodies(0, order.map((r) => ref.bodies[r]));
   }

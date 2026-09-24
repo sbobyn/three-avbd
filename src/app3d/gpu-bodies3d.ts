@@ -62,7 +62,7 @@ export class GpuBodies3D {
       return { ids, geometry, material };
     };
     // Unit shapes, scaled by size: the sphere's size is its diameter on every axis
-    this.shapes = [mesh(new THREE.BoxGeometry(1, 1, 1)), mesh(new THREE.IcosahedronGeometry(0.5, 3))];
+    this.shapes = [mesh(new THREE.BoxGeometry(1, 1, 1)), mesh(new THREE.IcosahedronGeometry(0.5, 2))];
   }
 
   /**

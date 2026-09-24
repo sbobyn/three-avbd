@@ -2,6 +2,77 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 8d: small scenes, rendering, and what was not worth it
+
+### Small scenes are latency-bound, not dispatch-bound
+- Tried first: all iterations in a single 256-thread workgroup (storage barriers instead of
+  dispatch boundaries). 2.5-3x *slower* (wall smash 6.4 → 16.9 ms at 10 it): one GPU core
+  cannot hide the latency, and each colour step waits for its slowest body. Not kept.
+- What bounds a small colour is each body's serial chain of dependent loads (a wall brick
+  has ~24 contact points). `primalWide` splits a body's joints and pairs across two threads
+  and sums the partial 6x6 systems through workgroup memory (two threads is what fits: 64
+  bodies × 176 B partials in the 16 KB guaranteed; more lanes would need a second dispatch
+  dimension). Interleaved A/B, 4 / 10 iterations:
+
+| scene | 1 thread per body | 2 threads | |
+|---|---|---|---|
+| wall smash 2k | 4.64 / 7.35 ms | 1.81 / 4.71 ms | 61% / 36% faster |
+| breakable wall | 1.35 / 2.56 ms | 0.97 / 1.76 ms | 28% / 31% |
+| chain mail | 1.14 / 1.31 ms | 0.89 / 1.04 ms | 22% / 21% |
+| 32k pile | 3.16 / 5.42 ms | 2.70 / 4.39 ms | 14% / 19% |
+| 110k pile | 8.50 / 12.99 ms | 8.12 / 13.47 ms | ±4% |
+| 100k columns | 3.35 / 5.06 ms | 3.48 / 5.35 ms | 4-6% slower |
+
+  Chosen automatically below 8192 bodies per colour.
+
+### Rendering
+With the GPU unthrottled the viewer holds 120 fps with shadows on the 32k pile and on 100k
+box columns (physics at 60 Hz, 5.4 ms per step at 10 iterations); the 37 fps seen earlier was
+the throttled state. Added a View → Shadows toggle (`?shadows=0`) for older GPUs and cut the
+sphere mesh from 1,280 to 320 triangles.
+
+### Host-side costs that bit
+- The CPU pair estimator (buffer sizing) sized its grid from the 99th-percentile radius, so a
+  random pile's largest 1% were tested against every body, with an array lookup inside: scene
+  construction was quadratic (32k bodies 3.6 s, 110k 65 s, 512k never finished). It now uses
+  the GPU's large-body rule (2x median, at most 64) and a set: 110k loads in ~1 s.
+- The colour cap started at 12 and only shrinks after readbacks, so a 3-colour stack paid 12
+  colour dispatches per iteration until then (and the tests, which step in tight loops, paid
+  it throughout). It now starts at the estimated max contact/joint degree + 2.
+- Through Node's Dawn binding each WebGPU call costs ~15-20 µs, so tiny scenes cost ~1.5 ms of
+  host time per step in the tests (0.07 ms in the browser). Test cost scales with steps, not
+  bodies; the suites were trimmed accordingly (below).
+
+### Test suite cost (`pnpm check`)
+Trimmed from ~70 s to ~28 s of test time (CPU 31 → 8 s, GPU 39 → 20 s) without dropping a
+check: golden trajectories now sampled to frame 180 (bit-exact divergence shows within a few
+dozen frames of contact; every scene is in contact by 120), "stays finite" sweeps run 40
+frames, the 2D seeded GPU test seeds at 60 and 120 (not 300), GPU stand checks run 300 frames
+with a collapse-sized speed bound (the exact rest state is checked on the CPU reference), the
+spring mean is taken over six whole periods from the start. The CPU pyramid test was dropped:
+the reference is bit-exact with upstream, and the GPU suite checks the pyramid stands.
+
+### Against the paper (Table 1, Figs 1 and 3; RTX 4090)
+| scene | paper (RTX 4090) | ours (M4 Max, WebGPU) |
+|---|---|---|
+| 110k-block pile, 4 it | 9.8 ms (3.5 solve + 6.3 collision) | **8.2 ms** (~4.4 solve, ~3.3 collision, ~0.5 colouring/adjacency) |
+| 510k-block pile, 3-4 it | 17.6 ms (10.3 solve + 7.2 collision) | **51 ms** at 512k (~26 solve, ~21 collision, ~4 colouring/adjacency) |
+| 35k bodies + 72k joints, 10 it | 16 ms incl. collision | not built (chain mail: 1.6k links + 3.1k joints, 1.0 ms at 10 it) |
+
+Ours: settled random piles of randomly sized and turned boxes (`paper.ts`-style: boxPile, 600
+settling steps, robust wall time); phase split from isolated timestamped steps. Theirs: piles
+being smashed by spheres (contacts churn, so our contact reuse would help less). The RTX 4090
+has ~2x the M4 Max's memory bandwidth (1 TB/s vs 546 GB/s), a 72 MB L2 and several times the
+FP32 throughput. At 110k our working set (~55 MB of bodies and contacts) largely fits the M4
+Max's caches and the whole step beats the paper's; at 512k (~250 MB) it does not, and 4.6x the
+bodies costs 6.2x the time. Collision at that scale (21 ms vs 7.2) is the clearest gap.
+
+### Half-precision contact anchors: not done
+Probe: padding the 64-byte contact record by 16 bytes cost 4.8% (4 it) and 8.2% (10 it) on the
+110k pile, so shaving 12 bytes with f16 anchors would save at most ~4-6%. For that it would
+round anchors to ~0.5 mm (inside stacks), and the parity tests would have to loosen their
+anchor tolerance. Not worth it.
+
 ## 2026-09-24 — Stage 8c: contact reuse and spatial order
 
 Measured with interleaved A/B runs in one process (see Stage 8b).

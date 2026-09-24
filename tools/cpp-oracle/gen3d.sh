@@ -6,7 +6,7 @@ set -e
 cd "$(dirname "$0")"
 OUT=../../tests/fixtures/oracle3d
 mkdir -p "$OUT"
-FRAMES=1,10,60,300,600
+FRAMES=1,10,60,120,180
 for i in $(seq 0 13); do
   ./bin/oracle3d-f64 "$i" "$FRAMES" > "$OUT/scene-$i.json"
 done

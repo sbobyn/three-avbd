@@ -55,7 +55,9 @@ for (const [label, params] of [['parallel params', parallelParams()], ['demo par
       const exact = EXACT_SCENES.includes(scene);
       const cpu = soa(scene, params);
       let frame = 0;
-      for (const at of [60, 120, 300]) {
+      // Two states (one step is compared from each, so more add little). Not earlier than 60:
+      // the touching scenes' contacts still flicker between f32 and f64 then, and so do colours.
+      for (const at of [60, 120]) {
         while (frame < at) {
           cpu.step();
           frame++;
@@ -183,7 +185,7 @@ gpuTest('GPU: static friction holds the slope; Eq. 14 recovers Coulomb sliding',
   const sim = createGpuSim(device!, 'Static Friction', parallelParams());
   for (let i = 0; i < 300; i++) sim.step();
   const before = await sim.solver.readBodies();
-  for (let i = 0; i < 1800; i++) sim.step();
+  for (let i = 0; i < 600; i++) sim.step();
   const after = await sim.solver.readBodies();
   for (let i = 1; i < sim.bodyCount; i++) {
     const d = Math.hypot(after[i * BODY_FLOATS] - before[i * BODY_FLOATS], after[i * BODY_FLOATS + 1] - before[i * BODY_FLOATS + 1]);
