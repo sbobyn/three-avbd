@@ -22,7 +22,18 @@ wall smash -53%, chain mail -15%, jointed drop 34k -35%, settled pile 32k -19%, 
 -14%, gables 506k -15%, box columns 100k +4% (4 contacts per box: one lane is enough there;
 colour size cannot tell it from the ring). Against the previous commit (which already used
 two lanes for small scenes), interleaved on battery: wall smash -28.5%, jointed drop 6k
--24.1%, ring 9k -27.9%, settled pile 32k -3.5%. Large scenes still to be re-measured on AC.
+-24.1%, ring 9k -27.9%, settled pile 32k -3.5%. On AC, machine quiet, interleaved against the
+previous commit: ring 110k 11.83 -> 10.33 ms (-12.7%), jointed drop 34k 7.82 -> 6.53 ms
+(-16.5%), gables 506k 27.29 -> 25.88 ms (-5.2%), box columns 100k 2.88 -> 3.12 ms (+8.2%: two
+lanes on 4-contact boxes cost ~3% against one, and three spare colours add 8 empty dispatches
+to a 3 ms step; letting colours above 8-24k bodies take one lane won 0-3% on the columns but
+lost 2-6% on the ring and gables, so the rule stays).
+
+| scene (bench3d, AC) | ours now | paper, RTX 4090 |
+|---|---|---|
+| Brick ring 110k, 4 it | **10.4 ms** (solve 5.6, collision 4.3) | 9.8 ms (3.5, 6.3) |
+| Jointed drop 34k + 71k joints, 10 it | **6.4 ms** | 16 ms incl. cloth |
+| Brick gables 506k, 3 it | **25.5 ms** (solve 14.2, collision 8.5) | 17.6 ms (10.3, 7.2) |
 
 ### Colour-cap overflow: a pre-existing bug found while testing this
 The GPU "stack and pyramid" test sat on its limit (top brick 7.55-7.57 vs >= 7.55) and one
