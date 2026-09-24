@@ -2,6 +2,41 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 8c: contact reuse and spatial order
+
+Measured with interleaved A/B runs in one process (see Stage 8b).
+
+### Reusing contact points of still pairs (`reuseContacts`, on by default)
+A small kernel keeps a reference pose per body; a body that moves more than 2 mm or turns
+more than 2 mrad from it takes a new reference and records the step. A pair whose points were
+computed no earlier than both bodies' last move keeps them (anchors, warm-start data) and
+skips SAT and clipping; C0 is still recomputed from the current poses, so the constraint
+error stays exact and only the anchor locations can be up to the tolerance stale. Parity
+tests turn it off.
+- Reuse rate: box columns 96% of pairs by step 120, 100% after; a 32k random pile 22% at step
+  240, 76% at 360, 94% at 600.
+- Gain: 6-12% at 4 iterations, 3-6% at 10 (A/B of two solvers on the same scene). Smaller than
+  the narrowphase's share suggested: SAT was cheaper than the broadphase grid, the pair hash
+  and copying the records, which reuse still does.
+
+### Spatial (Morton) body order (`spatialSort`, on by default)
+Bodies are stored in Z-curve order of their starting positions, so the bodies a contact
+touches sit near each other in memory. Measured on a settled pile rebuilt three ways:
+scrambled 2.94 ms, builder order 2.83 ms, Morton 2.52 ms (4 it, 32k); 7.84 / 7.75 / 6.79 ms
+at 108k. Scrambling costs little because builder order is already poor; sorting is what
+pays, so a one-off sort at construction captures it and a runtime re-sort (remapping every
+index while running) was not worth building. `GpuSolver3D.gpuIndex(i)` maps reference
+indices; the app only ever uses GPU indices.
+
+### Combined, against the previous commit (interleaved, after 600 settling steps)
+| scene | 4 it | 10 it |
+|---|---|---|
+| 32k random pile | 3.31 → 2.89 ms (13%) | 5.30 → 4.92 ms (7%) |
+| 100k box columns | 2.89 → 2.84 ms (2%) | 4.73 → 4.64 ms (2%) |
+| 250k box columns | 10.65 → 10.38 ms (2%) | 14.66 → 14.84 ms (-1%, noise) |
+| wall smash 2k | 3.07 → 2.28 ms (26%) | 8.15 → 6.98 ms (14%) |
+The random pile is now ahead of the version before contact pairs too (3.15 → 2.89 ms at 4 it).
+
 ## 2026-09-24 — Stage 8b: 3D GPU memory layout (contact pairs)
 
 Decisions below come from interleaved A/B runs of the committed solver against the working

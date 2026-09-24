@@ -240,7 +240,7 @@ fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
   // Inertial target (Eq. 2)
   var inertialPos = pos.xyz + vel.xyz * dt;
   if (dynamic) { inertialPos.z += g * (dt * dt); }
-  bodies[i].inertialPos = vec4f(inertialPos, 0.0);
+  bodies[i].inertialPos = vec4f(inertialPos, bodies[i].inertialPos.w);
   bodies[i].inertialRot = qadd(rot, angVel * dt);
 
   // Adaptive warm start (original VBD paper); vel.w holds last step's vel.z
@@ -308,7 +308,7 @@ fn solveBody(i: u32) {
       normal = mf.geo.xyz;
       friction = mf.geo.w;
       c = mf.ids.z;
-      cEnd = mf.ids.z + mf.ids.w;
+      cEnd = mf.ids.z + pairCount(mf);
       if (c == cEnd) { continue; }
     }
     let k = contacts[c];
@@ -410,7 +410,7 @@ fn dualManifold(m: u32) {
   let A = pairBody(mf.ids.x);
   let B = pairBody(mf.ids.y);
   let basis = orthonormal(mf.geo.xyz);
-  let end = mf.ids.z + mf.ids.w;
+  let end = mf.ids.z + pairCount(mf);
   for (var c = mf.ids.z; c < end; c++) {
     let k = contacts[c];
     let e = evalContact(k, basis, mf.geo.w, A, B, pc.alpha);

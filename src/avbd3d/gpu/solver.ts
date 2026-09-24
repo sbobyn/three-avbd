@@ -20,13 +20,13 @@ import { Manifold } from '../ref/manifold.ts';
 import { defaultParams, type Solver, type SolverParams } from '../ref/solver.ts';
 import {
   ARGS_ITEMS_3D, B_ANGVEL, B_INERTIAL_POS, B_INERTIAL_ROT, B_INITIAL_POS, B_INITIAL_ROT, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS,
-  C_MANIFOLDS, CONTACT_WORDS, FLAG_FACE_BIAS, FLAG_MATCH_NEAREST, J_C0_ANG, J_C0_LIN, J_LAM_ANG, K_LAM, K_PEN, K_RA, K_RB, M_GEO, MANIFOLD_WORDS, STICK_BIT,
+  C_MANIFOLDS, CONTACT_WORDS, FLAG_FACE_BIAS, FLAG_MATCH_NEAREST, FLAG_REUSE_CONTACTS, J_C0_ANG, J_C0_LIN, J_LAM_ANG, K_LAM, K_PEN, K_RA, K_RB, M_GEO, MANIFOLD_WORDS, STICK_BIT,
   J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_SPHERE, T_JOINT, T_SPRING,
   TOPOLOGY_ACCESSORS_3D,
 } from './layout.ts';
 import { isSphere } from '../shapes.ts';
 import { rotate, vec3 } from '../ref/math.ts';
-import { broadphaseWGSL, contactsWGSL } from './wgsl-collision.ts';
+import { broadphaseWGSL, contactsWGSL, refsWGSL } from './wgsl-collision.ts';
 import { solveWGSL } from './wgsl-solve.ts';
 
 export { PHASES, type StepProfile };
@@ -71,9 +71,11 @@ export interface GpuParams3D extends SolverParams {
   matchNearest: boolean;
   /** Box2D-style face-over-edge preference in the narrowphase (see wgsl-collision.ts). */
   faceBias: boolean;
+  /** Keep contact points of pairs whose bodies have not moved (skips their narrowphase). */
+  reuseContacts: boolean;
 }
 
-export const gpuParams3D = (): GpuParams3D => ({ ...defaultParams(), matchNearest: true, faceBias: true });
+export const gpuParams3D = (): GpuParams3D => ({ ...defaultParams(), matchNearest: true, faceBias: true, reuseContacts: true });
 
 export interface GpuSolverOptions {
   /** Pre-allocated body buffer (STORAGE | COPY_SRC | COPY_DST), e.g. one Three.js renders from. */
@@ -82,6 +84,12 @@ export interface GpuSolverOptions {
   bodyCapacity?: number;
   /** Jones-Plassmann rounds per step (even). */
   colorRounds?: number;
+  /**
+   * Store bodies in Morton (Z-curve) order of their starting positions rather than the scene
+   * builder's order, so neighbours sit near each other in memory: 11-14% faster steps on a
+   * settled pile (docs/FINDINGS.md). Default true; `gpuIndex` maps reference indices.
+   */
+  spatialSort?: boolean;
   /** A/B timing of kernel variants: replacement WGSL for a module. */
   shaders?: { contacts?: string; solve?: string };
 }
@@ -156,6 +164,31 @@ function estimatePairs(bodies: Rigid[]): number {
   return count;
 }
 
+/** Body indices sorted along a Z-order (Morton) curve of their positions, 10 bits per axis. */
+function mortonOrder(bodies: Rigid[]): number[] {
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  for (const b of bodies) {
+    for (let k = 0; k < 3; k++) {
+      lo[k] = Math.min(lo[k], b.positionLin[k]);
+      hi[k] = Math.max(hi[k], b.positionLin[k]);
+    }
+  }
+  const spread = (v: number) => {
+    let x = v & 0x3ff;
+    x = (x | (x << 16)) & 0x30000ff;
+    x = (x | (x << 8)) & 0x300f00f;
+    x = (x | (x << 4)) & 0x30c30c3;
+    x = (x | (x << 2)) & 0x9249249;
+    return x;
+  };
+  const code = bodies.map((b) => {
+    const q = [0, 1, 2].map((k) => Math.min(1023, Math.floor(((b.positionLin[k] - lo[k]) / Math.max(hi[k] - lo[k], 1e-9)) * 1024)));
+    return (spread(q[0]) | (spread(q[1]) << 1) | (spread(q[2]) << 2)) >>> 0;
+  });
+  return bodies.map((_, i) => i).sort((a, b) => code[a] - code[b] || a - b);
+}
+
 /** Evaluated lazily: under Node the WebGPU globals appear only once a device module loads. */
 const storageUsage = () => GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
 
@@ -166,6 +199,8 @@ export class GpuSolver3D {
   bodyCount = 0;
   readonly bodyCapacity: number;
   readonly bodies: BodyInfo[] = [];
+  /** GPU slot of each of the reference's bodies (identity unless spatially sorted). */
+  private readonly refToGpu: Int32Array;
   jointCount = 0;
   private jointCapacity = 0;
   /** Per joint slot: type, bodyA (-1 = world), bodyB, 0. */
@@ -207,6 +242,10 @@ export class GpuSolver3D {
   private adjBuffer: GPUBuffer | null = null;
   private readonly colorBuffer: GPUBuffer;
   private readonly paramsBuffer: GPUBuffer;
+  /** Per-body reference poses for contact reuse (refsWGSL): 2 vec4 each. */
+  private readonly refBuffer: GPUBuffer;
+  /** Steps taken (the reuse bookkeeping's clock; starts at 1). */
+  private stepCount = 0;
   private passBuffer: GPUBuffer | null = null;
   private passEntries = 0;
 
@@ -220,7 +259,7 @@ export class GpuSolver3D {
   private noCollideCount = 0;
   private staticsDirty = true;
 
-  private readonly layouts: Record<'broad' | 'contacts' | 'topo' | 'solve' | 'pass' | 'args', GPUBindGroupLayout>;
+  private readonly layouts: Record<'broad' | 'contacts' | 'topo' | 'solve' | 'pass' | 'args' | 'refs', GPUBindGroupLayout>;
   private readonly pipes: Record<string, GPUComputePipeline> = {};
   private groups!: {
     broad: GPUBindGroup;
@@ -228,6 +267,7 @@ export class GpuSolver3D {
     topo: [GPUBindGroup, GPUBindGroup];
     solve: [GPUBindGroup, GPUBindGroup];
     args: GPUBindGroup;
+    refs: GPUBindGroup;
   };
   private passGroup: GPUBindGroup | null = null;
   private readonly gridScan: PrefixScan;
@@ -261,6 +301,7 @@ export class GpuSolver3D {
     this.colorGroups = Math.ceil(cap / COLOR_WG);
     this.colorBuffer = device.createBuffer({ label: 'colours', size: (3 * cap + 65 + MAX_COLORS * this.colorGroups + 1) * 4, usage: storageUsage() });
     this.paramsBuffer = device.createBuffer({ label: 'params 3d', size: PARAM_WORDS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.refBuffer = device.createBuffer({ label: 'reference poses', size: cap * 32, usage: storageUsage() });
     device.queue.writeBuffer(this.colorBuffer, 0, new Uint32Array(cap).fill(NO_COLOR));
 
     const stamps = 2 * PHASES.length;
@@ -278,7 +319,10 @@ export class GpuSolver3D {
     this.colorHistScan = new PrefixScan(device, this.colorBuffer, this.colorHistOffset, MAX_COLORS * this.colorGroups + 1);
 
     // Joints and springs in the reference's creation order; IgnoreCollision only filters pairs
-    const index = new Map<Rigid, number>(ref.bodies.map((b, i) => [b, i]));
+    const order = options.spatialSort === false ? ref.bodies.map((_, i) => i) : mortonOrder(ref.bodies);
+    this.refToGpu = new Int32Array(order.length);
+    order.forEach((r, g) => (this.refToGpu[r] = g));
+    const index = new Map<Rigid, number>(ref.bodies.map((b, i) => [b, this.refToGpu[i]]));
     const joints = ref.forces.filter((f): f is Joint | Spring => f instanceof Joint || f instanceof Spring);
     for (const f of ref.forces) {
       if (!(f instanceof IgnoreCollision)) continue;
@@ -294,7 +338,12 @@ export class GpuSolver3D {
     // contacts per touching pair)
     const pairs = estimatePairs(ref.bodies);
     this.allocateContacts(Math.max(8192, 4 * cap, 4 * pairs), Math.max(4096, 4 * cap, 2 * pairs));
-    this.writeBodies(0, ref.bodies);
+    this.writeBodies(0, order.map((r) => ref.bodies[r]));
+  }
+
+  /** GPU index of the reference solver's body `i` (bodies added later keep their index). */
+  gpuIndex(i: number): number {
+    return i < this.refToGpu.length ? this.refToGpu[i] : i;
   }
 
   // --- Setup ---------------------------------------------------------------------------------
@@ -319,6 +368,7 @@ export class GpuSolver3D {
         entries: [{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 16 } }],
       }),
       args: layout('args 3d', [U, R, R, W]),
+      refs: layout('refs 3d', [U, W, W]),
     };
   }
 
@@ -331,6 +381,7 @@ export class GpuSolver3D {
     };
     const L = this.layouts;
     make(broadphaseWGSL, [L.broad], ['beginFrame', 'gridCount', 'gridScatter', 'findPairs']);
+    make(refsWGSL, [L.refs], ['updateRefs']);
     make(shaders.contacts ?? contactsWGSL, [L.contacts], ['hashInsert', 'narrowphase']);
     make(makeTopologyWGSL(PRELUDE_3D, TOPOLOGY_ACCESSORS_3D), [L.topo], [
       'degreeJoints', 'degreeContacts', 'fillJoints', 'fillContacts',
@@ -428,6 +479,7 @@ export class GpuSolver3D {
         group(this.layouts.solve, [P, this.bodyBuffer, this.jointBuffer, this.infoBuffer, [c0, c1][i], adj, this.colorBuffer, C, [m0, m1][i]]),
       ) as [GPUBindGroup, GPUBindGroup],
       args: group(this.layouts.args, [P, this.counterBuffer, this.colorBuffer, this.argsBuffer]),
+      refs: group(this.layouts.refs, [P, this.bodyBuffer, this.refBuffer]),
     };
   }
 
@@ -538,6 +590,7 @@ export class GpuSolver3D {
    * this solver was built from, with no bodies or joints added since.
    */
   seedFrom(ref: Solver): void {
+    if (this.refToGpu.some((g, i) => g !== i)) throw new Error('seedFrom needs spatialSort: false');
     const index = new Map<Rigid, number>(ref.bodies.map((b, i) => [b, i]));
     this.writeBodies(0, ref.bodies);
     let slot = 0;
@@ -653,7 +706,7 @@ export class GpuSolver3D {
     f[3] = p.betaAng;
     f[4] = p.gamma;
     f[5] = p.alpha;
-    u[6] = (p.matchNearest ? FLAG_MATCH_NEAREST : 0) | (p.faceBias ? FLAG_FACE_BIAS : 0);
+    u[6] = (p.matchNearest ? FLAG_MATCH_NEAREST : 0) | (p.faceBias ? FLAG_FACE_BIAS : 0) | (p.reuseContacts ? FLAG_REUSE_CONTACTS : 0);
     u[7] = this.bodyCount;
     u[8] = this.jointCount;
     u[9] = this.colorCap;
@@ -677,6 +730,7 @@ export class GpuSolver3D {
     u[27] = 2 * cap + 65; // colorBodiesOffset
     u[28] = this.colorRounds;
     u[29] = this.pairCapacity; // manifoldCapacity
+    u[30] = this.stepCount;
     this.device.queue.writeBuffer(this.paramsBuffer, 0, buf);
   }
 
@@ -711,6 +765,7 @@ export class GpuSolver3D {
       this.device.queue.writeBuffer(this.colorBuffer, 0, this.fixedColors);
       this.colorCap = Math.max(1, ...this.fixedColors.map((c) => (c === NO_COLOR ? 0 : c + 1)));
     }
+    this.stepCount++;
     this.writeParams();
     this.writePassConstants(p.iterations, p.alpha);
 
@@ -752,6 +807,7 @@ export class GpuSolver3D {
     // Collision
     beginPhase();
     run('beginFrame', G.broad, 1);
+    if (p.reuseContacts) run('updateRefs', G.refs, groups(N));
     run('argsPrev', G.args, 1);
     runIndirect('hashInsert', G.contacts[cur], IA_PREV);
     run('gridCount', G.broad, groups(N));
@@ -871,7 +927,7 @@ export class GpuSolver3D {
     for (let m = 0; m < pairs; m++) {
       const o = m * MANIFOLD_WORDS;
       const normal = [...mf.subarray(o + M_GEO, o + M_GEO + 3)];
-      for (let c = mu[o + 2]; c < mu[o + 2] + mu[o + 3]; c++) {
+      for (let c = mu[o + 2]; c < mu[o + 2] + (mu[o + 3] & 15); c++) {
         const k = c * CONTACT_WORDS;
         const key = cu[k + K_RA + 3];
         out.push({
@@ -958,7 +1014,7 @@ export class GpuSolver3D {
     if (this.ownsBodyBuffer) this.bodyBuffer.destroy();
     const buffers = [
       this.jointBuffer, this.infoBuffer, ...this.contactBuffers, ...this.manifoldBuffers, this.pairBuffer, this.tableBuffer, this.gridBuffer, this.staticBuffer,
-      this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.passBuffer, this.timing?.resolve, this.timing?.read,
+      this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.refBuffer, this.passBuffer, this.timing?.resolve, this.timing?.read,
     ];
     for (const b of buffers) b?.destroy();
     this.timing?.querySet.destroy();

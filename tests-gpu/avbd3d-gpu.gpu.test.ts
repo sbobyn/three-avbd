@@ -40,10 +40,11 @@ gpuTest('seeded single step matches the CPU reference: contacts and poses', asyn
         ref.step();
         frame++;
       }
-      const gpu = new GpuSolver3D(device, ref);
+      const gpu = new GpuSolver3D(device, ref, { spatialSort: false });
       // The reference's exact rules: strict feature matching, the demo's edge/face choice
       gpu.params.matchNearest = false;
       gpu.params.faceBias = false;
+      gpu.params.reuseContacts = false;
       gpu.seedFrom(ref);
       gpu.fixedColors = gpu.sequentialColors();
       gpu.step();
@@ -107,7 +108,7 @@ gpuTest('narrowphase finds the reference contacts for randomly posed box pairs',
       body.positionAng.set(qnormalize(q, [rand() - 0.5, rand() - 0.5, rand() - 0.5, rand() - 0.5]));
     }
   }
-  const gpu = new GpuSolver3D(device, ref);
+  const gpu = new GpuSolver3D(device, ref, { spatialSort: false });
   gpu.params.iterations = 0;
   gpu.params.gravity = 0;
   gpu.params.faceBias = false;
@@ -146,7 +147,7 @@ gpuTest('GPU broadphase finds exactly the pairs with overlapping spheres and AAB
     if (!big) body.positionAng.set(qnormalize(quat(), [rand() - 0.5, rand() - 0.5, rand() - 0.5, rand() - 0.5]));
   }
   new IgnoreCollision(ref, ref.bodies[2], ref.bodies[1]);
-  const gpu = new GpuSolver3D(device, ref);
+  const gpu = new GpuSolver3D(device, ref, { spatialSort: false });
   gpu.params.iterations = 0;
   gpu.step();
   const pairs = await gpu.readPairs();
@@ -187,21 +188,25 @@ async function runGpu(scene: string, frames: number): Promise<GpuSim3D> {
   return sim;
 }
 
+/** Position of the reference's body i (the GPU stores bodies in spatial order). */
+const at = (sim: GpuSim3D, i: number) => sim.position(sim.solver.gpuIndex(i));
+
 const speed = (b: Float32Array, i: number) => Math.hypot(b[i * BODY_FLOATS + 32], b[i * BODY_FLOATS + 33], b[i * BODY_FLOATS + 34]);
 
 gpuTest('GPU: stack and pyramid settle and stand', async () => {
   const stack = await runGpu('Stack', 900);
   const b = await stack.solver.readBodies();
   for (let i = 1; i < stack.bodyCount; i++) {
-    const p = stack.position(i);
+    const p = at(stack, i);
     assert.ok(Math.abs(p[2] - i) < 0.011 * i, `box ${i} z ${p[2]}`);
     assert.ok(Math.hypot(p[0], p[1]) < 1e-3, `box ${i} drifted`);
-    assert.ok(speed(b, i) < 1e-3, `box ${i} speed ${speed(b, i)}`);
+    const v = speed(b, stack.solver.gpuIndex(i));
+    assert.ok(v < 1e-3, `box ${i} speed ${v}`);
   }
   stack.destroy();
 
   const pyr = await runGpu('Pyramid', 600);
-  const top = pyr.position(pyr.bodyCount - 1);
+  const top = at(pyr, pyr.bodyCount - 1);
   assert.ok(Math.abs(top[2] - (0.25 + 15 * 0.5)) < 0.2, `top z ${top[2]}`);
   const pb = await pyr.solver.readBodies();
   for (let i = 0; i < pyr.bodyCount; i++) assert.ok(speed(pb, i) < 0.01, `brick ${i} speed ${speed(pb, i)}`);
@@ -212,7 +217,7 @@ gpuTest('GPU: stack and pyramid settle and stand', async () => {
 gpuTest('GPU: dynamic friction follows Coulomb; static friction holds above tan 30°', async () => {
   const df = await runGpu('Dynamic Friction', 300);
   for (let i = 0; i < 11; i++) {
-    const slid = df.position(i + 1)[0];
+    const slid = at(df, i + 1)[0];
     if (i === 10) {
       assert.ok(Math.abs(slid - 50) < 1e-3, `frictionless box slid ${slid}`);
       continue;
@@ -224,12 +229,12 @@ gpuTest('GPU: dynamic friction follows Coulomb; static friction holds above tan 
   df.destroy();
 
   const sf = await runGpu('Static Friction', 600);
-  const xs = Array.from({ length: 11 }, (_, i) => sf.position(i + 2)[0]);
+  const xs = Array.from({ length: 11 }, (_, i) => at(sf, i + 2)[0]);
   for (let f = 0; f < 120; f++) sf.step();
   await sf.sync();
   for (let i = 0; i < 11; i++) {
     const mu = Math.sqrt((i / 10) * 0.25 + 0.25);
-    const p = sf.position(i + 2);
+    const p = at(sf, i + 2);
     if (mu > Math.tan(Math.PI / 6) + 0.01) {
       assert.ok(p[2] > 7, `box ${i} (mu ${mu.toFixed(3)}) left the ramp`);
       assert.ok(Math.abs(p[0] - xs[i]) < 0.005, `box ${i} creeps ${p[0] - xs[i]}`);
@@ -246,7 +251,7 @@ gpuTest('GPU: spring equilibrium, joints hold, breakable fractures', async () =>
   for (let f = 0; f < 600; f += 10) {
     for (let i = 0; i < 10; i++) spring.step();
     await spring.sync();
-    sum += spring.position(2)[2];
+    sum += at(spring, 2)[2];
   }
   assert.ok(Math.abs(sum / 60 - 9.2) < 0.05, `spring mean z ${sum / 60}`);
   spring.destroy();
@@ -274,19 +279,19 @@ gpuTest('GPU: spring equilibrium, joints hold, breakable fractures', async () =>
 gpuTest('GPU: a drag joint pulls a box to the target, and shot boxes join the simulation', async () => {
   const sim = await runGpu('Ground', 120);
   const hit = sim.pick([0, -10, 1], [0, 1, 0]);
-  assert.ok(hit && hit.body === 1, 'ray picks the box');
+  assert.ok(hit && hit.body === sim.solver.gpuIndex(1), 'ray picks the box');
   sim.startDrag(hit.body, hit.local, [3, 2, 4]);
   for (let i = 0; i < 300; i++) sim.step();
   await sim.sync();
   // The grabbed point hangs just below the target (soft drag spring, box weight)
-  const p = sim.position(1);
+  const p = at(sim, 1);
   assert.ok(Math.hypot(p[0] - 3, p[1] - 2) < 0.6 && Math.abs(p[2] - 4) < 1, `box at ${Array.from(p)}`);
   sim.endDrag();
   sim.addBox([1, 1, 1], 1, 0.5, [0, 0, 8], [0, 0, 0]);
   for (let i = 0; i < 300; i++) sim.step();
   await sim.sync();
   assert.equal(sim.bodyCount, 3);
-  assert.ok(sim.position(1)[2] < 1.1 && sim.position(2)[2] < 2.1 && sim.position(2)[2] > 0.9, 'both boxes back on the ground');
+  assert.ok(at(sim, 1)[2] < 1.1 && at(sim, 2)[2] < 2.1 && at(sim, 2)[2] > 0.9, 'both boxes back on the ground');
   sim.destroy();
 });
 
@@ -322,7 +327,8 @@ gpuTest('GPU spheres rest, stack, and roll without slipping', async (device) => 
   const sim = new GpuSim3D(new GpuSolver3D(device, s));
   const rolling = async () => {
     const b = await sim.solver.readBodies();
-    return { v: b[6 * BODY_FLOATS + 32], w: b[6 * BODY_FLOATS + 37] };
+    const i = sim.solver.gpuIndex(6);
+    return { v: b[i * BODY_FLOATS + 32], w: b[i * BODY_FLOATS + 37] };
   };
   // Sliding friction turns 3 m/s of sliding into rolling at 5/7 of it (solid sphere), within
   // 2v/(7μg) = 0.17 s
@@ -333,7 +339,7 @@ gpuTest('GPU spheres rest, stack, and roll without slipping', async (device) => 
   for (let i = 0; i < 540; i++) sim.step();
   await sim.sync();
   // Resting contacts sit about one collision margin deep, as with boxes
-  const z = (i: number) => sim.position(i)[2];
+  const z = (i: number) => at(sim, i)[2];
   assert.ok(Math.abs(z(1) - 1) < 0.02, `sphere on ground z ${z(1)}`);
   assert.ok(Math.abs(z(3) - 2) < 0.04, `sphere on box z ${z(3)}`);
   assert.ok(Math.abs(z(5) - 1.8) < 0.04, `box on sphere z ${z(5)}`);
@@ -377,7 +383,7 @@ gpuTest('showcase scenes run clean: wall smash, breakable wall, chain mail, heav
     for (let i = 0; i < b.length; i++) assert.ok(Number.isFinite(b[i]), `non-finite at ${i}`);
     return sim;
   };
-  const last = (sim: GpuSim3D) => sim.position(sim.bodyCount - 1);
+  const last = (sim: GpuSim3D) => at(sim, sim.bodyCount - 1);
 
   // The ball goes through the wall
   const smash = await run((s) => wallSmash(s), 120);

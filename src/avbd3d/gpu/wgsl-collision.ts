@@ -8,7 +8,43 @@
 //   warm-started from last step's point with the same feature in the same pair, found
 //   through a hash table of last step's pairs.
 
-import { PRELUDE_3D } from './layout.ts';
+import { PRELUDE_3D, REUSE_ANG_TOL, REUSE_LIN_TOL } from './layout.ts';
+
+/**
+ * Per-body reference poses for contact reuse: a body that has moved or turned beyond the
+ * tolerance since its reference pose takes its current pose as the new reference and records
+ * the step in inertialPos.w. A pair whose contact points were computed no earlier than both
+ * bodies' last move can keep them (narrowphase, FLAG_REUSE_CONTACTS).
+ */
+export const refsWGSL = /* wgsl */ `
+${PRELUDE_3D}
+
+struct RefPose {
+  pos: vec4f,
+  rot: vec4f,
+}
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read_write> bodies: array<Body>;
+@group(0) @binding(2) var<storage, read_write> refs: array<RefPose>;
+
+@compute @workgroup_size(64)
+fn updateRefs(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  if (i >= params.bodyCount) { return; }
+  let pos = bodies[i].pos.xyz;
+  let rot = bodies[i].rot;
+  let last = refs[i];
+  // A zero quaternion marks a body without a reference yet
+  let moved = dot(last.rot, last.rot) == 0.0
+    || length(pos - last.pos.xyz) > ${REUSE_LIN_TOL}
+    || length(qsub(rot, last.rot)) > ${REUSE_ANG_TOL};
+  if (moved) {
+    refs[i] = RefPose(vec4f(pos, 0.0), rot);
+    bodies[i].inertialPos.w = bitcast<f32>(params.step);
+  }
+}
+`;
 
 export const broadphaseWGSL = /* wgsl */ `
 ${PRELUDE_3D}
@@ -514,12 +550,60 @@ fn collide(A: Box, B: Box, sat: ptr<function, Sat>) -> Found {
   return faceManifold(A, B, best.kind == AXIS_FACE_A, select(best.ib, best.ia, best.kind == AXIS_FACE_A), best.n);
 }
 
+/**
+ * Keep pair (a, b)'s contact points from last step, skipping SAT and clipping, when they were
+ * computed no earlier than both bodies last moved beyond the reuse tolerance (refsWGSL). The
+ * points keep their warm-start data; C(x-) is recomputed from the current poses. Returns
+ * false when the pair must go through the narrowphase.
+ */
+fn reuseContacts(a: u32, b: u32) -> bool {
+  let pm = hashFind(a, b);
+  if (pm < 0) { return false; }
+  let prev = prevManifolds[pm];
+  let count = pairCount(prev);
+  let generated = prev.ids.w >> 4u;
+  let moved = max(bitcast<u32>(bodies[a].inertialPos.w), bitcast<u32>(bodies[b].inertialPos.w));
+  if (count == 0u || generated < moved) { return false; }
+
+  let m = atomicAdd(&counters[C_MANIFOLDS], 1u);
+  if (m >= params.manifoldCapacity) {
+    atomicOr(&counters[C_OVERFLOW], 4u);
+    return true;
+  }
+  let base = atomicAdd(&counters[C_CONTACTS], count);
+  if (base + count > params.contactCapacity) {
+    atomicOr(&counters[C_OVERFLOW], 2u);
+    manifolds[m] = Manifold(vec4u(a, b, base, prev.ids.w & ~15u), prev.geo);
+    return true;
+  }
+  manifolds[m] = Manifold(vec4u(a, b, base, prev.ids.w), prev.geo);
+
+  let pA = bodies[a].pos.xyz;
+  let qA = bodies[a].rot;
+  let pB = bodies[b].pos.xyz;
+  let qB = bodies[b].rot;
+  let basis = orthonormal(prev.geo.xyz);
+  for (var i = 0u; i < count; i++) {
+    var k = prevContacts[prev.ids.z + i];
+    // C(x-) at the current poses, then the usual warm start (Eq. 19)
+    let d = (qrotate(qA, k.rA) + pA) - (qrotate(qB, k.rB) + pB);
+    k.c0x = dot(basis[0], d) + COLLISION_MARGIN;
+    k.c0y = dot(basis[1], d);
+    k.c0z = dot(basis[2], d);
+    k.lam = k.lam * params.alpha * params.gamma;
+    k.pen = clamp(k.pen * params.gamma, vec3f(PENALTY_MIN), vec3f(PENALTY_MAX));
+    contacts[base + i] = k;
+  }
+  return true;
+}
+
 @compute @workgroup_size(64)
 fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
   let p = gid.x;
   if (p >= min(atomicLoad(&counters[C_PAIRS]), params.pairCapacity)) { return; }
   let a = pairs[p].x;
   let b = pairs[p].y;
+  if ((params.flags & FLAG_REUSE_CONTACTS) != 0u && reuseContacts(a, b)) { return; }
   let A = makeBox(a);
   let B = makeBox(b);
   var sat: Sat;
@@ -558,7 +642,7 @@ fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
     count = 0u;
   }
   let n = -sat.n;
-  manifolds[m] = Manifold(vec4u(a, b, base, count), vec4f(n, sqrt(bodies[a].pos.w * bodies[b].pos.w)));
+  manifolds[m] = Manifold(vec4u(a, b, base, count | (params.step << 4u)), vec4f(n, sqrt(bodies[a].pos.w * bodies[b].pos.w)));
   if (count == 0u) { return; }
 
   let qA = bodies[a].rot;
@@ -571,7 +655,7 @@ fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
   let pm = hashFind(a, b);
   if (pm >= 0) {
     prevFirst = prevManifolds[pm].ids.z;
-    prevCount = prevManifolds[pm].ids.w;
+    prevCount = pairCount(prevManifolds[pm]);
   }
   let matchNearest = (params.flags & FLAG_MATCH_NEAREST) != 0u;
   let minSide = min(min(min(A.h.x, A.h.y), A.h.z), min(min(B.h.x, B.h.y), B.h.z)) * 2.0;

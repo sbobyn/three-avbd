@@ -41,7 +41,7 @@ export const J_RB = 28;
  * solve's memory traffic.
  */
 export const MANIFOLD_WORDS = 8;
-export const M_IDS = 0; // a, b (a > b), first contact, contact count (u32)
+export const M_IDS = 0; // a, b (a > b), first contact, count | generation step << 4 (u32)
 export const M_GEO = 4; // normal (B to A) xyz, friction
 
 /** 32-bit words per contact point: 4 vec4, the w's carrying the key and C0. */
@@ -67,6 +67,14 @@ export const T_SPRING = 2;
 export const FLAG_MATCH_NEAREST = 1;
 /** Prefer face axes over edge axes the way Box2D does (see wgsl-collision.ts collide). */
 export const FLAG_FACE_BIAS = 2;
+/** Reuse a pair's contact points while neither body has moved (wgsl-collision.ts). */
+export const FLAG_REUSE_CONTACTS = 4;
+/**
+ * A body counts as still while within this distance (m) and rotation (rad) of its reference
+ * pose; its pairs then keep their contact points instead of re-running the narrowphase.
+ */
+export const REUSE_LIN_TOL = 0.002;
+export const REUSE_ANG_TOL = 0.002;
 /** matchNearest tolerance, as a fraction of the smaller box's smallest side. */
 export const NEAREST_FRACTION = 0.05;
 
@@ -93,6 +101,7 @@ const SPHERE_FEATURE = 3u << 24u;
 
 const FLAG_MATCH_NEAREST = ${FLAG_MATCH_NEAREST}u;
 const FLAG_FACE_BIAS = ${FLAG_FACE_BIAS}u;
+const FLAG_REUSE_CONTACTS = ${FLAG_REUSE_CONTACTS}u;
 const NEAREST_FRACTION = ${NEAREST_FRACTION};
 
 struct Body {
@@ -102,7 +111,7 @@ struct Body {
   initialRot: vec4f,
   size: vec4f,         // full widths, w: mass (0 = static)
   moment: vec4f,       // principal moments, w: bounding radius
-  inertialPos: vec4f,  // inertial target y
+  inertialPos: vec4f,  // inertial target y, w: step it last moved from its reference pose (u32)
   inertialRot: vec4f,
   vel: vec4f,          // xyz, w: previous step's vel.z (adaptive warm start)
   angVel: vec4f,       // xyz, w: shape (SHAPE_BOX, SHAPE_SPHERE)
@@ -120,8 +129,12 @@ struct Joint {
 }
 
 struct Manifold {
-  ids: vec4u,     // bodyA, bodyB (A > B), first contact, contact count
+  ids: vec4u,     // bodyA, bodyB (A > B), first contact, count | generation step << 4
   geo: vec4f,     // normal (B to A), friction
+}
+
+fn pairCount(m: Manifold) -> u32 {
+  return m.ids.w & 15u;
 }
 
 struct Contact {
@@ -166,7 +179,7 @@ struct Params {
   colorBodiesOffset: u32,
   rounds: u32,
   manifoldCapacity: u32,
-  pad1: u32,
+  step: u32,           // steps since the solver was created (from 1)
   pad2: u32,
 }
 
