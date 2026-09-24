@@ -2,6 +2,36 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 8f: GPU memory, sized from touching pairs
+
+Manifold storage used to share the broadphase pair capacity (2x the estimated pairs, most of
+which never touch) and contact storage was 4x the pairs; both are double-buffered, and growth
+doubled capacity at 60% full. Now (`solver.ts`, `estimatePairs`):
+- The CPU estimate also runs the narrowphase's separating-axis test (15 axes, 1 mm tolerance;
+  sphere tests for spheres) on each candidate pair, counting the pairs that touch.
+- Manifolds get 1.6x the touching pairs (floor: one per body), with the hash table and the
+  adjacency sized from them rather than from the pairs; contacts get 8 per touching pair (the
+  clipper's maximum; floor four per body). The 8-byte pair list stays at 2x pairs.
+- Growth at 80% full, to twice the demand (the counters include what did not fit).
+
+Peak GPU buffer bytes (M4 Max via Dawn, bench lead-in plus 180 steps):
+
+| scene | before | after |
+|---|---|---|
+| Brick ring 110k | 608 MB | 278 MB |
+| Brick gables 506k | 1,847 MB | 1,214 MB |
+| Box columns 100k | 229 MB | 138 MB |
+| Falling pile 32k | 139 MB (adapt every 10) | 79 MB |
+| Jointed drop 34k | 102 MB | 96 MB |
+
+Overflow (counters read and `adapt` called every 10 steps as the viewer does, or every 30 as
+the benchmark does, 240 steps): none in any bench scene either way, except the falling 32k pile
+at every 30, which overflowed once at step 120 as before (contacts before, manifolds now);
+growing to 1.6x demand instead of 2x overflowed there a second time, so growth doubles.
+Speed unchanged (interleaved A/B: ring 110k -2.7%, falling pile -1.6%, wall smash +2.2%).
+What is left is mostly contact storage (64-byte records, double-buffered: 220 MB of the ring's
+278 MB). Brick-on-brick pairs average 4.4-5.6 points against the 8 reserved.
+
 ## 2026-09-24 — Stage 8e: benchmark scenes after the paper's, and bench3d.html
 
 ### What the paper's large scenes are
@@ -44,7 +74,8 @@ Timing noise: another process's test run on the same machine made the same suite
 Peak buffer bytes per body: ~5.5 KB for brick scenes. Contact and manifold storage are sized
 from the CPU pair estimate (contacts 4x pairs, manifolds 2x pairs) and double-buffered: the 9k
 ring holds 282k contact slots for 95k contacts and 141k manifold slots for 18k manifolds. The
-510k field needs 1.85 GB, which should fit an 8 GB M1 or GTX 1080 but leaves little room.
+510k field needs 1.85 GB, which should fit an 8 GB M1 or GTX 1080 but leaves little room
+(1.21 GB after Stage 8f).
 
 ### bench3d.html
 Runs the suite (`src/avbd3d/bench-cases.ts`, shared with `pnpm bench3d:gpu`) in the browser:

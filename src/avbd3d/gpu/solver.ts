@@ -71,6 +71,17 @@ const LARGE_FACTOR = 2;
  */
 const WIDE_PRIMAL_BODIES_PER_COLOR = 8192;
 const MAX_LARGE = 64;
+/** Contact points one manifold can hold (the narrowphase's MAX_CONTACTS). */
+const MAX_MANIFOLD_POINTS = 8;
+/** Headroom over the touching pairs the scene starts with, for manifold storage. */
+const START_HEADROOM = 1.6;
+/**
+ * Pair, manifold and contact storage grows when a readback finds it this full, to twice the
+ * demand (the counters count what did not fit, too): growth means the scene is changing, and
+ * a landing pile's contacts can outrun a smaller step between readbacks.
+ */
+const GROW_AT = 0.8;
+const GROW_TO = 2;
 
 /** GPU solver parameters: the reference's, plus nearest-anchor warm starts (see 2D findings). */
 export interface GpuParams3D extends SolverParams {
@@ -109,22 +120,29 @@ interface BodyInfo {
   size: [number, number, number];
 }
 
+/** Separation up to which the CPU estimate counts a pair as touching (resting exactly = 0). */
+const TOUCH_TOLERANCE = 1e-3;
+
 /**
  * Pairs the GPU broadphase will report for these bodies (bounding spheres and world AABBs
- * overlap, not both static), counted on a CPU hash grid; used to size the buffers. Also counts
- * each body's pairs into `degree` (for the starting colour cap).
+ * overlap, not both static), counted on a CPU hash grid, and how many of them touch (the
+ * narrowphase's separating-axis test, so each will need a manifold); used to size the
+ * buffers. Also counts each body's pairs into `degree` (for the starting colour cap).
  */
-function estimatePairs(bodies: Rigid[], degree: Int32Array): number {
+function estimatePairs(bodies: Rigid[], degree: Int32Array): { pairs: number; touching: number } {
   const n = bodies.length;
-  const half = bodies.map((b) => {
+  // World axes of each body, and its world AABB half extents
+  const axes = bodies.map((b) =>
+    [0, 1, 2].map((k) => {
+      const e = [0, 0, 0];
+      e[k] = 1;
+      return rotate(vec3(), b.positionAng, e);
+    }),
+  );
+  const half = bodies.map((b, i) => {
     if (isSphere(b)) return [b.radius, b.radius, b.radius];
     const h = [0, 0, 0];
-    for (let k = 0; k < 3; k++) {
-      const e = [0, 0, 0];
-      e[k] = b.size[k] * 0.5;
-      const w = rotate(vec3(), b.positionAng, e);
-      for (let c = 0; c < 3; c++) h[c] += Math.abs(w[c]);
-    }
+    for (let k = 0; k < 3; k++) for (let c = 0; c < 3; c++) h[c] += b.size[k] * 0.5 * Math.abs(axes[i][k][c]);
     return h;
   });
   // The GPU's classification (uploadStatics): up to MAX_LARGE bodies above LARGE_FACTOR x the
@@ -144,6 +162,38 @@ function estimatePairs(bodies: Rigid[], degree: Int32Array): number {
     if (d[0] * d[0] + d[1] * d[1] + d[2] * d[2] > r * r) return false;
     return d.every((x, k) => Math.abs(x) <= half[i][k] + half[j][k]);
   };
+  const dot = (u: ArrayLike<number>, v: ArrayLike<number>) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+  const touches = (i: number, j: number) => {
+    const a = bodies[i];
+    const b = bodies[j];
+    const d = [0, 1, 2].map((k) => b.positionLin[k] - a.positionLin[k]);
+    const [sa, sb] = [isSphere(a), isSphere(b)];
+    if (sa && sb) return Math.hypot(d[0], d[1], d[2]) <= a.radius + b.radius + TOUCH_TOLERANCE;
+    if (sa || sb) {
+      // Distance from the sphere's centre to the box
+      const [box, r, sign] = sa ? [j, a.radius, -1] : [i, b.radius, 1];
+      let distSq = 0;
+      for (let k = 0; k < 3; k++) {
+        const out = Math.abs(sign * dot(d, axes[box][k])) - bodies[box].size[k] * 0.5;
+        if (out > 0) distSq += out * out;
+      }
+      return distSq <= (r + TOUCH_TOLERANCE) ** 2;
+    }
+    const radius = (body: number, axis: ArrayLike<number>) =>
+      bodies[body].size[0] * 0.5 * Math.abs(dot(axes[body][0], axis)) +
+      bodies[body].size[1] * 0.5 * Math.abs(dot(axes[body][1], axis)) +
+      bodies[body].size[2] * 0.5 * Math.abs(dot(axes[body][2], axis));
+    const separated = (axis: ArrayLike<number>) => {
+      const len = Math.hypot(axis[0], axis[1], axis[2]);
+      if (len < 1e-6) return false;
+      return Math.abs(dot(d, axis)) - radius(i, axis) - radius(j, axis) > TOUCH_TOLERANCE * len;
+    };
+    for (let k = 0; k < 3; k++) if (separated(axes[i][k]) || separated(axes[j][k])) return false;
+    for (const u of axes[i]) {
+      for (const v of axes[j]) if (separated([u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]])) return false;
+    }
+    return true;
+  };
   const large = new Set<number>();
   const grid = new Map<number, number[]>();
   const key = (x: number, y: number, z: number) => ((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) >>> 0;
@@ -160,6 +210,7 @@ function estimatePairs(bodies: Rigid[], degree: Int32Array): number {
     else grid.set(k, [i]);
   }
   let count = 0;
+  let touching = 0;
   for (let i = 0; i < n; i++) {
     if (large.has(i)) continue;
     const [x, y, z] = cellOf(i);
@@ -170,6 +221,7 @@ function estimatePairs(bodies: Rigid[], degree: Int32Array): number {
           for (const j of grid.get(key(x + dx, y + dy, z + dz)) ?? []) {
             if (j < i && overlap(i, j)) {
               count++;
+              if (touches(i, j)) touching++;
               degree[i]++;
               degree[j]++;
             }
@@ -180,12 +232,13 @@ function estimatePairs(bodies: Rigid[], degree: Int32Array): number {
     for (let j = 0; j < n; j++) {
       if (j !== l && (!large.has(j) || j < l) && overlap(l, j)) {
         count++;
+        if (touches(l, j)) touching++;
         degree[l]++;
         degree[j]++;
       }
     }
   }
-  return count;
+  return { pairs: count, touching };
 }
 
 /** Body indices sorted along a Z-order (Morton) curve of their positions, 10 bits per axis. */
@@ -231,8 +284,10 @@ export class GpuSolver3D {
   private info = new Int32Array(0);
   /** IgnoreCollision pairs as [hi, lo]. */
   private readonly ignored: [number, number][] = [];
-  /** Broadphase pairs, and so also contact pairs (manifolds): one per colliding pair. */
+  /** Broadphase pairs the pair list holds. */
   pairCapacity = 0;
+  /** Contact pairs (manifolds): one per broadphase pair that touches. */
+  manifoldCapacity = 0;
   contactCapacity = 0;
   /** Colours the colouring may use and the solver dispatches (grows via `adapt`). */
   colorCap = 12;
@@ -366,10 +421,8 @@ export class GpuSolver3D {
     for (const f of joints) this.writeJoint(this.jointCount++, f, index);
     // Size pair and contact storage from the scene's actual starting pairs: overflowing on the
     // first steps drops pairs, and a freshly built wall then sinks into itself for good
-    // (floors: a settled random pile has ~3 pairs per body, a brick wall ~6 per brick, ~4
-    // contacts per touching pair)
     const degree = new Int32Array(ref.bodies.length);
-    const pairs = estimatePairs(ref.bodies, degree);
+    const { pairs, touching } = estimatePairs(ref.bodies, degree);
     // Starting colour cap: a graph never needs more than max degree + 1 colours (+1 spare).
     // Each colour below the cap is a dispatch per iteration, and the cap only adapts after
     // readbacks, so a fixed 12 cost a 3-colour stack 4.5 ms a step until then.
@@ -383,7 +436,15 @@ export class GpuSolver3D {
       if (b.mass > 0) maxDegree = Math.max(maxDegree, degree[i]);
     });
     this.colorCap = Math.min(MAX_COLORS, Math.max(2, maxDegree + 2));
-    this.allocateContacts(Math.max(8192, 4 * cap, 4 * pairs), Math.max(4096, 4 * cap, 2 * pairs));
+    // Pair entries are 8 bytes, so they stay roomy. Manifolds (32 bytes) and contacts (64) are
+    // double-buffered and hold most of the solver's memory: the touching pairs with headroom,
+    // and the most points those pairs can have. Floors for scenes that start apart (a falling
+    // pile): a manifold and four contacts per body.
+    this.allocateContacts(
+      Math.max(8192, 4 * cap, MAX_MANIFOLD_POINTS * touching),
+      Math.max(4096, 4 * cap, 2 * pairs),
+      Math.max(4096, cap, START_HEADROOM * touching),
+    );
     this.writeBodies(0, order.map((r) => ref.bodies[r]));
   }
 
@@ -459,33 +520,35 @@ export class GpuSolver3D {
   }
 
   /**
-   * (Re)allocate pair, manifold and contact storage. Every manifold comes from a broadphase
-   * pair, so manifolds share the pair capacity. When growing, the ping-pong buffers are
+   * (Re)allocate pair, manifold and contact storage. When growing, the ping-pong buffers are
    * copied over and the counters are left alone, so warm starts survive the reallocation.
    */
-  private allocateContacts(requested: number, requestedPairs = requested / 2): void {
+  private allocateContacts(requestedContacts: number, requestedPairs: number, requestedManifolds: number): void {
     const d = this.device;
     const maxBinding = d.limits.maxStorageBufferBindingSize;
-    const capacity = Math.min(requested, Math.floor(maxBinding / (CONTACT_WORDS * 4)));
-    const pairCapacity = Math.min(Math.ceil(requestedPairs), Math.floor(maxBinding / (MANIFOLD_WORDS * 4)));
-    const old = { contacts: this.contactBuffers, manifolds: this.manifoldBuffers, contactCapacity: this.contactCapacity, pairCapacity: this.pairCapacity };
+    const capacity = Math.min(Math.ceil(requestedContacts), Math.floor(maxBinding / (CONTACT_WORDS * 4)));
+    const pairCapacity = Math.min(Math.ceil(requestedPairs), Math.floor(maxBinding / 8));
+    // Every manifold comes from a broadphase pair
+    const manifoldCapacity = Math.min(Math.ceil(requestedManifolds), pairCapacity, Math.floor(maxBinding / (MANIFOLD_WORDS * 4)));
+    const old = { contacts: this.contactBuffers, manifolds: this.manifoldBuffers, contactCapacity: this.contactCapacity, manifoldCapacity: this.manifoldCapacity };
     for (const b of [this.pairBuffer, this.tableBuffer]) b?.destroy();
     this.contactCapacity = capacity;
     this.pairCapacity = pairCapacity;
+    this.manifoldCapacity = manifoldCapacity;
     // One entry per manifold: keep the load factor at most 1/2
-    this.hashSize = pow2AtLeast(2 * pairCapacity);
+    this.hashSize = pow2AtLeast(2 * manifoldCapacity);
     this.pairBuffer = d.createBuffer({ label: 'pairs', size: pairCapacity * 8, usage: storageUsage() });
     this.tableBuffer = d.createBuffer({ label: 'manifold hash', size: this.hashSize * 4, usage: storageUsage() });
     this.contactBuffers = [0, 1].map((i) =>
       d.createBuffer({ label: `contacts 3d ${i}`, size: capacity * CONTACT_WORDS * 4, usage: storageUsage() }),
     ) as [GPUBuffer, GPUBuffer];
     this.manifoldBuffers = [0, 1].map((i) =>
-      d.createBuffer({ label: `manifolds 3d ${i}`, size: pairCapacity * MANIFOLD_WORDS * 4, usage: storageUsage() }),
+      d.createBuffer({ label: `manifolds 3d ${i}`, size: manifoldCapacity * MANIFOLD_WORDS * 4, usage: storageUsage() }),
     ) as [GPUBuffer, GPUBuffer];
     if (old.contacts) {
       const encoder = d.createCommandEncoder();
       const contactBytes = Math.min(old.contactCapacity, capacity) * CONTACT_WORDS * 4;
-      const manifoldBytes = Math.min(old.pairCapacity, pairCapacity) * MANIFOLD_WORDS * 4;
+      const manifoldBytes = Math.min(old.manifoldCapacity, manifoldCapacity) * MANIFOLD_WORDS * 4;
       old.contacts.forEach((buffer, i) => encoder.copyBufferToBuffer(buffer, 0, this.contactBuffers[i], 0, contactBytes));
       old.manifolds.forEach((buffer, i) => encoder.copyBufferToBuffer(buffer, 0, this.manifoldBuffers[i], 0, manifoldBytes));
       d.queue.submit([encoder.finish()]);
@@ -499,7 +562,7 @@ export class GpuSolver3D {
     const d = this.device;
     const cap = this.bodyCapacity;
     this.adjBuffer?.destroy();
-    this.adjBuffer = d.createBuffer({ label: 'adjacency', size: (2 * cap + 1 + 2 * (this.jointCapacity + this.pairCapacity)) * 4, usage: storageUsage() });
+    this.adjBuffer = d.createBuffer({ label: 'adjacency', size: (2 * cap + 1 + 2 * (this.jointCapacity + this.manifoldCapacity)) * 4, usage: storageUsage() });
     this.adjScan?.destroy();
     this.adjScan = new PrefixScan(d, this.adjBuffer, 0, this.bodyCount + 1);
     this.staticBuffer ??= d.createBuffer({ label: 'statics', size: 16, usage: storageUsage() });
@@ -645,7 +708,7 @@ export class GpuSolver3D {
 
     const manifolds = ref.forces.filter((f): f is Manifold => f instanceof Manifold);
     const n = manifolds.reduce((sum, m) => sum + m.contacts.length, 0);
-    if (n > this.contactCapacity || manifolds.length > this.pairCapacity) throw new Error('seedFrom: too many contacts');
+    if (n > this.contactCapacity || manifolds.length > this.manifoldCapacity) throw new Error('seedFrom: too many contacts');
     const cWords = new ArrayBuffer(Math.max(n, 1) * CONTACT_WORDS * 4);
     const cu = new Uint32Array(cWords);
     const cf = new Float32Array(cWords);
@@ -775,7 +838,7 @@ export class GpuSolver3D {
     u[26] = this.colorGroups;
     u[27] = 2 * cap + 65; // colorBodiesOffset
     u[28] = this.colorRounds;
-    u[29] = this.pairCapacity; // manifoldCapacity
+    u[29] = this.manifoldCapacity;
     u[30] = this.stepCount;
     this.device.queue.writeBuffer(this.paramsBuffer, 0, buf);
   }
@@ -958,7 +1021,7 @@ export class GpuSolver3D {
   /** Contact points written by the last step, with their pair's bodies and normal. */
   async readContactList(): Promise<GpuContact[]> {
     const counters = await this.readCounters();
-    const pairs = Math.min(counters.manifolds, this.pairCapacity);
+    const pairs = Math.min(counters.manifolds, this.manifoldCapacity);
     const points = Math.min(counters.contacts, this.contactCapacity);
     const last = 1 - this.parity;
     const [mw, cw] = await Promise.all([
@@ -1035,20 +1098,23 @@ export class GpuSolver3D {
     } else {
       this.shrinkVotes = 0;
     }
-    // Grow well before overflowing: a falling pile's pair count can double between readbacks
-    const contactsFull = (counters.overflow & 2) !== 0 || counters.contacts > 0.6 * this.contactCapacity;
-    // Manifolds share the pair capacity (bit 2: a manifold did not fit)
-    const pairsFull = (counters.overflow & 5) !== 0 || counters.pairs > 0.6 * this.pairCapacity;
-    const contacts = this.contactCapacity * (contactsFull ? 2 : 1);
-    const pairs = this.pairCapacity * (pairsFull ? 2 : 1);
-    if ((contactsFull || pairsFull) && this.capacityCanGrow(contacts, pairs)) this.allocateContacts(contacts, pairs);
+    // Grow before overflowing (a falling pile's contacts can jump between readbacks), to the
+    // demand with headroom. Overflow bits: 1 pairs, 2 contacts, 4 manifolds.
+    const want = (demand: number, capacity: number, bit: number) =>
+      (counters.overflow & bit) !== 0 || demand > GROW_AT * capacity ? Math.max(GROW_TO * demand, 1.25 * capacity) : capacity;
+    const contacts = want(counters.contacts, this.contactCapacity, 2);
+    const pairs = want(counters.pairs, this.pairCapacity, 1);
+    const manifolds = want(counters.manifolds, this.manifoldCapacity, 4);
+    if (this.capacityCanGrow(contacts, pairs, manifolds)) this.allocateContacts(contacts, pairs, manifolds);
   }
 
-  private capacityCanGrow(contacts: number, pairs: number): boolean {
+  private capacityCanGrow(contacts: number, pairs: number, manifolds: number): boolean {
     const maxBinding = this.device.limits.maxStorageBufferBindingSize;
-    const maxContacts = Math.floor(maxBinding / (CONTACT_WORDS * 4));
-    const maxPairs = Math.floor(maxBinding / (MANIFOLD_WORDS * 4));
-    return Math.min(contacts, maxContacts) > this.contactCapacity || Math.min(pairs, maxPairs) > this.pairCapacity;
+    return (
+      Math.min(contacts, maxBinding / (CONTACT_WORDS * 4)) > this.contactCapacity ||
+      Math.min(pairs, maxBinding / 8) > this.pairCapacity ||
+      Math.min(manifolds, pairs, maxBinding / (MANIFOLD_WORDS * 4)) > this.manifoldCapacity
+    );
   }
 
   private async read(buffer: GPUBuffer, size: number): Promise<ArrayBuffer> {
