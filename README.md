@@ -54,6 +54,18 @@ wheel zooms, middle-click or B shoots a box, P pauses, `.` steps, R resets.
 | `tests-gpu/` | GPU tests on a real device through Dawn (`webgpu` package); skipped without an adapter |
 | `tools/cpp-oracle/` | Builds the upstream C++ solver headless (f32 and f64) and regenerates fixtures |
 
+## Credits and licences
+
+This project is MIT-licensed ([LICENSE](LICENSE)).
+
+This is an implementation of *Augmented Vertex Block Descent* (Chris Giles, Elie Diaz, Cem
+Yuksel, SIGGRAPH 2025). The CPU reference solvers are TypeScript ports of the authors' demos
+([avbd-demo2d](https://github.com/savant117/avbd-demo2d),
+[avbd-demo3d](https://github.com/savant117/avbd-demo3d), MIT, © Chris Giles), whose 2D
+collision comes from [box2d-lite](https://github.com/erincatto/box2d-lite) (MIT, © Erin Catto).
+Their notices, and those of three.js and lil-gui, are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); the build copies both files into the site.
+
 ## Reference sources
 
 `pnpm fetch-reference` clones the upstream demos
