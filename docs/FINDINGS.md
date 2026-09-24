@@ -2,6 +2,36 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 8k: carrying pairs of still bodies in the broadphase (tried, reverted)
+
+The paper rebuilds its LBVH and runs the narrowphase on every pair every step; skipping the
+search for still bodies would go beyond it, and collision is 38% of a step on the M1 Pro.
+Built: updateRefs lists the bodies that left their reference pose this step (or whose joint
+broke); only they walk the grid, emitting pairs with still bodies and, from the higher index,
+with moving ones; pairs of two still bodies are copied from last step's list (pairs made
+ping-pong); still small bodies test moving large ones in a separate pass. Every pair test is
+padded by twice each body's reuse drift (2 mm + 2 mrad x radius) and the cells grow to match,
+so still bodies cannot creep into contact unseen. Verified: the exact broadphase test with the
+pads, and a test that the list stays complete and duplicate-free through a wall smash (it
+failed when carrying was disabled on purpose). A first version of that test compared the list
+with the poses after the step and flagged pairs the ball had only just reached; the list is
+built from the poses the step starts from.
+
+It did not pay:
+- At the 2 mm tolerance 30-70% of bricks count as moving at any moment (stacks creep at 3-4
+  iterations; the wall smash is 4% still while settling, 99% before impact, 36% during it).
+- Skipping in place was slower: still bodies share thread groups with moving ones and wait for
+  them, each moving body now searches its whole neighbourhood rather than half, and the pads
+  add 3-14% pairs (ring 224k -> 256k).
+- Compacting the movers first fixed the divergence but added dispatches and atomics. On AC,
+  interleaved against the previous commit: box columns (99.7% still) -4.3%, ring 110k -1.7%,
+  wall smash 0%, settled pile +1.9%, gables 506k +5.5%, jointed drop 34k +5.7%, gables 6.7k
+  +9.1%, ring 9k +11.7%, chain mail +14.7% (the machine was still recovering its clocks:
+  absolute times ran about twice the usual).
+Kept as git stash "Attempt: carry pairs of still bodies...". The larger win for scenes at rest
+would be sleeping (bodies at rest skip the solve too), with a looser tolerance than contact
+reuse's.
+
 ## 2026-09-24 — Stage 8j: the 2D solver on an M1 Pro: GPU trig precision
 
 First run on other hardware (MacBook Pro M1 Pro, 16-core GPU, same macOS build as the M4 Max):
