@@ -2,6 +2,39 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 8l: the ring and gable smashes launched as in the paper's video
+
+Checked against frames of the project page's teaser video: in Fig. 1 the sphere rolls in from
+*outside*, hits the stepped face, crosses the arena and breaks out through the far wall (the
+near half collapses in a broad V), and it is ~0.8 of the wall's height across; ours started
+inside, 0.4 of the height, and only holed the wall. In Fig. 3 the spheres roll on through the
+whole field; ours (density 10) stalled in the rubble they pushed, lodged in walls by ~7 s.
+Now `brickRing`'s sphere is `courses / 5` in radius (8 m at 110k), rolling in at 30 m/s from
+2 m outside; `brickGables`' spheres have density 50 and a 12 m run-up at 30 m/s; both start
+on the ground rolling (spin matched to speed). Viewer cameras moved to the paper's framings.
+
+Re-measured on the M4 Max (whole suite, on AC; unchanged scenes within 5% of before):
+
+| Scene | Before | Now | Paper, RTX 4090 |
+|---|---|---|---|
+| Brick ring 110k, 4 it | 8.67 ms | **9.27 ms** (0.95×) | 9.8 ms |
+| Brick gables 506k, 3 it | 24.6 ms | **25.1 ms** (1.43×) | 17.6 ms |
+
+The M1 Pro report predates this and needs a re-run.
+
+### Tall brick walls creep and fall at low iteration counts (not fixed)
+Unhit, with the sphere parked away (headless, bricks moved > 0.5 m or turned > 0.15 rad):
+- 110k ring (40 courses): stands 5 s at 4 iterations, most of the upper wall down by 15 s;
+  6 iterations last ~10 s, 8 ~15 s; 10 still standing at 20 s.
+- A 40-course ring at radius 40 fails like the 110k one; 20 courses at radius 80 stand 40 s
+  at 6 iterations, so it is the wall's height, not f32 precision at 80 m from the origin.
+- Contact reuse on or off makes no difference.
+- 28k ring (20 courses): stands ~15 s at 4 iterations, 40 s+ at 6 (the viewer now uses 6).
+- The top course sits 0.2 m (20 courses) to 0.4 m (40 courses) below its start at every
+  iteration count: about 1 cm of steady penetration per course.
+The benchmark window ends ~3 s in, before any of this. Whether the paper's solver or the
+upstream demo does the same is untested.
+
 ## 2026-09-24 — Stage 8k: carrying pairs of still bodies in the broadphase (tried, reverted)
 
 The paper rebuilds its LBVH and runs the narrowphase on every pair every step; skipping the

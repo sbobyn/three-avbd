@@ -59,12 +59,21 @@ function brick(solver: Solver, x: number, y: number, z: number, angle = 0): Rigi
   return b;
 }
 
+/** A sphere resting on the ground (top face z = 0.5) at (x, y), rolling along +y at `speed`. */
+function rollingBall(solver: Solver, r: number, density: number, x: number, y: number, speed: number): Rigid {
+  const ball = sphere(solver, r, density, 0.5, [x, y, 0.5 + r], [0, speed, 0]);
+  ball.velocityAng.set([-speed / r, 0, 0]);
+  return ball;
+}
+
 /**
- * Paper Fig. 1: a ring wall of bricks smashed from inside by a sphere. `courses` courses of
- * bricks laid tangentially in running bond on rings from `radius` outwards, `rows` bricks deep
- * at the bottom and one fewer every `tier` courses, so the outside is stepped and the inside
- * sheer. Bricks rest exactly on each other, so it stands from the first frame and a benchmark
- * can time the smash without a settle. Defaults: 110,332 bricks, 20 m high, 160 m across.
+ * Paper Fig. 1: a ring wall of bricks smashed by a sphere rolling in from outside, through the
+ * near wall, across the arena and out through the far wall. `courses` courses of bricks laid
+ * tangentially in running bond on rings from `radius` outwards, `rows` bricks deep at the
+ * bottom and one fewer every `tier` courses, so the outside is stepped and the inside sheer.
+ * Bricks rest exactly on each other, so it stands from the first frame and a benchmark can time
+ * the smash without a settle. The ball is 0.8 of the wall's height across, as in the paper's
+ * renders. Defaults: 110,332 bricks, 20 m high, 160 m across.
  */
 export function brickRing(solver: Solver, radius = 80, courses = 40, tier = 4, rows = 10): void {
   solver.clear();
@@ -82,12 +91,13 @@ export function brickRing(solver: Solver, radius = 80, courses = 40, tier = 4, r
       }
     }
   }
-  const ball = courses / 10;
-  sphere(solver, ball, 10, 0.5, [0, -(radius - ball - 2), ball + 0.5 + courses / 8], [0, -25, 0]);
+  // Just outside the stepped face, on its way in
+  const r = courses / 5;
+  rollingBall(solver, r, 10, 0, -(radius + 0.52 * rows + r + 2), 30);
 }
 
 /**
- * Paper Fig. 3: a field of triangular brick walls, one brick thick, smashed by two spheres
+ * Paper Fig. 3: a field of triangular brick walls, one brick thick, smashed by two heavy spheres
  * rolling through it. Each wall is a brick pyramid `base` bricks wide (course k: base − k
  * bricks, offset by half a brick), facing ±y; `columns` × `rows` of them stand on a grid.
  * Defaults: 1,088 walls of 465 bricks, 505,920 bricks.
@@ -106,10 +116,11 @@ export function brickGables(solver: Solver, columns = 16, rows = 68, base = 30, 
       }
     }
   }
-  // Down two columns (by default either side of the middle)
+  // Down two columns (by default either side of the middle) after a 12 m run-up, dense enough
+  // to carry on through the rubble they push ahead of them
   const r = base / 7;
   for (const cx of ballColumns) {
-    sphere(solver, r, 10, 0.5, [(cx - (columns - 1) / 2) * pitchX, -((rows - 1) / 2) * pitchY - r - 3, r + 0.5], [0, 25, 0]);
+    rollingBall(solver, r, 50, (cx - (columns - 1) / 2) * pitchX, -((rows - 1) / 2) * pitchY - r - 12, 30);
   }
 }
 
@@ -281,27 +292,28 @@ export interface Scene3D {
 /** The viewer's GPU showcase scenes, after the paper's figures, plus scale tests. */
 export const gpuScenes3D: Scene3D[] = [
   {
-    // Paper Fig. 1 at a quarter of the bricks (same proportions): smooth on modest GPUs
+    // Paper Fig. 1 at a quarter of the bricks (same proportions): smooth on modest GPUs. At the
+    // paper's 4 iterations what's left of the wall creeps and falls after ~20 s; 6 hold it
     name: 'Brick Ring (28k)',
     build: (s) => brickRing(s, 40, 20, 2, 10),
     gpuOnly: true,
-    params: { iterations: 4 },
-    camera: { distance: 70, target: [0, -20, 2], azimuth: -138, elevation: 0.34 },
+    params: { iterations: 6 },
+    camera: { distance: 110, target: [0, -8, 0], azimuth: -100, elevation: 0.3 },
   },
   {
     name: 'Brick Ring (110k)',
     build: (s) => brickRing(s),
     gpuOnly: true,
     params: { iterations: 4 },
-    camera: { distance: 135, target: [0, -40, 4], azimuth: -138, elevation: 0.34 },
+    camera: { distance: 215, target: [0, -15, 0], azimuth: -100, elevation: 0.3 },
   },
   {
     // Paper Fig. 3 at a twentieth of the bricks
     name: 'Brick Walls (27k)',
-    build: (s) => brickGables(s, 8, 16, 20, [3, 4]),
+    build: (s) => brickGables(s, 8, 16, 20, [2, 5]),
     gpuOnly: true,
     params: { iterations: 3 },
-    camera: { distance: 62, target: [0, -18, 4], azimuth: -100, elevation: 0.2 },
+    camera: { distance: 86, target: [15, 0, 2], azimuth: -69, elevation: 0.12 },
   },
   { name: 'Wall Smash (2k)', build: (s) => wallSmash(s), gpuOnly: true, camera: { distance: 55, target: [0, 0, 5], azimuth: -120, elevation: 0.3 } },
   { name: 'Breakable Wall (600)', build: (s) => breakableWall(s), gpuOnly: true, camera: { distance: 45, target: [0, 0, 5], azimuth: -120, elevation: 0.3 } },

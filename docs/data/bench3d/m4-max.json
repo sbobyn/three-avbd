@@ -10,19 +10,19 @@
    "iterations": 10,
    "bodies": 2002,
    "joints": 0,
-   "contacts": 22432,
+   "contacts": 21937,
    "colors": 17,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 2.995570799999996,
+   "wallMs": 2.8515625,
    "gpu": {
-    "total": 2.818048,
-    "collision": 0.262144,
+    "total": 2.686976,
+    "collision": 0.196608,
     "adjacency": 0.065536,
-    "coloring": 0.065536,
-    "solve": 2.097152
+    "coloring": 0.131072,
+    "solve": 2.359296
    },
-   "buildMs": 74.50070900000001,
+   "buildMs": 71.705792,
    "gpuBytes": 15370532
   },
   {
@@ -30,19 +30,19 @@
    "iterations": 10,
    "bodies": 1602,
    "joints": 3120,
-   "contacts": 6,
-   "colors": 6,
+   "contacts": 8,
+   "colors": 5,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 1.0686084000000051,
+   "wallMs": 1.1500834000000055,
    "gpu": {
-    "total": 0.851968,
+    "total": 0.786432,
     "collision": 0.131072,
     "adjacency": 0,
     "coloring": 0.065536,
-    "solve": 0.589824
+    "solve": 0.524288
    },
-   "buildMs": 27.274458000000095,
+   "buildMs": 28.198582999999985,
    "gpuBytes": 2406788
   },
   {
@@ -50,59 +50,59 @@
    "iterations": 4,
    "bodies": 9132,
    "joints": 0,
-   "contacts": 95042,
-   "colors": 8,
+   "contacts": 49995,
+   "colors": 11,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 1.4337666000000127,
+   "wallMs": 1.5655083000000105,
    "gpu": {
-    "total": 1.245184,
+    "total": 1.441792,
     "collision": 0.458752,
     "adjacency": 0,
     "coloring": 0.131072,
-    "solve": 0.65536
+    "solve": 0.720896
    },
-   "buildMs": 146.27916699999992,
-   "gpuBytes": 23605040
+   "buildMs": 153.19708300000002,
+   "gpuBytes": 44677704
   },
   {
    "scene": "Brick gables 6.7k",
    "iterations": 3,
    "bodies": 6723,
    "joints": 0,
-   "contacts": 42121,
+   "contacts": 40801,
    "colors": 9,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 0.9077458999999862,
+   "wallMs": 0.8876457999999957,
    "gpu": {
-    "total": 0.720896,
+    "total": 0.786432,
     "collision": 0.262144,
-    "adjacency": 0.065536,
-    "coloring": 0.065536,
+    "adjacency": 0,
+    "coloring": 0.131072,
     "solve": 0.393216
    },
-   "buildMs": 66.77391699999998,
-   "gpuBytes": 16787096
+   "buildMs": 64.22316599999999,
+   "gpuBytes": 16787864
   },
   {
    "scene": "Jointed drop 6k",
    "iterations": 10,
    "bodies": 6025,
    "joints": 12484,
-   "contacts": 18531,
+   "contacts": 18588,
    "colors": 19,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 3.145745799999986,
+   "wallMs": 3.115758300000016,
    "gpu": {
     "total": 2.424832,
     "collision": 0.458752,
-    "adjacency": 0.065536,
-    "coloring": 0.065536,
+    "adjacency": 0,
+    "coloring": 0.131072,
     "solve": 1.835008
    },
-   "buildMs": 97.12320899999986,
+   "buildMs": 101.71545900000001,
    "gpuBytes": 13008988
   },
   {
@@ -110,20 +110,20 @@
    "iterations": 4,
    "bodies": 110442,
    "joints": 0,
-   "contacts": 1234461,
-   "colors": 9,
+   "contacts": 1240387,
+   "colors": 11,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 8.665491699999984,
+   "wallMs": 9.27101249999996,
    "gpu": {
-    "total": 8.781824,
-    "collision": 2.490368,
-    "adjacency": 0.131072,
-    "coloring": 0.458752,
-    "solve": 5.373952
+    "total": 9.043968,
+    "collision": 2.686976,
+    "adjacency": 0.196608,
+    "coloring": 0.524288,
+    "solve": 5.505024
    },
-   "buildMs": 2358.1385410000003,
-   "gpuBytes": 291632072,
+   "buildMs": 2352.5299170000003,
+   "gpuBytes": 291633184,
    "paper": "9.8 ms (3.5 solve)"
   },
   {
@@ -131,20 +131,20 @@
    "iterations": 10,
    "bodies": 34097,
    "joints": 71064,
-   "contacts": 109612,
+   "contacts": 110786,
    "colors": 30,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 6.358308399999987,
+   "wallMs": 6.4051792000000205,
    "gpu": {
     "total": 5.832704,
-    "collision": 0.851968,
+    "collision": 0.917504,
     "adjacency": 0.065536,
     "coloring": 0.131072,
-    "solve": 4.784128
+    "solve": 4.521984
    },
-   "buildMs": 539.5001250000005,
-   "gpuBytes": 101200796,
+   "buildMs": 554.8003339999996,
+   "gpuBytes": 101198748,
    "paper": "16 ms"
   },
   {
@@ -152,20 +152,20 @@
    "iterations": 3,
    "bodies": 505923,
    "joints": 0,
-   "contacts": 4423656,
-   "colors": 10,
+   "contacts": 4399810,
+   "colors": 11,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 24.604387500000122,
+   "wallMs": 25.144941599999946,
    "gpu": {
-    "total": 24.641536,
-    "collision": 7.733248,
+    "total": 25.100288,
+    "collision": 8.192,
     "adjacency": 0.524288,
-    "coloring": 1.769472,
+    "coloring": 1.6384,
     "solve": 14.680064
    },
-   "buildMs": 4322.200583,
-   "gpuBytes": 1272787560,
+   "buildMs": 4409.581833,
+   "gpuBytes": 1272786792,
    "paper": "17.6 ms (10.3 solve)"
   },
   {
@@ -173,20 +173,20 @@
    "iterations": 4,
    "bodies": 32001,
    "joints": 0,
-   "contacts": 150951,
+   "contacts": 150655,
    "colors": 9,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 2.5515625,
+   "wallMs": 2.498858399999881,
    "gpu": {
-    "total": 2.94912,
-    "collision": 0.98304,
-    "adjacency": 0.196608,
-    "coloring": 0.458752,
-    "solve": 1.048576
+    "total": 2.686976,
+    "collision": 1.179648,
+    "adjacency": 0.065536,
+    "coloring": 0.196608,
+    "solve": 1.245184
    },
-   "buildMs": 251.1425420000014,
-   "gpuBytes": 67791876
+   "buildMs": 256.2648749999971,
+   "gpuBytes": 67937892
   },
   {
    "scene": "Box columns 100k",
@@ -197,15 +197,15 @@
    "colors": 3,
    "clashes": 0,
    "overflow": 0,
-   "wallMs": 2.9447832999998353,
+   "wallMs": 2.9481832999998003,
    "gpu": {
-    "total": 2.752512,
-    "collision": 1.048576,
+    "total": 3.145728,
+    "collision": 0.98304,
     "adjacency": 0.065536,
     "coloring": 0.196608,
-    "solve": 1.376256
+    "solve": 1.703936
    },
-   "buildMs": 885.4499580000011,
+   "buildMs": 889.9011250000003,
    "gpuBytes": 144271644
   }
  ]
