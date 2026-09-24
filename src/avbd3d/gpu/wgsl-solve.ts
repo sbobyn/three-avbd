@@ -266,24 +266,69 @@ fn primal(@builtin(global_invocation_id) gid: vec3u) {
   solveBody(color[params.colorBodiesOffset + start + gid.x]);
 }
 
+/** A second lane's partial system per body slot (primalWide). */
+var<workgroup> partials: array<Acc, 64>;
+
+/**
+ * Two threads per body: each accumulates every other adjacency entry, the second lane's
+ * partial system goes through workgroup memory, and the first solves. Halves the serial
+ * chain of dependent loads per body, which bounds each colour's dispatch when a colour has
+ * few bodies with many contacts (small scenes, walls). 64 bodies per workgroup, as primal.
+ */
+@compute @workgroup_size(128)
+fn primalWide(@builtin(local_invocation_id) lid: vec3u, @builtin(workgroup_id) wid: vec3u) {
+  let slot = lid.x >> 1u;
+  let lane = lid.x & 1u;
+  let start = color[params.colorStartOffset + pc.color];
+  let k = wid.x * 64u + slot;
+  let live = k < color[params.colorStartOffset + pc.color + 1u] - start;
+  var i = 0u;
+  var acc: Acc;
+  if (live) {
+    i = color[params.colorBodiesOffset + start + k];
+    acc = accumulate(i, lane, 2u);
+  }
+  if (lane == 1u) { partials[slot] = acc; }
+  workgroupBarrier();
+  if (live && lane == 0u) {
+    let other = partials[slot];
+    acc.lin += other.lin;
+    acc.ang += other.ang;
+    acc.cross += other.cross;
+    acc.rLin += other.rLin;
+    acc.rAng += other.rAng;
+    finishBody(i, acc);
+  }
+}
+
 fn solveBody(i: u32) {
+  finishBody(i, accumulate(i, 0u, 1u));
+}
+
+/**
+ * Body i's Newton system from adjacency entries lane, lane + lanes, ... (lane 0 also adds the
+ * inertia terms); lanes > 1 split a body's constraints across threads (primalWide).
+ */
+fn accumulate(i: u32, lane: u32, lanes: u32) -> Acc {
   let pos = bodies[i].pos;
   let rot = bodies[i].rot;
   let dt2 = params.dt * params.dt;
   let m = bodies[i].size.w / dt2;
   let I = bodies[i].moment.xyz / dt2;
   var acc: Acc;
-  acc.lin = mat3x3f(vec3f(m, 0.0, 0.0), vec3f(0.0, m, 0.0), vec3f(0.0, 0.0, m));
-  acc.ang = mat3x3f(vec3f(I.x, 0.0, 0.0), vec3f(0.0, I.y, 0.0), vec3f(0.0, 0.0, I.z));
-  acc.rLin = m * (pos.xyz - bodies[i].inertialPos.xyz);
-  acc.rAng = I * qsub(rot, bodies[i].inertialRot);
+  if (lane == 0u) {
+    acc.lin = mat3x3f(vec3f(m, 0.0, 0.0), vec3f(0.0, m, 0.0), vec3f(0.0, 0.0, m));
+    acc.ang = mat3x3f(vec3f(I.x, 0.0, 0.0), vec3f(0.0, I.y, 0.0), vec3f(0.0, 0.0, I.z));
+    acc.rLin = m * (pos.xyz - bodies[i].inertialPos.xyz);
+    acc.rAng = I * qsub(rot, bodies[i].inertialRot);
+  }
 
   // One flat loop over joints and contact points: each iteration handles one point, loading
   // its pair when the previous pair runs out. Only what the point needs stays live across
   // iterations (partner and own rotation/displacement, the normal): live registers limit
   // how many threads hide memory latency, and mixed piles run in small, latency-bound
   // per-colour dispatches.
-  var e = adj[i];
+  var e = adj[i] + lane;
   let end = adj[i + 1u];
   var c = 0u;
   var cEnd = 0u;
@@ -296,7 +341,7 @@ fn solveBody(i: u32) {
     if (c == cEnd) {
       if (e >= end) { break; }
       let id = adj[params.adjListOffset + e];
-      e++;
+      e += lanes;
       if (id < params.jointCount) {
         addJoint(&acc, id, pc.alpha, i);
         continue;
@@ -325,7 +370,13 @@ fn solveBody(i: u32) {
     addRow(&acc, l1, cross(r, l1), k.pen.y, ev.F.y);
     addRow(&acc, l2, cross(r, l2), k.pen.z, ev.F.z);
   }
+  return acc;
+}
 
+/** Solve body i's 6x6 system and apply the update (Eq. 4). */
+fn finishBody(i: u32, acc: Acc) {
+  let pos = bodies[i].pos;
+  let rot = bodies[i].rot;
   // LDLᵀ solve of the 6x6 SPD system (maths.h solve), lower triangle only
   let A11 = acc.lin[0][0];
   let A21 = acc.lin[0][1]; let A22 = acc.lin[1][1];

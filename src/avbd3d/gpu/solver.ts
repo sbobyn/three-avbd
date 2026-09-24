@@ -63,6 +63,13 @@ export const bodyBufferSize = (n: number): number => Math.max(n, 1) * BODY_FLOAT
  * cells and the wall-smash broadphase took most of an 8 ms step.
  */
 const LARGE_FACTOR = 2;
+
+/**
+ * Two threads per body in the primal while colours average fewer bodies than this: at 4k per
+ * colour (32k pile) it was 14-19% faster, at 11k (110k pile) even, at 33k (100k columns) 4-6%
+ * slower.
+ */
+const WIDE_PRIMAL_BODIES_PER_COLOR = 8192;
 const MAX_LARGE = 64;
 
 /** GPU solver parameters: the reference's, plus nearest-anchor warm starts (see 2D findings). */
@@ -217,6 +224,14 @@ export class GpuSolver3D {
    * the colouring kernels are skipped. See `sequentialColors`.
    */
   fixedColors: Uint32Array<ArrayBuffer> | null = null;
+  /**
+   * Primal kernel: one thread per body, or two splitting each body's constraints ('wide').
+   * Two threads halve each body's serial chain of loads, which is what bounds a colour with
+   * few bodies (wall smash 36-61% faster); a colour of tens of thousands already fills the
+   * GPU and the reduction costs 4-6%. 'auto' picks by bodies per colour.
+   */
+  primalMode: 'body' | 'wide' | 'auto' = 'auto';
+  private bodiesPerColor = 0;
   /** Encode each phase as its own compute pass even when not profiling. */
   splitPasses = false;
   private shrinkVotes = 0;
@@ -387,7 +402,7 @@ export class GpuSolver3D {
       'degreeJoints', 'degreeContacts', 'fillJoints', 'fillContacts',
       'colorCompact', 'colorMark', 'colorRoundAB', 'colorRoundBA', 'colorCount', 'colorStarts', 'colorScatter',
     ]);
-    make(shaders.solve ?? solveWGSL, [L.solve, L.pass], ['warmStartJoints', 'warmStartBodies', 'primal', 'dual', 'updateVelocities']);
+    make(shaders.solve ?? solveWGSL, [L.solve, L.pass], ['warmStartJoints', 'warmStartBodies', 'primal', 'primalWide', 'dual', 'updateVelocities']);
     make(makeArgsWGSL(PRELUDE_3D, ARGS_ITEMS_3D), [L.args], ['argsPrev', 'argsPairs', 'argsContacts', 'argsColors']);
   }
 
@@ -852,7 +867,7 @@ export class GpuSolver3D {
     pass.setPipeline(this.pipes.warmStartBodies);
     pass.dispatchWorkgroups(groups(N));
     for (let it = 0; it < p.iterations; it++) {
-      pass.setPipeline(this.pipes.primal);
+      pass.setPipeline(this.useWidePrimal() ? this.pipes.primalWide : this.pipes.primal);
       for (let col = 0; col < this.colorCap; col++) {
         setPass(it * perIteration + col);
         pass.dispatchWorkgroupsIndirect(this.argsBuffer, (IA_COLOR + 3 * col) * 4);
@@ -957,8 +972,16 @@ export class GpuSolver3D {
     return this.info.subarray(0, this.jointCount * 4);
   }
 
+  /** Bodies per colour below which two threads per body pay off (measured, docs/FINDINGS.md). */
+  private useWidePrimal(): boolean {
+    if (this.primalMode !== 'auto') return this.primalMode === 'wide';
+    const perColor = this.bodiesPerColor || this.bodyCount / 4;
+    return perColor < WIDE_PRIMAL_BODIES_PER_COLOR;
+  }
+
   /** Adapt the colour cap and pair/contact capacity to a recent counters readback. */
   adapt(counters: GpuCounters3D): void {
+    this.bodiesPerColor = this.bodyCount / Math.max(counters.colors, 1);
     if (this.fixedColors) return;
     // Colour cap = colours in use + 2 (each colour below the cap costs a dispatch per
     // iteration): grow at once when the colouring runs into it, shrink after three quiet reads
