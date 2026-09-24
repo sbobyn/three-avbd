@@ -290,10 +290,12 @@ struct Collision {
 
 fn collideBoxes(pa: vec3f, ha: vec2f, pb: vec3f, hb: vec2f) -> Collision {
   var out: Collision;
-  let cA = cos(pa.z);
-  let sA = sin(pa.z);
-  let cB = cos(pb.z);
-  let sB = sin(pb.z);
+  let csA = cosSin(pa.z);
+  let csB = cosSin(pb.z);
+  let cA = csA.x;
+  let sA = csA.y;
+  let cB = csB.x;
+  let sB = csB.y;
   let dp = pb.xy - pa.xy;
   let dA = vec2f(cA * dp.x + sA * dp.y, -sA * dp.x + cA * dp.y);
   let dB = vec2f(cB * dp.x + sB * dp.y, -sB * dp.x + cB * dp.y);

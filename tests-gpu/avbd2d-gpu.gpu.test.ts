@@ -10,14 +10,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { jointLatticeSoa, pyramid } from '../src/avbd2d/bench-scenes.ts';
-import { BODY_FLOATS } from '../src/avbd2d/gpu/layout.ts';
+import { BODY_FLOATS, CONTACT_WORDS, K_IDS, PRELUDE } from '../src/avbd2d/gpu/layout.ts';
 import { PrefixScan } from '../src/avbd2d/gpu/scan.ts';
 import { createGpuSim } from '../src/avbd2d/gpu/sim.ts';
 import { GpuSolver2D } from '../src/avbd2d/gpu/solver.ts';
 import { defaultParams, parallelParams, type SolverParams, Solver } from '../src/avbd2d/ref/solver.ts';
 import { sceneByName } from '../src/avbd2d/sim.ts';
 import { GridBroadphase, PAIR_SHIFT } from '../src/avbd2d/soa/broadphase.ts';
-import { SoaSolver2D } from '../src/avbd2d/soa/solver.ts';
+import { collideBoxes } from '../src/avbd2d/soa/collide.ts';
+import { INFO_STRIDE, SoaSolver2D } from '../src/avbd2d/soa/solver.ts';
 import { device, gpuTest, skip } from './device.ts';
 
 function soa(scene: string, params: SolverParams): SoaSolver2D {
@@ -29,10 +30,56 @@ function soa(scene: string, params: SolverParams): SoaSolver2D {
   return s;
 }
 
-function maxPoseDiff(bodies: Float32Array, cpu: SoaSolver2D): number {
+function maxPoseDiff(bodies: Float32Array, cpu: SoaSolver2D, skip = new Set<number>()): number {
   let m = 0;
-  for (let i = 0; i < cpu.bodyCount; i++) for (let k = 0; k < 3; k++) m = Math.max(m, Math.abs(bodies[i * BODY_FLOATS + k] - cpu.pose[i * 4 + k]));
+  for (let i = 0; i < cpu.bodyCount; i++) {
+    if (skip.has(i)) continue;
+    for (let k = 0; k < 3; k++) m = Math.max(m, Math.abs(bodies[i * BODY_FLOATS + k] - cpu.pose[i * 4 + k]));
+  }
   return m;
+}
+
+/** Contact points per pair ("a-b"), from the CPU solver's constraint table. */
+function cpuContactsPerPair(cpu: SoaSolver2D): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (let k = 0; k < cpu.contactCount; k++) {
+    const o = (cpu.jointCount + k) * INFO_STRIDE;
+    const key = `${cpu.info[o + 1]}-${cpu.info[o + 2]}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function gpuContactsPerPair(words: Uint32Array, count: number): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (let k = 0; k < count; k++) {
+    const key = `${words[k * CONTACT_WORDS + K_IDS]}-${words[k * CONTACT_WORDS + K_IDS + 1]}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Whether pair a-b's contact count (f64, from the poses the step started from) changes when
+ * any of its inputs moves by f32 round-off: two ulps of a coordinate, 2e-7 rad of an angle.
+ * The GPU works in f32, so on such a knife edge either count is right.
+ */
+function knifeEdge(pose: ArrayLike<number>, shape: ArrayLike<number>, a: number, b: number): boolean {
+  const out = new Float64Array(64);
+  const ulp = (v: number) => 2 ** (Math.floor(Math.log2(Math.max(Math.abs(v), 1e-30))) - 22);
+  const p = [pose[a * 4], pose[a * 4 + 1], pose[a * 4 + 2], pose[b * 4], pose[b * 4 + 1], pose[b * 4 + 2]];
+  const count = (q: number[]) =>
+    collideBoxes(q[0], q[1], q[2], shape[a * 4] * 0.5, shape[a * 4 + 1] * 0.5, q[3], q[4], q[5], shape[b * 4] * 0.5, shape[b * 4 + 1] * 0.5, out);
+  const base = count(p);
+  for (let i = 0; i < 6; i++) {
+    const step = i % 3 === 2 ? 2e-7 : ulp(p[i]);
+    for (const sign of [-1, 1]) {
+      const q = [...p];
+      q[i] += sign * step;
+      if (count(q) !== base) return true;
+    }
+  }
+  return false;
 }
 
 const cpuPairs = (cpu: SoaSolver2D): string[] =>
@@ -64,6 +111,7 @@ for (const [label, params] of [['parallel params', parallelParams()], ['demo par
         }
         const gpu = new GpuSolver2D(device, cpu);
         gpu.seedContactsFrom(cpu);
+        const startPose = Float64Array.from(cpu.pose);
         gpu.step();
         cpu.step();
         frame++;
@@ -79,10 +127,21 @@ for (const [label, params] of [['parallel params', parallelParams()], ['demo par
         for (let i = 0; i < cpu.bodyCount; i++) {
           if (cpu.dynamic[i]) assert.equal(colors[i], cpu.coloring.colors[i], `${where}: colour of body ${i}`);
         }
-        // Touching scenes: only the pair set and colours are exact; contacts flicker there
+        // Touching scenes: only the pair set and colours are exact; contacts flicker there.
+        // Elsewhere each pair's contact count must match, unless f32 round-off of its inputs
+        // flips the count (Box Rain, frame 120: a pair gains a point with a 2e-6 m nudge), and
+        // poses must match to f32 round-off away from such pairs.
         if (exact) {
-          assert.equal(counters.contacts, cpu.contactCount, `${where}: contacts`);
-          const d = maxPoseDiff(bodies, cpu);
+          const words = new Uint32Array(await gpu.readContacts());
+          const [cpuCounts, gpuCounts] = [cpuContactsPerPair(cpu), gpuContactsPerPair(words, counters.contacts)];
+          const skip = new Set<number>();
+          for (const key of new Set([...cpuCounts.keys(), ...gpuCounts.keys()])) {
+            if (cpuCounts.get(key) === gpuCounts.get(key)) continue;
+            const [a, b] = key.split('-').map(Number);
+            assert.ok(knifeEdge(startPose, cpu.shape, a, b), `${where}: pair ${key} has ${gpuCounts.get(key) ?? 0} contacts, the CPU ${cpuCounts.get(key) ?? 0}`);
+            skip.add(a).add(b);
+          }
+          const d = maxPoseDiff(bodies, cpu, skip);
           assert.ok(d < (POSE_TOLERANCE[scene] ?? 1e-4), `${where}: pose diff ${d}`);
         }
         gpu.destroy();
@@ -131,6 +190,42 @@ gpuTest('GPU broadphase finds exactly the brute-force pairs, oversized bodies in
   const expected = [...bp.pairs.subarray(0, bp.pairCount)].map((key) => `${Math.floor(key / PAIR_SHIFT)}-${key % PAIR_SHIFT}`);
   assert.deepEqual(got.sort(), expected.sort());
   gpu.destroy();
+});
+
+// The solver rotates with its own cosSin: WGSL promises the built-ins only to 2^-11, and an
+// M1 Pro's were loose enough that stiff springs drifted 9 cm from the CPU in 60 steps
+gpuTest('cosSin matches Math.cos and Math.sin to 3e-7 over ±100 rad', async (device) => {
+  const n = 20001;
+  const angles = Float32Array.from({ length: n }, (_, i) => -100 + (200 * i) / (n - 1));
+  const module = device.createShaderModule({
+    code: `${PRELUDE}
+@group(0) @binding(0) var<storage, read> angles: array<f32>;
+@group(0) @binding(1) var<storage, read_write> out: array<vec2f>;
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+  if (gid.x < arrayLength(&angles)) { out[gid.x] = cosSin(angles[gid.x]); }
+}`,
+  });
+  const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
+  const input = device.createBuffer({ size: n * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  const output = device.createBuffer({ size: n * 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+  const read = device.createBuffer({ size: n * 8, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+  device.queue.writeBuffer(input, 0, angles);
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: input } }, { binding: 1, resource: { buffer: output } }] }));
+  pass.dispatchWorkgroups(Math.ceil(n / 64));
+  pass.end();
+  encoder.copyBufferToBuffer(output, 0, read, 0, n * 8);
+  device.queue.submit([encoder.finish()]);
+  await read.mapAsync(GPUMapMode.READ);
+  const cs = new Float32Array(read.getMappedRange().slice(0));
+  read.unmap();
+  let worst = 0;
+  for (let i = 0; i < n; i++) worst = Math.max(worst, Math.abs(cs[2 * i] - Math.cos(angles[i])), Math.abs(cs[2 * i + 1] - Math.sin(angles[i])));
+  assert.ok(worst < 3e-7, `max error ${worst}`);
+  for (const b of [input, output, read]) b.destroy();
 });
 
 gpuTest('prefix scan matches a CPU exclusive scan at several sizes', async (device) => {

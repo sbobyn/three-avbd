@@ -2,6 +2,27 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 8j: the 2D solver on an M1 Pro: GPU trig precision
+
+First run on other hardware (MacBook Pro M1 Pro, 16-core GPU, same macOS build as the M4 Max):
+3D all green; two 2D GPU/CPU checks failed, deterministically. A seeded single step of
+Dynamic Friction missed by 1.15e-4 (M4 Max: 3.8e-6), and Spring Ratio drifted 0.090 m from
+the CPU in 60 steps (M4 Max: 1.6e-4, steady, not growing; the two primal modes agree bit for
+bit). Division emulated as a reciprocal shifted by up to 4 ulp changed nothing. The 2D
+solver turns every angle into cos/sin with the WGSL built-ins, which the spec only bounds to
+2^-11 absolute; rounding them to 2^-13 on the M4 reproduced it (Spring Ratio 0.23 m, Dynamic
+Friction 3e-5; at 2^-11: 1.2 m and 4.9e-4). The 3D solver uses quaternions and no trig.
+
+Fix: cosSin in the 2D prelude, Cody-Waite reduction by pi/2 and the Cephes single-precision
+polynomials. Written as plain subtractions, fast math folded the three-part pi/2 back into
+one rounded constant and the error grew with the angle (2.8e-6 at 100 rad); with fma it is
+8.8e-8 over ±100 rad, better than the M4's built-ins (1.3e-7). A GPU test checks it against
+Math.cos/sin. Box Rain's seeded step then gained a contact on one pair at frame 120: that
+pair's own f64 count flips when a coordinate moves by 2e-6 m (one f32 ulp at x = -18), so
+the built-in trig had only happened to land on the CPU's side. The seeded test now compares
+contact counts per pair (stricter than the total) and exempts only pairs whose f64 count
+flips under f32 round-off of their inputs, and their bodies' poses.
+
 ## 2026-09-24 — Stage 8i: the solve at 506k is near the M4 Max's bandwidth
 
 In-step per-dispatch timestamps (5 untimed steps between timed ones keep the clocks up; the

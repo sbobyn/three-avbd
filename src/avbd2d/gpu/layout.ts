@@ -194,10 +194,32 @@ struct Params {
   pad2: u32,
 }
 
+/**
+ * (cos x, sin x) to ~1e-7. WGSL promises the built-ins only to 2^-11 absolute and GPUs differ:
+ * on an M1 Pro, stiff springs (Spring Ratio) drifted 9 cm from the CPU in 60 steps and a
+ * single friction step missed by 1.2e-4, where the M4 Max tracked to 1.6e-4 and 4e-6; rounding
+ * the built-ins to 2^-13 on the M4 reproduced it. Cody-Waite reduction by pi/2 (three-part
+ * constant) and the Cephes single-precision polynomials on [-pi/4, pi/4].
+ */
+fn cosSin(x: f32) -> vec2f {
+  let q = floor(x * 0.63661977236 + 0.5);
+  // fma keeps the three parts apart: written as subtractions, fast math folded them back into
+  // one rounded pi/2 and the error grew with the angle (2.8e-6 at 100 rad)
+  let r = fma(-q, 7.549789954891882e-8, fma(-q, 4.837512969970703e-4, fma(-q, 1.5703125, x)));
+  let z = r * r;
+  let s = r + r * z * (-1.6666654611e-1 + z * (8.3321608736e-3 + z * -1.9515295891e-4));
+  let c = 1.0 - 0.5 * z + z * z * (4.1666645683e-2 + z * (-1.3887316255e-3 + z * 2.4433157468e-5));
+  switch (u32(i32(q)) & 3u) {
+    case 0u: { return vec2f(c, s); }
+    case 1u: { return vec2f(-s, c); }
+    case 2u: { return vec2f(-c, -s); }
+    default: { return vec2f(s, -c); }
+  }
+}
+
 fn rot(angle: f32, v: vec2f) -> vec2f {
-  let c = cos(angle);
-  let s = sin(angle);
-  return vec2f(c * v.x - s * v.y, s * v.x + c * v.y);
+  let cs = cosSin(angle);
+  return vec2f(cs.x * v.x - cs.y * v.y, cs.y * v.x + cs.x * v.y);
 }
 
 `;
