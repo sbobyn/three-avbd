@@ -19,15 +19,35 @@ import { IgnoreCollision, Joint, Spring } from '../ref/forces.ts';
 import { Manifold } from '../ref/manifold.ts';
 import { defaultParams, type Solver, type SolverParams } from '../ref/solver.ts';
 import {
-  B_ANGVEL, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS, CONTACT_WORDS, FLAG_FACE_BIAS, FLAG_MATCH_NEAREST, J_C0_ANG, J_C0_LIN, J_LAM_ANG,
+  ARGS_ITEMS_3D, B_ANGVEL, B_INERTIAL_POS, B_INERTIAL_ROT, B_INITIAL_POS, B_INITIAL_ROT, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS,
+  C_MANIFOLDS, CONTACT_WORDS, FLAG_FACE_BIAS, FLAG_MATCH_NEAREST, J_C0_ANG, J_C0_LIN, J_LAM_ANG, K_LAM, K_PEN, K_RA, K_RB, M_GEO, MANIFOLD_WORDS, STICK_BIT,
   J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_SPHERE, T_JOINT, T_SPRING,
   TOPOLOGY_ACCESSORS_3D,
 } from './layout.ts';
 import { isSphere } from '../shapes.ts';
+import { rotate, vec3 } from '../ref/math.ts';
 import { broadphaseWGSL, contactsWGSL } from './wgsl-collision.ts';
 import { solveWGSL } from './wgsl-solve.ts';
 
-export { PHASES, type GpuCounters, type StepProfile };
+export { PHASES, type StepProfile };
+
+export interface GpuCounters3D extends GpuCounters {
+  /** Contact pairs (manifolds) written by the last step. */
+  manifolds: number;
+}
+
+/** One contact point as read back (`readContactList`). */
+export interface GpuContact {
+  a: number;
+  b: number;
+  feature: number;
+  stick: boolean;
+  rA: number[];
+  rB: number[];
+  pen: number[];
+  lam: number[];
+  normal: number[];
+}
 
 const finite = (x: number): number => (x === Infinity ? BIG : x === -Infinity ? -BIG : x);
 const groups = (n: number): number => Math.ceil(n / WORKGROUP_SIZE);
@@ -74,6 +94,68 @@ interface BodyInfo {
   size: [number, number, number];
 }
 
+/**
+ * Pairs the GPU broadphase will report for these bodies (bounding spheres and world AABBs
+ * overlap, not both static), counted on a CPU hash grid; used to size the buffers.
+ */
+function estimatePairs(bodies: Rigid[]): number {
+  const n = bodies.length;
+  const half = bodies.map((b) => {
+    if (isSphere(b)) return [b.radius, b.radius, b.radius];
+    const h = [0, 0, 0];
+    for (let k = 0; k < 3; k++) {
+      const e = [0, 0, 0];
+      e[k] = b.size[k] * 0.5;
+      const w = rotate(vec3(), b.positionAng, e);
+      for (let c = 0; c < 3; c++) h[c] += Math.abs(w[c]);
+    }
+    return h;
+  });
+  const radii = bodies.map((b) => b.radius).sort((x, y) => x - y);
+  const cell = Math.max(2 * (radii[Math.floor(n * 0.99)] ?? 1), 1e-3);
+  const overlap = (i: number, j: number) => {
+    const a = bodies[i];
+    const b = bodies[j];
+    if (a.mass <= 0 && b.mass <= 0) return false;
+    const d = [0, 1, 2].map((k) => a.positionLin[k] - b.positionLin[k]);
+    const r = a.radius + b.radius;
+    if (d[0] * d[0] + d[1] * d[1] + d[2] * d[2] > r * r) return false;
+    return d.every((x, k) => Math.abs(x) <= half[i][k] + half[j][k]);
+  };
+  // Bodies larger than a cell are tested against everything
+  const large: number[] = [];
+  const grid = new Map<number, number[]>();
+  const key = (x: number, y: number, z: number) => ((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) >>> 0;
+  const cellOf = (i: number) => [0, 1, 2].map((k) => Math.floor(bodies[i].positionLin[k] / cell));
+  for (let i = 0; i < n; i++) {
+    if (2 * bodies[i].radius > cell) {
+      large.push(i);
+      continue;
+    }
+    const [x, y, z] = cellOf(i);
+    const k = key(x, y, z);
+    const list = grid.get(k);
+    if (list) list.push(i);
+    else grid.set(k, [i]);
+  }
+  let count = 0;
+  for (let i = 0; i < n; i++) {
+    if (large.includes(i)) continue;
+    const [x, y, z] = cellOf(i);
+    const seen = new Set<number>();
+    for (let dz = -1; dz <= 1; dz++)
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          for (const j of grid.get(key(x + dx, y + dy, z + dz)) ?? []) {
+            if (j < i && !seen.has(j) && overlap(i, j)) count++;
+            seen.add(j);
+          }
+        }
+  }
+  for (const l of large) for (let j = 0; j < n; j++) if (j !== l && (!large.includes(j) || j < l) && overlap(l, j)) count++;
+  return count;
+}
+
 /** Evaluated lazily: under Node the WebGPU globals appear only once a device module loads. */
 const storageUsage = () => GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
 
@@ -90,6 +172,7 @@ export class GpuSolver3D {
   private info = new Int32Array(0);
   /** IgnoreCollision pairs as [hi, lo]. */
   private readonly ignored: [number, number][] = [];
+  /** Broadphase pairs, and so also contact pairs (manifolds): one per colliding pair. */
   pairCapacity = 0;
   contactCapacity = 0;
   /** Colours the colouring may use and the solver dispatches (grows via `adapt`). */
@@ -102,7 +185,8 @@ export class GpuSolver3D {
   /** Encode each phase as its own compute pass even when not profiling. */
   splitPasses = false;
   private shrinkVotes = 0;
-  readonly colorRounds: number;
+  /** Jones-Plassmann rounds per step (even); adapted to the clash count by `adapt`. */
+  colorRounds: number;
 
   private get colorHistOffset(): number {
     return 3 * this.bodyCapacity + 65;
@@ -113,6 +197,7 @@ export class GpuSolver3D {
   private jointBuffer!: GPUBuffer;
   private infoBuffer!: GPUBuffer;
   private contactBuffers!: [GPUBuffer, GPUBuffer];
+  private manifoldBuffers!: [GPUBuffer, GPUBuffer];
   private pairBuffer!: GPUBuffer;
   private tableBuffer!: GPUBuffer;
   private readonly gridBuffer: GPUBuffer;
@@ -203,7 +288,12 @@ export class GpuSolver3D {
     }
     this.allocateJoints(joints.length + 256);
     for (const f of joints) this.writeJoint(this.jointCount++, f, index);
-    this.allocateContacts(Math.max(4096, 8 * cap));
+    // Size pair and contact storage from the scene's actual starting pairs: overflowing on the
+    // first steps drops pairs, and a freshly built wall then sinks into itself for good
+    // (floors: a settled random pile has ~3 pairs per body, a brick wall ~6 per brick, ~4
+    // contacts per touching pair)
+    const pairs = estimatePairs(ref.bodies);
+    this.allocateContacts(Math.max(8192, 4 * cap, 4 * pairs), Math.max(4096, 4 * cap, 2 * pairs));
     this.writeBodies(0, ref.bodies);
   }
 
@@ -221,9 +311,9 @@ export class GpuSolver3D {
     const U: GPUBufferBindingType = 'uniform';
     return {
       broad: layout('broadphase 3d', [U, R, W, W, W, R, R]),
-      contacts: layout('contacts 3d', [U, R, R, W, R, W, W]),
+      contacts: layout('contacts 3d', [U, R, R, W, R, W, R, W, W]),
       topo: layout('topology 3d', [U, R, R, R, R, W, W, W]),
-      solve: layout('solve 3d', [U, W, W, R, W, R, R, R]),
+      solve: layout('solve 3d', [U, W, W, R, W, R, R, R, R]),
       pass: d.createBindGroupLayout({
         label: 'pass',
         entries: [{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 16 } }],
@@ -247,7 +337,7 @@ export class GpuSolver3D {
       'colorCompact', 'colorMark', 'colorRoundAB', 'colorRoundBA', 'colorCount', 'colorStarts', 'colorScatter',
     ]);
     make(shaders.solve ?? solveWGSL, [L.solve, L.pass], ['warmStartJoints', 'warmStartBodies', 'primal', 'dual', 'updateVelocities']);
-    make(makeArgsWGSL(PRELUDE_3D), [L.args], ['argsPrev', 'argsPairs', 'argsContacts', 'argsColors']);
+    make(makeArgsWGSL(PRELUDE_3D, ARGS_ITEMS_3D), [L.args], ['argsPrev', 'argsPairs', 'argsContacts', 'argsColors']);
   }
 
   private allocateJoints(capacity: number): void {
@@ -272,32 +362,37 @@ export class GpuSolver3D {
   }
 
   /**
-   * (Re)allocate pair and contact storage. When growing, both contact buffers are copied over
-   * and the counters are left alone, so warm starts survive the reallocation.
+   * (Re)allocate pair, manifold and contact storage. Every manifold comes from a broadphase
+   * pair, so manifolds share the pair capacity. When growing, the ping-pong buffers are
+   * copied over and the counters are left alone, so warm starts survive the reallocation.
    */
-  private allocateContacts(requested: number, requestedPairs = requested): void {
+  private allocateContacts(requested: number, requestedPairs = requested / 2): void {
     const d = this.device;
     const maxBinding = d.limits.maxStorageBufferBindingSize;
-    const capacity = Math.min(requested, Math.floor(maxBinding / (CONTACT_WORDS * 4)), Math.floor(maxBinding / 16));
-    const pairCapacity = Math.min(requestedPairs, Math.floor(maxBinding / 8));
-    const old = this.contactBuffers;
-    const oldCapacity = this.contactCapacity;
+    const capacity = Math.min(requested, Math.floor(maxBinding / (CONTACT_WORDS * 4)));
+    const pairCapacity = Math.min(Math.ceil(requestedPairs), Math.floor(maxBinding / (MANIFOLD_WORDS * 4)));
+    const old = { contacts: this.contactBuffers, manifolds: this.manifoldBuffers, contactCapacity: this.contactCapacity, pairCapacity: this.pairCapacity };
     for (const b of [this.pairBuffer, this.tableBuffer]) b?.destroy();
     this.contactCapacity = capacity;
     this.pairCapacity = pairCapacity;
-    // Up to one entry per contact plus one per manifold: keep the load factor below ~1/2
-    this.hashSize = pow2AtLeast(4 * capacity);
+    // One entry per manifold: keep the load factor at most 1/2
+    this.hashSize = pow2AtLeast(2 * pairCapacity);
     this.pairBuffer = d.createBuffer({ label: 'pairs', size: pairCapacity * 8, usage: storageUsage() });
-    this.tableBuffer = d.createBuffer({ label: 'contact hash', size: this.hashSize * 4, usage: storageUsage() });
+    this.tableBuffer = d.createBuffer({ label: 'manifold hash', size: this.hashSize * 4, usage: storageUsage() });
     this.contactBuffers = [0, 1].map((i) =>
       d.createBuffer({ label: `contacts 3d ${i}`, size: capacity * CONTACT_WORDS * 4, usage: storageUsage() }),
     ) as [GPUBuffer, GPUBuffer];
-    if (old) {
+    this.manifoldBuffers = [0, 1].map((i) =>
+      d.createBuffer({ label: `manifolds 3d ${i}`, size: pairCapacity * MANIFOLD_WORDS * 4, usage: storageUsage() }),
+    ) as [GPUBuffer, GPUBuffer];
+    if (old.contacts) {
       const encoder = d.createCommandEncoder();
-      const bytes = Math.min(oldCapacity, capacity) * CONTACT_WORDS * 4;
-      old.forEach((buffer, i) => encoder.copyBufferToBuffer(buffer, 0, this.contactBuffers[i], 0, bytes));
+      const contactBytes = Math.min(old.contactCapacity, capacity) * CONTACT_WORDS * 4;
+      const manifoldBytes = Math.min(old.pairCapacity, pairCapacity) * MANIFOLD_WORDS * 4;
+      old.contacts.forEach((buffer, i) => encoder.copyBufferToBuffer(buffer, 0, this.contactBuffers[i], 0, contactBytes));
+      old.manifolds.forEach((buffer, i) => encoder.copyBufferToBuffer(buffer, 0, this.manifoldBuffers[i], 0, manifoldBytes));
       d.queue.submit([encoder.finish()]);
-      old.forEach((buffer) => buffer.destroy());
+      [...old.contacts, ...old.manifolds].forEach((buffer) => buffer.destroy());
     }
     this.rebuildBindings();
   }
@@ -307,7 +402,7 @@ export class GpuSolver3D {
     const d = this.device;
     const cap = this.bodyCapacity;
     this.adjBuffer?.destroy();
-    this.adjBuffer = d.createBuffer({ label: 'adjacency', size: (2 * cap + 1 + 2 * (this.jointCapacity + this.contactCapacity)) * 4, usage: storageUsage() });
+    this.adjBuffer = d.createBuffer({ label: 'adjacency', size: (2 * cap + 1 + 2 * (this.jointCapacity + this.pairCapacity)) * 4, usage: storageUsage() });
     this.adjScan?.destroy();
     this.adjScan = new PrefixScan(d, this.adjBuffer, 0, this.bodyCount + 1);
     this.staticBuffer ??= d.createBuffer({ label: 'statics', size: 16, usage: storageUsage() });
@@ -316,18 +411,21 @@ export class GpuSolver3D {
       d.createBindGroup({ layout, entries: buffers.map((buffer, binding) => ({ binding, resource: { buffer } })) });
     const P = this.paramsBuffer;
     const [c0, c1] = this.contactBuffers;
+    const [m0, m1] = this.manifoldBuffers;
     const adj = this.adjBuffer;
+    const T = this.tableBuffer;
+    const C = this.counterBuffer;
     this.groups = {
-      broad: group(this.layouts.broad, [P, this.bodyBuffer, this.gridBuffer, this.pairBuffer, this.counterBuffer, this.staticBuffer, this.jointBuffer]),
+      broad: group(this.layouts.broad, [P, this.bodyBuffer, this.gridBuffer, this.pairBuffer, C, this.staticBuffer, this.jointBuffer]),
       contacts: [
-        group(this.layouts.contacts, [P, this.bodyBuffer, this.pairBuffer, c0, c1, this.tableBuffer, this.counterBuffer]),
-        group(this.layouts.contacts, [P, this.bodyBuffer, this.pairBuffer, c1, c0, this.tableBuffer, this.counterBuffer]),
+        group(this.layouts.contacts, [P, this.bodyBuffer, this.pairBuffer, c0, c1, m0, m1, T, C]),
+        group(this.layouts.contacts, [P, this.bodyBuffer, this.pairBuffer, c1, c0, m1, m0, T, C]),
       ],
-      topo: [c0, c1].map((c) =>
-        group(this.layouts.topo, [P, this.bodyBuffer, this.jointBuffer, this.infoBuffer, c, this.counterBuffer, adj, this.colorBuffer]),
+      topo: [m0, m1].map((m) =>
+        group(this.layouts.topo, [P, this.bodyBuffer, this.jointBuffer, this.infoBuffer, m, C, adj, this.colorBuffer]),
       ) as [GPUBindGroup, GPUBindGroup],
-      solve: [c0, c1].map((c) =>
-        group(this.layouts.solve, [P, this.bodyBuffer, this.jointBuffer, this.infoBuffer, c, adj, this.colorBuffer, this.counterBuffer]),
+      solve: [0, 1].map((i) =>
+        group(this.layouts.solve, [P, this.bodyBuffer, this.jointBuffer, this.infoBuffer, [c0, c1][i], adj, this.colorBuffer, C, [m0, m1][i]]),
       ) as [GPUBindGroup, GPUBindGroup],
       args: group(this.layouts.args, [P, this.counterBuffer, this.colorBuffer, this.argsBuffer]),
     };
@@ -347,10 +445,10 @@ export class GpuSolver3D {
       f[o + B_SIZE + 3] = b.mass;
       f.set(b.moment, o + B_MOMENT);
       f[o + B_MOMENT + 3] = b.radius;
-      f.set(b.initialLin, o + 16);
-      f.set(b.initialAng, o + 20);
-      f.set(b.inertialLin, o + 24);
-      f.set(b.inertialAng, o + 28);
+      f.set(b.initialLin, o + B_INITIAL_POS);
+      f.set(b.initialAng, o + B_INITIAL_ROT);
+      f.set(b.inertialLin, o + B_INERTIAL_POS);
+      f.set(b.inertialAng, o + B_INERTIAL_ROT);
       f.set(b.velocityLin, o + B_VEL);
       f[o + B_VEL + 3] = b.prevVelocityLin[2];
       f.set(b.velocityAng, o + B_ANGVEL);
@@ -448,25 +546,32 @@ export class GpuSolver3D {
 
     const manifolds = ref.forces.filter((f): f is Manifold => f instanceof Manifold);
     const n = manifolds.reduce((sum, m) => sum + m.contacts.length, 0);
-    if (n > this.contactCapacity) throw new Error('seedFrom: too many contacts');
-    const words = new ArrayBuffer(Math.max(n, 1) * CONTACT_WORDS * 4);
-    const u = new Uint32Array(words);
-    const f = new Float32Array(words);
+    if (n > this.contactCapacity || manifolds.length > this.pairCapacity) throw new Error('seedFrom: too many contacts');
+    const cWords = new ArrayBuffer(Math.max(n, 1) * CONTACT_WORDS * 4);
+    const cu = new Uint32Array(cWords);
+    const cf = new Float32Array(cWords);
+    const mWords = new ArrayBuffer(Math.max(manifolds.length, 1) * MANIFOLD_WORDS * 4);
+    const mu = new Uint32Array(mWords);
+    const mf = new Float32Array(mWords);
     let k = 0;
-    for (const m of manifolds) {
-      const a = index.get(m.bodyA!)!;
-      const b = index.get(m.bodyB)!;
+    manifolds.forEach((m, i) => {
+      mu.set([index.get(m.bodyA!)!, index.get(m.bodyB)!, k, m.contacts.length], i * MANIFOLD_WORDS);
+      mf.set([m.basis[0], m.basis[1], m.basis[2], m.friction], i * MANIFOLD_WORDS + M_GEO);
       for (const c of m.contacts) {
         const o = k++ * CONTACT_WORDS;
-        u.set([a, b, c.feature >>> 0, c.stick ? 1 : 0], o);
-        f.set([...c.penalty, m.friction, ...c.lambda, 0], o + 4);
-        f.set([...c.rA, m.basis[0], ...c.rB, m.basis[1], ...c.C0, m.basis[2]], o + 12);
+        cf.set(c.rA, o + K_RA);
+        cu[o + K_RA + 3] = (c.feature >>> 0) | (c.stick ? STICK_BIT : 0);
+        cf.set([...c.rB, c.C0[0]], o + K_RB);
+        cf.set([...c.penalty, c.C0[1]], o + K_PEN);
+        cf.set([...c.lambda, c.C0[2]], o + K_LAM);
       }
-    }
-    // The next step reads last step's contacts from the buffer it does not write
-    this.device.queue.writeBuffer(this.contactBuffers[1 - this.parity], 0, words);
+    });
+    // The next step reads last step's contacts from the buffers it does not write
+    this.device.queue.writeBuffer(this.contactBuffers[1 - this.parity], 0, cWords);
+    this.device.queue.writeBuffer(this.manifoldBuffers[1 - this.parity], 0, mWords);
     const counters = new Uint32Array(COUNTER_WORDS);
     counters[C_CONTACTS] = n;
+    counters[C_MANIFOLDS] = manifolds.length;
     this.device.queue.writeBuffer(this.counterBuffer, 0, counters);
   }
 
@@ -571,6 +676,7 @@ export class GpuSolver3D {
     u[26] = this.colorGroups;
     u[27] = 2 * cap + 65; // colorBodiesOffset
     u[28] = this.colorRounds;
+    u[29] = this.pairCapacity; // manifoldCapacity
     this.device.queue.writeBuffer(this.paramsBuffer, 0, buf);
   }
 
@@ -742,16 +848,46 @@ export class GpuSolver3D {
     return new Float32Array(await this.read(this.jointBuffer, this.jointCount * JOINT_FLOATS * 4));
   }
 
-  async readCounters(): Promise<GpuCounters> {
+  async readCounters(): Promise<GpuCounters3D> {
     const c = new Uint32Array(await this.read(this.counterBuffer, COUNTER_WORDS * 4));
-    return { pairs: c[C_PAIRS], contacts: c[C_CONTACTS], overflow: c[C_OVERFLOW], clashes: c[C_CLASHES], colors: c[C_NUM_COLORS] };
+    return { pairs: c[C_PAIRS], contacts: c[C_CONTACTS], manifolds: c[C_MANIFOLDS], overflow: c[C_OVERFLOW], clashes: c[C_CLASHES], colors: c[C_NUM_COLORS] };
   }
 
-  /** Contacts written by the last step (CONTACT_WORDS words each; ids are u32, the rest f32). */
-  async readContacts(): Promise<ArrayBuffer> {
-    const { contacts } = await this.readCounters();
-    const n = Math.min(contacts, this.contactCapacity);
-    return this.read(this.contactBuffers[1 - this.parity], n * CONTACT_WORDS * 4);
+  /** Contact points written by the last step, with their pair's bodies and normal. */
+  async readContactList(): Promise<GpuContact[]> {
+    const counters = await this.readCounters();
+    const pairs = Math.min(counters.manifolds, this.pairCapacity);
+    const points = Math.min(counters.contacts, this.contactCapacity);
+    const last = 1 - this.parity;
+    const [mw, cw] = await Promise.all([
+      this.read(this.manifoldBuffers[last], pairs * MANIFOLD_WORDS * 4),
+      this.read(this.contactBuffers[last], points * CONTACT_WORDS * 4),
+    ]);
+    const mu = new Uint32Array(mw);
+    const mf = new Float32Array(mw);
+    const cu = new Uint32Array(cw);
+    const cf = new Float32Array(cw);
+    const out: GpuContact[] = [];
+    for (let m = 0; m < pairs; m++) {
+      const o = m * MANIFOLD_WORDS;
+      const normal = [...mf.subarray(o + M_GEO, o + M_GEO + 3)];
+      for (let c = mu[o + 2]; c < mu[o + 2] + mu[o + 3]; c++) {
+        const k = c * CONTACT_WORDS;
+        const key = cu[k + K_RA + 3];
+        out.push({
+          a: mu[o],
+          b: mu[o + 1],
+          feature: (key & ~STICK_BIT) >>> 0,
+          stick: (key & STICK_BIT) !== 0,
+          rA: [...cf.subarray(k + K_RA, k + K_RA + 3)],
+          rB: [...cf.subarray(k + K_RB, k + K_RB + 3)],
+          pen: [...cf.subarray(k + K_PEN, k + K_PEN + 3)],
+          lam: [...cf.subarray(k + K_LAM, k + K_LAM + 3)],
+          normal,
+        });
+      }
+    }
+    return out;
   }
 
   /** Pairs found by the last step's broadphase (bodyA > bodyB), unordered. */
@@ -766,24 +902,33 @@ export class GpuSolver3D {
   }
 
   /** Adapt the colour cap and pair/contact capacity to a recent counters readback. */
-  adapt(counters: GpuCounters): void {
+  adapt(counters: GpuCounters3D): void {
     if (this.fixedColors) return;
     // Colour cap = colours in use + 2 (each colour below the cap costs a dispatch per
     // iteration): grow at once when the colouring runs into it, shrink after three quiet reads
+    // Jones-Plassmann rounds: the colouring carries over between steps and rarely has much
+    // left to do (16 -> 2 rounds saved ~3% with no clashes, docs/FINDINGS.md), so run few and
+    // double them as soon as a readback reports clashes
     const used = counters.colors;
-    if (counters.clashes > 0 || used >= this.colorCap - 1) {
+    if (counters.clashes > 0) this.colorRounds = Math.min(32, this.colorRounds * 2);
+    if (counters.clashes > 0 || used >= this.colorCap) {
       this.colorCap = Math.min(MAX_COLORS, Math.max(used + 4, this.colorCap + 4));
       this.shrinkVotes = 0;
-    } else if (used + 2 < this.colorCap) {
+    } else if (used + 1 < this.colorCap || this.colorRounds > 4) {
+      // After three quiet readbacks: one spare colour (a new contact may need it before the
+      // next readback) and back down to 4 rounds
       if (++this.shrinkVotes >= 3) {
-        this.colorCap = Math.max(4, used + 2);
+        this.colorCap = Math.max(2, used + 1);
+        this.colorRounds = Math.max(4, this.colorRounds - 4);
         this.shrinkVotes = 0;
       }
     } else {
       this.shrinkVotes = 0;
     }
-    const contactsFull = (counters.overflow & 2) !== 0 || counters.contacts > 0.8 * this.contactCapacity;
-    const pairsFull = (counters.overflow & 1) !== 0 || counters.pairs > 0.8 * this.pairCapacity;
+    // Grow well before overflowing: a falling pile's pair count can double between readbacks
+    const contactsFull = (counters.overflow & 2) !== 0 || counters.contacts > 0.6 * this.contactCapacity;
+    // Manifolds share the pair capacity (bit 2: a manifold did not fit)
+    const pairsFull = (counters.overflow & 5) !== 0 || counters.pairs > 0.6 * this.pairCapacity;
     const contacts = this.contactCapacity * (contactsFull ? 2 : 1);
     const pairs = this.pairCapacity * (pairsFull ? 2 : 1);
     if ((contactsFull || pairsFull) && this.capacityCanGrow(contacts, pairs)) this.allocateContacts(contacts, pairs);
@@ -791,8 +936,9 @@ export class GpuSolver3D {
 
   private capacityCanGrow(contacts: number, pairs: number): boolean {
     const maxBinding = this.device.limits.maxStorageBufferBindingSize;
-    const maxContacts = Math.min(Math.floor(maxBinding / (CONTACT_WORDS * 4)), Math.floor(maxBinding / 16));
-    return Math.min(contacts, maxContacts) > this.contactCapacity || Math.min(pairs, Math.floor(maxBinding / 8)) > this.pairCapacity;
+    const maxContacts = Math.floor(maxBinding / (CONTACT_WORDS * 4));
+    const maxPairs = Math.floor(maxBinding / (MANIFOLD_WORDS * 4));
+    return Math.min(contacts, maxContacts) > this.contactCapacity || Math.min(pairs, maxPairs) > this.pairCapacity;
   }
 
   private async read(buffer: GPUBuffer, size: number): Promise<ArrayBuffer> {
@@ -811,7 +957,7 @@ export class GpuSolver3D {
   destroy(): void {
     if (this.ownsBodyBuffer) this.bodyBuffer.destroy();
     const buffers = [
-      this.jointBuffer, this.infoBuffer, ...this.contactBuffers, this.pairBuffer, this.tableBuffer, this.gridBuffer, this.staticBuffer,
+      this.jointBuffer, this.infoBuffer, ...this.contactBuffers, ...this.manifoldBuffers, this.pairBuffer, this.tableBuffer, this.gridBuffer, this.staticBuffer,
       this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.passBuffer, this.timing?.resolve, this.timing?.read,
     ];
     for (const b of buffers) b?.destroy();

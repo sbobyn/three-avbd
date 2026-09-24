@@ -204,9 +204,14 @@ fn rot(angle: f32, v: vec2f) -> vec2f {
 
 /**
  * Writes the indirect dispatch arguments from the counters and colour counts. Works with
- * either dimension's prelude (it only reads the shared Params fields).
+ * either dimension's prelude (it only reads the shared Params fields). The per-step
+ * constraint records after the joints (IA_CONTACTS, and with the joints IA_CONSTRAINTS) and
+ * last step's records (IA_PREV) are contacts by default; 3D passes its contact pairs.
  */
-export const makeArgsWGSL = (prelude: string): string => /* wgsl */ `
+export const makeArgsWGSL = (
+  prelude: string,
+  items = { counter: 'C_CONTACTS', prevCounter: 'C_PREV_CONTACTS', capacity: 'params.contactCapacity' },
+): string => /* wgsl */ `
 ${prelude}
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -222,7 +227,7 @@ fn setArgs(at: u32, count: u32) {
 
 @compute @workgroup_size(1)
 fn argsPrev() {
-  setArgs(IA_PREV, counters[C_PREV_CONTACTS]);
+  setArgs(IA_PREV, counters[${items.prevCounter}]);
 }
 
 @compute @workgroup_size(1)
@@ -232,9 +237,9 @@ fn argsPairs() {
 
 @compute @workgroup_size(1)
 fn argsContacts() {
-  let contacts = min(counters[C_CONTACTS], params.contactCapacity);
-  setArgs(IA_CONTACTS, contacts);
-  setArgs(IA_CONSTRAINTS, params.jointCount + contacts);
+  let items = min(counters[${items.counter}], ${items.capacity});
+  setArgs(IA_CONTACTS, items);
+  setArgs(IA_CONSTRAINTS, params.jointCount + items);
 }
 
 @compute @workgroup_size(64)

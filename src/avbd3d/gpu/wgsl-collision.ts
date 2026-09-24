@@ -3,8 +3,10 @@
 //
 // - broadphase: uniform 3D grid (counting sort by atomics + prefix scan) and pair emission,
 //   oversized bodies (the ground) tested brute-force, connected pairs skipped;
-// - contacts: box-box SAT with face clipping (up to 8 contacts, a port of ../ref/collide.ts),
-//   warm-started from last step's contact with the same (bodyA, bodyB, feature) key.
+// - contacts: box-box SAT with face clipping (up to 8 contacts, a port of ../ref/collide.ts)
+//   and sphere contacts, written as a pair record plus its contact points. Each point is
+//   warm-started from last step's point with the same feature in the same pair, found
+//   through a hash table of last step's pairs.
 
 import { PRELUDE_3D } from './layout.ts';
 
@@ -23,9 +25,10 @@ ${PRELUDE_3D}
 
 @compute @workgroup_size(1)
 fn beginFrame() {
-  // Last step's contacts become "previous" (they sit in the other ping-pong buffer)
-  let prev = min(atomicLoad(&counters[C_CONTACTS]), params.contactCapacity);
-  atomicStore(&counters[C_PREV_CONTACTS], prev);
+  // Last step's pairs and contacts become "previous" (they sit in the other ping-pong buffers)
+  atomicStore(&counters[C_PREV_MANIFOLDS], min(atomicLoad(&counters[C_MANIFOLDS]), params.manifoldCapacity));
+  atomicStore(&counters[C_PREV_CONTACTS], min(atomicLoad(&counters[C_CONTACTS]), params.contactCapacity));
+  atomicStore(&counters[C_MANIFOLDS], 0u);
   atomicStore(&counters[C_CONTACTS], 0u);
   atomicStore(&counters[C_PAIRS], 0u);
   atomicStore(&counters[C_OVERFLOW], 0u);
@@ -168,23 +171,25 @@ ${PRELUDE_3D}
 @group(0) @binding(2) var<storage, read> pairs: array<vec2u>;
 @group(0) @binding(3) var<storage, read_write> contacts: array<Contact>;
 @group(0) @binding(4) var<storage, read> prevContacts: array<Contact>;
-@group(0) @binding(5) var<storage, read_write> table: array<atomic<u32>>;
-@group(0) @binding(6) var<storage, read_write> counters: array<atomic<u32>>;
+@group(0) @binding(5) var<storage, read_write> manifolds: array<Manifold>;
+@group(0) @binding(6) var<storage, read> prevManifolds: array<Manifold>;
+@group(0) @binding(7) var<storage, read_write> table: array<atomic<u32>>;
+@group(0) @binding(8) var<storage, read_write> counters: array<atomic<u32>>;
 
-fn contactHash(a: u32, b: u32, feature: u32) -> u32 {
-  return hash32((a * 0x9e3779b1u) ^ hash32(b ^ hash32(feature)));
+fn pairHash(a: u32, b: u32) -> u32 {
+  return hash32((a * 0x9e3779b1u) ^ hash32(b));
 }
 
-/** Feature key of the per-pair entry (real 3D features never have all bits set). */
-const PAIR_ENTRY = 0xffffffffu;
-/** Slot values: contact index + 1, with PAIR_BIT set on per-pair entries. */
-const PAIR_BIT = 0x80000000u;
-
-fn insert(a: u32, b: u32, feature: u32, value: u32) {
-  var h = contactHash(a, b, feature) & params.hashMask;
+/** Last step's pairs into the table (slot value = pair index + 1), linear probing. */
+@compute @workgroup_size(64)
+fn hashInsert(@builtin(global_invocation_id) gid: vec3u) {
+  let m = gid.x;
+  if (m >= atomicLoad(&counters[C_PREV_MANIFOLDS])) { return; }
+  let ids = prevManifolds[m].ids;
+  var h = pairHash(ids.x, ids.y) & params.hashMask;
   var probe = 0u;
   while (probe <= params.hashMask) {
-    let r = atomicCompareExchangeWeak(&table[h], 0u, value);
+    let r = atomicCompareExchangeWeak(&table[h], 0u, m + 1u);
     if (r.exchanged) { return; }
     // A weak exchange may fail spuriously on an empty slot: retry rather than skip it
     if (r.old_value != 0u) {
@@ -194,29 +199,14 @@ fn insert(a: u32, b: u32, feature: u32, value: u32) {
   }
 }
 
-/** Last step's contacts into the table, plus one pair entry per manifold (matchNearest). */
-@compute @workgroup_size(64)
-fn hashInsert(@builtin(global_invocation_id) gid: vec3u) {
-  let k = gid.x;
-  if (k >= atomicLoad(&counters[C_PREV_CONTACTS])) { return; }
-  let ids = prevContacts[k].ids;
-  insert(ids.x, ids.y, ids.z, k + 1u);
-  if ((params.flags & FLAG_MATCH_NEAREST) != 0u) {
-    let first = k == 0u || prevContacts[k - 1u].ids.x != ids.x || prevContacts[k - 1u].ids.y != ids.y;
-    if (first) { insert(ids.x, ids.y, PAIR_ENTRY, (k + 1u) | PAIR_BIT); }
-  }
-}
-
-/** Index of last step's contact with this key, or -1. */
-fn hashFind(a: u32, b: u32, feature: u32) -> i32 {
-  var h = contactHash(a, b, feature) & params.hashMask;
+/** Index of last step's pair (a, b), or -1. */
+fn hashFind(a: u32, b: u32) -> i32 {
+  var h = pairHash(a, b) & params.hashMask;
   for (var probe = 0u; probe <= params.hashMask; probe++) {
     let v = atomicLoad(&table[h]);
     if (v == 0u) { return -1; }
-    let isPair = (v & PAIR_BIT) != 0u;
-    let index = (v & ~PAIR_BIT) - 1u;
-    let ids = prevContacts[index].ids;
-    if (isPair == (feature == PAIR_ENTRY) && ids.x == a && ids.y == b && (isPair || ids.z == feature)) { return i32(index); }
+    let ids = prevManifolds[v - 1u].ids;
+    if (ids.x == a && ids.y == b) { return i32(v - 1u); }
     h = (h + 1u) & params.hashMask;
   }
   return -1;
@@ -554,58 +544,71 @@ fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
     found = collide(A, B, &sat);
   }
   if (found.count == 0u) { return; }
+
+  // Reserve the pair record and its consecutive contact points
+  let m = atomicAdd(&counters[C_MANIFOLDS], 1u);
+  if (m >= params.manifoldCapacity) {
+    atomicOr(&counters[C_OVERFLOW], 4u);
+    return;
+  }
   let base = atomicAdd(&counters[C_CONTACTS], found.count);
+  var count = found.count;
+  if (base + count > params.contactCapacity) {
+    atomicOr(&counters[C_OVERFLOW], 2u);
+    count = 0u;
+  }
+  let n = -sat.n;
+  manifolds[m] = Manifold(vec4u(a, b, base, count), vec4f(n, sqrt(bodies[a].pos.w * bodies[b].pos.w)));
+  if (count == 0u) { return; }
 
   let qA = bodies[a].rot;
   let qB = bodies[b].rot;
-  let n = -sat.n;
   let basis = orthonormal(n);
-  let friction = sqrt(bodies[a].pos.w * bodies[b].pos.w);
+  let anySphere = sphereA || sphereB;
+  // Last step's contacts of this pair (at most 8, consecutive)
+  var prevFirst = 0u;
+  var prevCount = 0u;
+  let pm = hashFind(a, b);
+  if (pm >= 0) {
+    prevFirst = prevManifolds[pm].ids.z;
+    prevCount = prevManifolds[pm].ids.w;
+  }
   let matchNearest = (params.flags & FLAG_MATCH_NEAREST) != 0u;
   let minSide = min(min(min(A.h.x, A.h.y), A.h.z), min(min(B.h.x, B.h.y), B.h.z)) * 2.0;
-  let anySphere = sphereA || sphereB;
 
-  for (var i = 0u; i < found.count; i++) {
-    let k = base + i;
-    if (k >= params.contactCapacity) {
-      atomicOr(&counters[C_OVERFLOW], 2u);
-      return;
-    }
+  for (var i = 0u; i < count; i++) {
     var rA = qrotate(qconj(qA), found.xA[i] - A.c);
     var rB = qrotate(qconj(qB), found.xB[i] - B.c);
     var pen = vec3f(0.0);
     var lam = vec3f(0.0);
     var stick = 0u;
 
-    // Warm start from last step's contact with this feature; with matchNearest, fall back to
-    // the pair's previous contact nearest in A-local anchor position
-    var j = hashFind(a, b, found.feature[i]);
+    // Warm start from last step's point with this feature; with matchNearest, fall back to
+    // the pair's previous point nearest in A-local anchor position
+    var j = -1;
+    for (var c = prevFirst; c < prevFirst + prevCount; c++) {
+      if ((prevContacts[c].key & ~STICK_BIT) == found.feature[i]) { j = i32(c); break; }
+    }
     if (j < 0 && matchNearest) {
-      let first = hashFind(a, b, PAIR_ENTRY);
-      if (first >= 0) {
-        var bestDist = NEAREST_FRACTION * minSide;
-        let count = atomicLoad(&counters[C_PREV_CONTACTS]);
-        for (var c = u32(first); c < min(u32(first) + MAX_CONTACTS, count); c++) {
-          let ids = prevContacts[c].ids;
-          if (ids.x != a || ids.y != b) { break; }
-          let dist = length(prevContacts[c].rA.xyz - rA);
-          if (dist <= bestDist) {
-            bestDist = dist;
-            j = i32(c);
-          }
+      var bestDist = NEAREST_FRACTION * minSide;
+      for (var c = prevFirst; c < prevFirst + prevCount; c++) {
+        let dist = length(prevContacts[c].rA - rA);
+        if (dist <= bestDist) {
+          bestDist = dist;
+          j = i32(c);
         }
       }
     }
     if (j >= 0) {
       let prev = prevContacts[j];
-      pen = prev.pen.xyz;
-      lam = prev.lam.xyz;
-      stick = prev.ids.w;
+      pen = prev.pen;
+      lam = prev.lam;
+      stick = prev.key & STICK_BIT;
       // Static friction last step: keep the old anchors. Not for spheres: their contact point
       // moves over both surfaces as they roll, and pinned anchors would rotate away with them
       if (stick != 0u && !anySphere) {
-        rA = prev.rA.xyz;
-        rB = prev.rB.xyz;
+        rA = prev.rA;
+        rB = prev.rB;
       }
     }
 
@@ -617,14 +620,7 @@ fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
     lam = lam * params.alpha * params.gamma;
     pen = clamp(pen * params.gamma, vec3f(PENALTY_MIN), vec3f(PENALTY_MAX));
 
-    var rec: Contact;
-    rec.ids = vec4u(a, b, found.feature[i], stick);
-    rec.pen = vec4f(pen, friction);
-    rec.lam = vec4f(lam, 0.0);
-    rec.rA = vec4f(rA, n.x);
-    rec.rB = vec4f(rB, n.y);
-    rec.c0 = vec4f(c0, n.z);
-    contacts[k] = rec;
+    contacts[base + i] = Contact(rA, found.feature[i] | stick, rB, c0.x, pen, c0.y, lam, c0.z);
   }
 }
 `;

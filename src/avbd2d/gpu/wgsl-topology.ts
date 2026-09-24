@@ -13,6 +13,12 @@ import { COLOR_WG, PRELUDE } from './layout.ts';
 
 /** 2D record accessors the topology kernels need (see makeTopologyWGSL). */
 const ACCESSORS_2D = /* wgsl */ `
+alias TopoItem = Contact;
+
+fn topoCount() -> u32 {
+  return min(atomicLoad(&counters[C_CONTACTS]), params.contactCapacity);
+}
+
 fn dynamicBody(i: i32) -> bool {
   return i >= 0 && bodies[i].shape.z > 0.0;
 }
@@ -25,8 +31,10 @@ fn jointActive(j: u32) -> bool {
 `;
 
 /**
- * Adjacency and colouring kernels over a prelude defining Params, Body, Joint and Contact
- * (with ids.xy = bodies), plus accessors defining dynamicBody(i32) and jointActive(u32).
+ * Adjacency and colouring kernels over a prelude defining Params, Body and Joint, plus
+ * accessors defining TopoItem (the per-step constraint record after the joints: a contact in
+ * 2D, a contact pair in 3D; ids.xy = bodies), topoCount(), dynamicBody(i32) and
+ * jointActive(u32).
  */
 export const makeTopologyWGSL = (prelude: string, accessors: string): string => /* wgsl */ `
 ${prelude}
@@ -36,16 +44,13 @@ ${accessors}
 @group(0) @binding(1) var<storage, read> bodies: array<Body>;
 @group(0) @binding(2) var<storage, read> joints: array<Joint>;
 @group(0) @binding(3) var<storage, read> info: array<vec4i>;
-@group(0) @binding(4) var<storage, read> contacts: array<Contact>;
+@group(0) @binding(4) var<storage, read> contacts: array<TopoItem>;
 @group(0) @binding(5) var<storage, read_write> counters: array<atomic<u32>>;
 // Adjacency: degree -> start[bodies + 1] | fill[bodies] | list
 @group(0) @binding(6) var<storage, read_write> adj: array<atomic<u32>>;
 // Colours: stateA[bodies] | stateB[bodies] | start[65] | bodies[bodies] | hist[64 * groups + 1]
 @group(0) @binding(7) var<storage, read_write> color: array<atomic<u32>>;
 
-fn contactCount() -> u32 {
-  return min(atomicLoad(&counters[C_CONTACTS]), params.contactCapacity);
-}
 
 fn endpoints(id: u32) -> vec2i {
   if (id < params.jointCount) { return info[id].yz; }
@@ -79,7 +84,7 @@ fn degreeJoints(@builtin(global_invocation_id) gid: vec3u) {
 
 @compute @workgroup_size(64)
 fn degreeContacts(@builtin(global_invocation_id) gid: vec3u) {
-  if (gid.x >= contactCount()) { return; }
+  if (gid.x >= topoCount()) { return; }
   countEndpoints(params.jointCount + gid.x);
 }
 
@@ -91,7 +96,7 @@ fn fillJoints(@builtin(global_invocation_id) gid: vec3u) {
 
 @compute @workgroup_size(64)
 fn fillContacts(@builtin(global_invocation_id) gid: vec3u) {
-  if (gid.x >= contactCount()) { return; }
+  if (gid.x >= topoCount()) { return; }
   fillEndpoints(params.jointCount + gid.x);
 }
 

@@ -10,7 +10,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BODY_FLOATS, CONTACT_WORDS, K_LAM, K_RA, K_RB } from '../src/avbd3d/gpu/layout.ts';
+import { BODY_FLOATS } from '../src/avbd3d/gpu/layout.ts';
 import { createGpuSim3D, GpuSim3D } from '../src/avbd3d/gpu/sim.ts';
 import { GpuSolver3D } from '../src/avbd3d/gpu/solver.ts';
 import { Rigid } from '../src/avbd3d/ref/body.ts';
@@ -23,32 +23,6 @@ import { sphere } from '../src/avbd3d/shapes.ts';
 import { breakableWall, chainMail, heavyPendulum, wallSmash } from '../src/avbd3d/bench-scenes.ts';
 import { Solver } from '../src/avbd3d/ref/solver.ts';
 import { device, gpuTest, skip } from './device.ts';
-
-interface GpuContact {
-  a: number;
-  b: number;
-  feature: number;
-  rA: number[];
-  rB: number[];
-  lam: number[];
-}
-
-function parseContacts(words: ArrayBuffer): GpuContact[] {
-  const u = new Uint32Array(words);
-  const f = new Float32Array(words);
-  const out: GpuContact[] = [];
-  for (let o = 0; o < u.length; o += CONTACT_WORDS) {
-    out.push({
-      a: u[o],
-      b: u[o + 1],
-      feature: u[o + 2],
-      rA: [...f.subarray(o + K_RA, o + K_RA + 3)],
-      rB: [...f.subarray(o + K_RB, o + K_RB + 3)],
-      lam: [...f.subarray(o + K_LAM, o + K_LAM + 3)],
-    });
-  }
-  return out;
-}
 
 const dist = (x: number[], y: ArrayLike<number>) => Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
 
@@ -76,9 +50,8 @@ gpuTest('seeded single step matches the CPU reference: contacts and poses', asyn
       ref.step();
       frame++;
       const where = `${scene} frame ${at}`;
-      const [bodies, counters, words] = await Promise.all([gpu.readBodies(), gpu.readCounters(), gpu.readContacts()]);
+      const [bodies, counters, contacts] = await Promise.all([gpu.readBodies(), gpu.readCounters(), gpu.readContactList()]);
       assert.equal(counters.overflow, 0, `${where}: overflow`);
-      const contacts = parseContacts(words);
 
       // Contact geometry: every reference contact between bodies that can move is found at
       // the same point, and nothing else is (the reference also keeps static-static manifolds)
@@ -139,7 +112,7 @@ gpuTest('narrowphase finds the reference contacts for randomly posed box pairs',
   gpu.params.gravity = 0;
   gpu.params.faceBias = false;
   gpu.step();
-  const contacts = parseContacts(await gpu.readContacts());
+  const contacts = await gpu.readContactList();
   let expected = 0;
   let featureMismatches = 0;
   const basis = mat3();

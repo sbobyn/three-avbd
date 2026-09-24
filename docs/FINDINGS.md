@@ -2,6 +2,68 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 8b: 3D GPU memory layout (contact pairs)
+
+Decisions below come from interleaved A/B runs of the committed solver against the working
+tree in one process (same device, same clock state), since isolated runs on this machine
+swing by 2-5x with power and heat.
+
+### Contact pairs (manifolds) instead of independent contact points
+A pair record (32 B: bodies, first point, point count, normal, friction) plus 64-byte points
+(was 96 B each: bodies and normal moved to the pair, the stick flag into bit 31 of the
+feature key). The adjacency, colouring, hash table and dual iterate pairs; the primal loads
+the partner body and basis once per pair. Warm starts find last step's pair with one hash
+lookup and match features among its ≤ 8 points (nearest-anchor fallback in the same scan).
+Body records were reordered so everything a contact reads (pose, rotation, step-start pose
+and rotation) is the first 64 bytes.
+
+| scene (interleaved A/B) | committed | pairs | |
+|---|---|---|---|
+| 100k box columns, 4 it | 4.20 ms | 2.88 ms | 31% faster |
+| 100k box columns, 10 it | 7.34 ms | 4.93 ms | 33% faster |
+| 32k random pile, 4 it | 3.15 ms | 3.23 ms | 3% slower |
+| 32k random pile, 10 it | 4.95 ms | 5.42 ms | 10% slower |
+
+The split follows points per pair: columns have 4, the random pile 1.9 (53% of its pairs
+have a single point), so grouping saves little there and the extra indirection costs a
+little. Stacks, walls and towers look like the columns.
+
+What mattered on the way:
+- **Capacity.** The first version shrank the initial pair buffers (8 → 2 per body). A fresh
+  brick wall has ~12.5k pairs on frame 1; pairs overflowed and were dropped for two steps,
+  the bricks sank into each other, and the wall stayed in a contact-heavy state (28k instead
+  of 11k contacts, slower thereafter). Now the host counts the scene's starting pairs on a
+  CPU grid (the GPU's sphere + AABB rules), allocates from that with floors of 4 pairs and
+  4 points per body, and grows at 60% full (was 80%): a falling pile doubles its pair count
+  between readbacks.
+- **Registers, not bytes, in the pile's primal.** Keeping both bodies' full state, the basis
+  and six stored Jacobian rows live across the pair loop made the pile's primal 60% slower
+  (0.27 → 0.43 ms per iteration). Carrying only rotation and displacements per body (0.34)
+  and returning lever arms instead of Jacobian matrices (0.32; each body rebuilds its three
+  rows with the same operations, so rounding is unchanged) recovered most of it. Flattening
+  the pair/point loops (against SIMD divergence) changed nothing measurable; kept for the
+  simpler control flow.
+- Body warm start and velocity update now load and store fields instead of whole 160-byte
+  records; the colour cap keeps one spare colour (was two) after quiet readbacks, and
+  Jones-Plassmann rounds adapt (4, doubled on any clash). Rounds turned out cheap: 16 → 2
+  saved only ~3% because the colouring carries over between steps; the ~1 ms colouring in
+  isolated-pass profiles was a clock artefact.
+
+### Benchmark (M4 Max via Dawn, charging, nothing else on the GPU, `pnpm bench3d:gpu`)
+| scene | bodies | contacts | 4 it ms/step | 10 it ms/step |
+|---|---|---|---|---|
+| columns 32x32x10 | 10k | 41k | 0.59 | 0.94 |
+| columns 50x50x20 | 50k | 200k | 1.45 | 2.30 |
+| columns 100x100x10 | 100k | 400k | **2.94** | 4.97 |
+| columns 100x100x25 | 250k | 1.0M | 8.66 | 15.5 |
+| random pile 40x40x20 | 32k | 150k | 3.27 | 5.29 |
+| chain mail | 1.6k | — | 0.74 | 1.19 |
+| wall smash (after impact) | 2k | 11-22k | 2.67 | 7.11 |
+
+Whole steps (collision, colouring, solve). The paper reports 3.5 ms of solve for 110k boxes at
+4 iterations on an RTX 4090. Small scenes are dispatch-bound: the wall smash's 12 colours ×
+iterations dominate its time.
+
 ## 2026-09-24 — Stage 8: 3D scale and showcase (first pass)
 
 ### Measurement caveat

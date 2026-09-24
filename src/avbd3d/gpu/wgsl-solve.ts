@@ -21,13 +21,14 @@ struct PassConstants {
 @group(0) @binding(2) var<storage, read_write> joints: array<Joint>;
 @group(0) @binding(3) var<storage, read> info: array<vec4i>;  // type, bodyA (-1 = world), bodyB
 @group(0) @binding(4) var<storage, read_write> contacts: array<Contact>;
+@group(0) @binding(8) var<storage, read> manifolds: array<Manifold>;
 @group(0) @binding(5) var<storage, read> adj: array<u32>;
 @group(0) @binding(6) var<storage, read> color: array<u32>;
 @group(0) @binding(7) var<storage, read> counters: array<u32>;
 @group(1) @binding(0) var<uniform> pc: PassConstants;
 
-fn contactCount() -> u32 {
-  return min(counters[C_CONTACTS], params.contactCapacity);
+fn manifoldCount() -> u32 {
+  return min(counters[C_MANIFOLDS], params.manifoldCapacity);
 }
 
 /** outer(u, v): row i, column j = u[i] v[j] (WGSL matrices are column-major). */
@@ -139,73 +140,68 @@ fn addJoint(acc: ptr<function, Acc>, j: u32, alpha: f32, i: u32) {
 
 // --- Contacts ---------------------------------------------------------------------------------
 
-/** One contact evaluated at the current poses: Jacobians of both bodies, C and the force. */
+/** What a contact needs of one body, loaded once per pair: rotation and displacement since x-. */
+struct PairBody {
+  index: u32,
+  rot: vec4f,
+  dLin: vec3f,
+  dAng: vec3f,
+}
+
+fn pairBody(i: u32) -> PairBody {
+  let rot = bodies[i].rot;
+  return PairBody(i, rot, bodies[i].pos.xyz - bodies[i].initialPos.xyz, qsub(rot, bodies[i].initialRot));
+}
+
+/**
+ * One contact point evaluated at the current poses: C, the force and the lever arms (callers
+ * rebuild their own angular Jacobian rows from these; keeping all six rows live cost
+ * registers, and the primal ran 60% slower on mixed piles).
+ */
 struct ContactEval {
-  basis: mat3x3f,  // columns: normal, tangent 1, tangent 2
-  aA: mat3x3f,     // columns: angular Jacobian rows of body A
-  aB: mat3x3f,
+  rAW: vec3f,
+  rBW: vec3f,
   C: vec3f,
   F: vec3f,        // cone-clamped force
   frictionScale: f32,
   bounds: f32,
 }
 
-fn evalContact(k: Contact, alpha: f32) -> ContactEval {
-  let a = k.ids.x;
-  let b = k.ids.y;
-  let posA = bodies[a].pos.xyz;
-  let rotAq = bodies[a].rot;
-  let posB = bodies[b].pos.xyz;
-  let rotBq = bodies[b].rot;
-  let dALin = posA - bodies[a].initialPos.xyz;
-  let dAAng = qsub(rotAq, bodies[a].initialRot);
-  let dBLin = posB - bodies[b].initialPos.xyz;
-  let dBAng = qsub(rotBq, bodies[b].initialRot);
+fn evalContact(k: Contact, basis: mat3x3f, friction: f32, A: PairBody, B: PairBody, alpha: f32) -> ContactEval {
   // Lever arms at the current rotation, as the reference does for boxes. Sphere contacts use
   // the step-start rotation instead (the Taylor point x-): a rolling sphere turns ~0.1 rad per
   // step, and a lever arm rotated with it puts a false separation into the normal row, so the
   // sphere sank through the ground while gaining energy.
-  let atStart = k.ids.z == SPHERE_FEATURE;
-  let rAW = qrotate(select(rotAq, bodies[a].initialRot, atStart), k.rA.xyz);
-  let rBW = qrotate(select(rotBq, bodies[b].initialRot, atStart), k.rB.xyz);
-
+  var rotA = A.rot;
+  var rotB = B.rot;
+  if ((k.key & ~STICK_BIT) == SPHERE_FEATURE) {
+    rotA = bodies[A.index].initialRot;
+    rotB = bodies[B.index].initialRot;
+  }
   var e: ContactEval;
-  e.basis = orthonormal(vec3f(k.rA.w, k.rB.w, k.c0.w));
-  // Taylor series approximation of C(x) about x- (Sec. 4), one row per basis vector. Written
-  // out rather than looped: dynamic indexing into matrices forces them into indexable
-  // memory, which made these kernels slow to compile (seconds) and to run.
-  let n = e.basis[0];
-  let t1 = e.basis[1];
-  let t2 = e.basis[2];
-  e.aA = mat3x3f(cross(rAW, n), cross(rAW, t1), cross(rAW, t2));
-  e.aB = mat3x3f(cross(rBW, -n), cross(rBW, -t1), cross(rBW, -t2));
+  e.rAW = qrotate(rotA, k.rA);
+  e.rBW = qrotate(rotB, k.rB);
+
+  // Taylor series approximation of C(x) about x- (Sec. 4), one row per basis vector l, with
+  // angular Jacobians rA × l and rB × (-l)
+  let n = basis[0];
+  let t1 = basis[1];
+  let t2 = basis[2];
   let keep = 1.0 - alpha;
   e.C = vec3f(
-    k.c0.x * keep + dot(n, dALin) - dot(n, dBLin) + dot(e.aA[0], dAAng) + dot(e.aB[0], dBAng),
-    k.c0.y * keep + dot(t1, dALin) - dot(t1, dBLin) + dot(e.aA[1], dAAng) + dot(e.aB[1], dBAng),
-    k.c0.z * keep + dot(t2, dALin) - dot(t2, dBLin) + dot(e.aA[2], dAAng) + dot(e.aB[2], dBAng));
-  var F = k.pen.xyz * e.C + k.lam.xyz;
+    k.c0x * keep + dot(n, A.dLin) - dot(n, B.dLin) + dot(cross(e.rAW, n), A.dAng) + dot(cross(e.rBW, -n), B.dAng),
+    k.c0y * keep + dot(t1, A.dLin) - dot(t1, B.dLin) + dot(cross(e.rAW, t1), A.dAng) + dot(cross(e.rBW, -t1), B.dAng),
+    k.c0z * keep + dot(t2, A.dLin) - dot(t2, B.dLin) + dot(cross(e.rAW, t2), A.dAng) + dot(cross(e.rBW, -t2), B.dAng));
+  var F = k.pen * e.C + k.lam;
   // Normal pushes only; friction is clamped to the cone
   F.x = min(F.x, 0.0);
-  e.bounds = abs(F.x) * k.pen.w;
+  e.bounds = abs(F.x) * friction;
   e.frictionScale = length(F.yz);
   if (e.frictionScale > e.bounds && e.frictionScale > 0.0) {
     F = vec3f(F.x, F.yz * (e.bounds / e.frictionScale));
   }
   e.F = F;
   return e;
-}
-
-fn addContact(acc: ptr<function, Acc>, c: u32, alpha: f32, i: u32) {
-  let k = contacts[c];
-  let e = evalContact(k, alpha);
-  let isA = i == k.ids.x;
-  let sg = select(-1.0, 1.0, isA);
-  var ang = e.aB;
-  if (isA) { ang = e.aA; }
-  addRow(acc, e.basis[0] * sg, ang[0], k.pen.x, e.F.x);
-  addRow(acc, e.basis[1] * sg, ang[1], k.pen.y, e.F.y);
-  addRow(acc, e.basis[2] * sg, ang[2], k.pen.z, e.F.z);
 }
 
 // --- Warm start -------------------------------------------------------------------------------
@@ -232,27 +228,31 @@ fn warmStartJoints(@builtin(global_invocation_id) gid: vec3u) {
 fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
   if (i >= params.bodyCount) { return; }
-  var b = bodies[i];
+  // Field-wise loads and stores: only the poses change (whole-record copies moved 320 bytes)
+  let pos = bodies[i].pos;
+  let rot = bodies[i].rot;
+  let vel = bodies[i].vel;
+  let angVel = bodies[i].angVel.xyz;
   let dt = params.dt;
   let g = params.gravity;
-  let dynamic = b.size.w > 0.0;
+  let dynamic = bodies[i].size.w > 0.0;
 
   // Inertial target (Eq. 2)
-  b.inertialPos = vec4f(b.pos.xyz + b.vel.xyz * dt, 0.0);
-  if (dynamic) { b.inertialPos.z += g * (dt * dt); }
-  b.inertialRot = qadd(b.rot, b.angVel.xyz * dt);
+  var inertialPos = pos.xyz + vel.xyz * dt;
+  if (dynamic) { inertialPos.z += g * (dt * dt); }
+  bodies[i].inertialPos = vec4f(inertialPos, 0.0);
+  bodies[i].inertialRot = qadd(rot, angVel * dt);
 
   // Adaptive warm start (original VBD paper); vel.w holds last step's vel.z
   var w = 0.0;
-  if (abs(g) > 0.0) { w = clamp((b.vel.z - b.vel.w) / dt * sign(g) / abs(g), 0.0, 1.0); }
+  if (abs(g) > 0.0) { w = clamp((vel.z - vel.w) / dt * sign(g) / abs(g), 0.0, 1.0); }
 
-  b.initialPos = b.pos;
-  b.initialRot = b.rot;
+  bodies[i].initialPos = pos;
+  bodies[i].initialRot = rot;
   if (dynamic) {
-    b.pos = vec4f(b.pos.xyz + b.vel.xyz * dt + vec3f(0.0, 0.0, g * (w * dt * dt)), b.pos.w);
-    b.rot = qadd(b.rot, b.angVel.xyz * dt);
+    bodies[i].pos = vec4f(pos.xyz + vel.xyz * dt + vec3f(0.0, 0.0, g * (w * dt * dt)), pos.w);
+    bodies[i].rot = qadd(rot, angVel * dt);
   }
-  bodies[i] = b;
 }
 
 // --- Primal: one colour -----------------------------------------------------------------------
@@ -278,11 +278,52 @@ fn solveBody(i: u32) {
   acc.rLin = m * (pos.xyz - bodies[i].inertialPos.xyz);
   acc.rAng = I * qsub(rot, bodies[i].inertialRot);
 
+  // One flat loop over joints and contact points: each iteration handles one point, loading
+  // its pair when the previous pair runs out. Only what the point needs stays live across
+  // iterations (partner and own rotation/displacement, the normal): live registers limit
+  // how many threads hide memory latency, and mixed piles run in small, latency-bound
+  // per-colour dispatches.
+  var e = adj[i];
   let end = adj[i + 1u];
-  for (var e = adj[i]; e < end; e++) {
-    let id = adj[params.adjListOffset + e];
-    if (id < params.jointCount) { addJoint(&acc, id, pc.alpha, i); }
-    else { addContact(&acc, id - params.jointCount, pc.alpha, i); }
+  var c = 0u;
+  var cEnd = 0u;
+  var A: PairBody;
+  var B: PairBody;
+  var normal = vec3f(0.0);
+  var friction = 0.0;
+  var isA = false;
+  loop {
+    if (c == cEnd) {
+      if (e >= end) { break; }
+      let id = adj[params.adjListOffset + e];
+      e++;
+      if (id < params.jointCount) {
+        addJoint(&acc, id, pc.alpha, i);
+        continue;
+      }
+      let mf = manifolds[id - params.jointCount];
+      isA = i == mf.ids.x;
+      A = pairBody(mf.ids.x);
+      B = pairBody(mf.ids.y);
+      normal = mf.geo.xyz;
+      friction = mf.geo.w;
+      c = mf.ids.z;
+      cEnd = mf.ids.z + mf.ids.w;
+      if (c == cEnd) { continue; }
+    }
+    let k = contacts[c];
+    c++;
+    let basis = orthonormal(normal);
+    let ev = evalContact(k, basis, friction, A, B, pc.alpha);
+    // This body's rows: linear ±l, angular r × (±l)
+    let sg = select(-1.0, 1.0, isA);
+    let r = select(ev.rBW, ev.rAW, isA);
+    let l0 = basis[0] * sg;
+    let l1 = basis[1] * sg;
+    let l2 = basis[2] * sg;
+    addRow(&acc, l0, cross(r, l0), k.pen.x, ev.F.x);
+    addRow(&acc, l1, cross(r, l1), k.pen.y, ev.F.y);
+    addRow(&acc, l2, cross(r, l2), k.pen.z, ev.F.z);
   }
 
   // LDLᵀ solve of the 6x6 SPD system (maths.h solve), lower triangle only
@@ -364,42 +405,48 @@ fn dualJoint(j: u32) {
   joints[j] = k;
 }
 
-fn dualContact(c: u32) {
-  let k = contacts[c];
-  let e = evalContact(k, pc.alpha);
-  // Write back only what changes (lambda, penalty, stick): the dual is bandwidth-bound
-  contacts[c].lam = vec4f(e.F, k.lam.w);
-  // Ramp the penalty where the force is within its bounds (Eq. 16)
-  var pen = k.pen;
-  if (e.F.x < 0.0) { pen.x = min(pen.x + params.betaLin * abs(e.C.x), PENALTY_MAX); }
-  if (e.frictionScale <= e.bounds) {
-    pen.y = min(pen.y + params.betaLin * abs(e.C.y), PENALTY_MAX);
-    pen.z = min(pen.z + params.betaLin * abs(e.C.z), PENALTY_MAX);
-    contacts[c].ids.w = select(0u, 1u, length(e.C.yz) < STICK_THRESH);
+fn dualManifold(m: u32) {
+  let mf = manifolds[m];
+  let A = pairBody(mf.ids.x);
+  let B = pairBody(mf.ids.y);
+  let basis = orthonormal(mf.geo.xyz);
+  let end = mf.ids.z + mf.ids.w;
+  for (var c = mf.ids.z; c < end; c++) {
+    let k = contacts[c];
+    let e = evalContact(k, basis, mf.geo.w, A, B, pc.alpha);
+    // Write back only what changes (lambda, penalty, stick): the dual is bandwidth-bound
+    contacts[c].lam = e.F;
+    // Ramp the penalty where the force is within its bounds (Eq. 16)
+    var pen = k.pen;
+    if (e.F.x < 0.0) { pen.x = min(pen.x + params.betaLin * abs(e.C.x), PENALTY_MAX); }
+    if (e.frictionScale <= e.bounds) {
+      pen.y = min(pen.y + params.betaLin * abs(e.C.y), PENALTY_MAX);
+      pen.z = min(pen.z + params.betaLin * abs(e.C.z), PENALTY_MAX);
+      let stick = length(e.C.yz) < STICK_THRESH;
+      contacts[c].key = (k.key & ~STICK_BIT) | select(0u, STICK_BIT, stick);
+    }
+    contacts[c].pen = pen;
   }
-  contacts[c].pen = pen;
 }
 
-/** Dual update of every constraint: joints first, then contacts (one dispatch). */
+/** Dual update of every constraint: joints first, then contact pairs (one dispatch). */
 @compute @workgroup_size(64)
 fn dual(@builtin(global_invocation_id) gid: vec3u) {
   let id = gid.x;
   if (id < params.jointCount) { dualJoint(id); }
-  else if (id - params.jointCount < contactCount()) { dualContact(id - params.jointCount); }
+  else if (id - params.jointCount < manifoldCount()) { dualManifold(id - params.jointCount); }
 }
 
 @compute @workgroup_size(64)
 fn updateVelocities(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
   if (i >= params.bodyCount) { return; }
-  var b = bodies[i];
-  let prevZ = b.vel.z;
-  if (b.size.w > 0.0) {
-    b.vel = vec4f((b.pos.xyz - b.initialPos.xyz) / params.dt, prevZ);
-    b.angVel = vec4f(qsub(b.rot, b.initialRot) / params.dt, b.angVel.w);
+  let prevZ = bodies[i].vel.z;
+  if (bodies[i].size.w > 0.0) {
+    bodies[i].vel = vec4f((bodies[i].pos.xyz - bodies[i].initialPos.xyz) / params.dt, prevZ);
+    bodies[i].angVel = vec4f(qsub(bodies[i].rot, bodies[i].initialRot) / params.dt, bodies[i].angVel.w);
   } else {
-    b.vel.w = prevZ;
+    bodies[i].vel.w = prevZ;
   }
-  bodies[i] = b;
 }
 `;

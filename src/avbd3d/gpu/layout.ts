@@ -6,16 +6,20 @@
 import { CORE_WGSL } from '../../avbd2d/gpu/layout.ts';
 
 /**
- * Floats per body, 10 vec4: pos (xyz, friction), rot (quaternion), size (xyz, mass),
- * moment (xyz, bounding radius), initialPos, initialRot, inertialPos, inertialRot,
- * vel (xyz, previous vel.z), angVel (xyz, shape: SHAPE_BOX / SHAPE_SPHERE). Rendering reads
- * pos, rot, size and the shape.
+ * Floats per body, 10 vec4. Everything a contact reads comes first (one 64-byte span):
+ * pos (xyz, friction), rot (quaternion), initialPos, initialRot; then size (xyz, mass),
+ * moment (xyz, bounding radius), inertialPos, inertialRot, vel (xyz, previous vel.z),
+ * angVel (xyz, shape: SHAPE_BOX / SHAPE_SPHERE). Rendering reads pos, rot, size and shape.
  */
 export const BODY_FLOATS = 40;
 export const B_POS = 0;
 export const B_ROT = 4;
-export const B_SIZE = 8;
-export const B_MOMENT = 12;
+export const B_INITIAL_POS = 8;
+export const B_INITIAL_ROT = 12;
+export const B_SIZE = 16;
+export const B_MOMENT = 20;
+export const B_INERTIAL_POS = 24;
+export const B_INERTIAL_ROT = 28;
 export const B_VEL = 32;
 export const B_ANGVEL = 36;
 
@@ -30,14 +34,28 @@ export const J_C0_ANG = 20;
 export const J_RA = 24; // xyz (world point for world joints), w: spring rest length
 export const J_RB = 28;
 
-/** 32-bit words per contact record: 6 vec4. */
-export const CONTACT_WORDS = 24;
-export const K_IDS = 0; // a, b, feature, stick (u32)
-export const K_PEN = 4; // xyz, w: friction
-export const K_LAM = 8; // xyz
-export const K_RA = 12; // body-local xyz, w: normal.x
-export const K_RB = 16; // body-local xyz, w: normal.y
-export const K_C0 = 20; // xyz, w: normal.z
+/**
+ * Contacts come in pairs' manifolds: a 32-byte pair record (bodies, first contact, contact
+ * count, normal, friction) and 64 bytes per contact point, stored consecutively per pair.
+ * Loading both bodies and the basis once per pair instead of once per point is most of the
+ * solve's memory traffic.
+ */
+export const MANIFOLD_WORDS = 8;
+export const M_IDS = 0; // a, b (a > b), first contact, contact count (u32)
+export const M_GEO = 4; // normal (B to A) xyz, friction
+
+/** 32-bit words per contact point: 4 vec4, the w's carrying the key and C0. */
+export const CONTACT_WORDS = 16;
+export const K_RA = 0; // body-local anchor on A, w: key (feature | STICK_BIT, u32)
+export const K_RB = 4; // body-local anchor on B, w: C0 normal
+export const K_PEN = 8; // penalty xyz, w: C0 tangent 1
+export const K_LAM = 12; // lambda xyz, w: C0 tangent 2
+/** Static friction held last step (features use bits 0-25). */
+export const STICK_BIT = 0x80000000;
+
+// Counter words beyond the shared ones (../../avbd2d/gpu/layout.ts uses 0-5)
+export const C_MANIFOLDS = 6;
+export const C_PREV_MANIFOLDS = 7;
 
 /** Shape codes in angVel.w (spheres: see ../shapes.ts; radius = size.x / 2). */
 export const SHAPE_BOX = 0;
@@ -67,6 +85,9 @@ const COLLISION_MARGIN = 0.01;
 const STICK_THRESH = 0.00001;
 
 const SHAPE_SPHERE = ${SHAPE_SPHERE}.0;
+const STICK_BIT = ${STICK_BIT}u;
+const C_MANIFOLDS = ${C_MANIFOLDS}u;
+const C_PREV_MANIFOLDS = ${C_PREV_MANIFOLDS}u;
 /** Feature key of every contact involving a sphere (one contact per pair). */
 const SPHERE_FEATURE = 3u << 24u;
 
@@ -77,10 +98,10 @@ const NEAREST_FRACTION = ${NEAREST_FRACTION};
 struct Body {
   pos: vec4f,          // xyz, w: friction
   rot: vec4f,          // orientation quaternion (x, y, z, w)
-  size: vec4f,         // full widths, w: mass (0 = static)
-  moment: vec4f,       // principal moments, w: bounding radius
   initialPos: vec4f,   // pose at the start of the step (x-)
   initialRot: vec4f,
+  size: vec4f,         // full widths, w: mass (0 = static)
+  moment: vec4f,       // principal moments, w: bounding radius
   inertialPos: vec4f,  // inertial target y
   inertialRot: vec4f,
   vel: vec4f,          // xyz, w: previous step's vel.z (adaptive warm start)
@@ -98,13 +119,20 @@ struct Joint {
   rB: vec4f,      // xyz: anchor on B
 }
 
+struct Manifold {
+  ids: vec4u,     // bodyA, bodyB (A > B), first contact, contact count
+  geo: vec4f,     // normal (B to A), friction
+}
+
 struct Contact {
-  ids: vec4u,     // bodyA, bodyB (A > B), feature key, stick flag
-  pen: vec4f,     // normal, tangent, tangent; w: friction
-  lam: vec4f,
-  rA: vec4f,      // body-local anchors; the w's hold the normal (B to A)
-  rB: vec4f,
-  c0: vec4f,
+  rA: vec3f,      // body-local anchors
+  key: u32,       // feature | STICK_BIT
+  rB: vec3f,
+  c0x: f32,       // C(x-) in the pair's basis, including the collision margin
+  pen: vec3f,     // normal, tangent, tangent
+  c0y: f32,
+  lam: vec3f,
+  c0z: f32,
 }
 
 struct Params {
@@ -137,7 +165,7 @@ struct Params {
   colorGroups: u32,
   colorBodiesOffset: u32,
   rounds: u32,
-  pad0: u32,
+  manifoldCapacity: u32,
   pad1: u32,
   pad2: u32,
 }
@@ -180,6 +208,12 @@ fn orthonormal(n: vec3f) -> mat3x3f {
 
 /** 3D record accessors for the shared topology kernels (../../avbd2d/gpu/wgsl-topology.ts). */
 export const TOPOLOGY_ACCESSORS_3D = /* wgsl */ `
+alias TopoItem = Manifold;
+
+fn topoCount() -> u32 {
+  return min(atomicLoad(&counters[C_MANIFOLDS]), params.manifoldCapacity);
+}
+
 fn dynamicBody(i: i32) -> bool {
   return i >= 0 && bodies[i].size.w > 0.0;
 }
@@ -190,3 +224,6 @@ fn jointActive(j: u32) -> bool {
   return info[j].x != T_NONE && (k.penLin.w != 0.0 || k.penAng.w != 0.0);
 }
 `;
+
+/** Indirect-argument items for the shared args kernels: contact pairs. */
+export const ARGS_ITEMS_3D = { counter: 'C_MANIFOLDS', prevCounter: 'C_PREV_MANIFOLDS', capacity: 'params.manifoldCapacity' };
