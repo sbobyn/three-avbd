@@ -204,10 +204,21 @@ fn hullFaceContact(A: Poly, B: Poly, refIsA: bool, refFace: u32) -> Found {
   if (refIsA) { R = A; I = B; }
   let plane = facePlane(R, refFace);
   let rn = plane.xyz;
-  // Incident face: the other shape's most anti-parallel
+  // Incident face: the other shape's most anti-parallel among those with its deepest vertex. The
+  // most anti-parallel of all may not touch that vertex on an irregular hull (it does on a box), and
+  // clipping it would then leave the deepest corner without a contact.
+  var deepest = 0u;
+  var low = 3.4e38;
+  for (var v = 0u; v < I.nv; v++) {
+    let d = dot(vert(I, v), rn);
+    if (d < low) { low = d; deepest = v; }
+  }
   var inc = 0u;
   var least = 3.4e38;
   for (var f = 0u; f < I.nf; f++) {
+    var touches = false;
+    for (var j = 0u; j < faceVertCount(I, f); j++) { if (faceVert(I, f, j) == deepest) { touches = true; break; } }
+    if (!touches) { continue; }
     let d = dot(facePlane(I, f).xyz, rn);
     if (d < least) { least = d; inc = f; }
   }
