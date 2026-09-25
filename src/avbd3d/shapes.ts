@@ -41,9 +41,9 @@ const hulls = new WeakMap<Rigid, HullShape>();
 export const hullOf = (body: Rigid): HullShape | undefined => hulls.get(body);
 
 /**
- * A convex hull (./hull.ts: \`convexHull(points)\`) of the given density, its principal frame at
- * \`position\` (the hull's centre of mass) turned by \`rotation\` (x, y, z, w). Place it where points
- * were with the hull's \`center\` and \`rotation\`. The GPU solver collides it as a hull when the device
+ * A convex hull (./hull.ts: `convexHull(points)`) of the given density, its principal frame at
+ * `position` (the hull's centre of mass) turned by `rotation` (x, y, z, w). Place it where points
+ * were with the hull's `center` and `rotation`. The GPU solver collides it as a hull when the device
  * can bind the hull buffer (GpuSolver3D.hulls), else as its bounding box; the CPU reference would
  * treat it as that box.
  */
