@@ -233,11 +233,14 @@ fn hullFaceContact(A: Poly, B: Poly, refIsA: bool, refFace: u32) -> Found {
   }
   // Points on or below the reference plane; at most MAX_CONTACTS, the deepest first then the
   // farthest from those chosen (the patch's extent is what keeps a resting shape upright)
+  // (feature keys use the point's index in the clipped polygon, as faceManifold does: stable from
+  // step to step, so warm starts and static-friction anchors stay with their point)
   var depth: array<f32, 32>;
+  var index: array<u32, 32>;
   var keep = 0u;
   for (var m = 0u; m < n; m++) {
     let dist = dot(rn, poly[m]) - plane.w;
-    if (dist <= PLANE_EPSILON) { tmp[keep] = poly[m]; depth[keep] = dist; keep++; }
+    if (dist <= PLANE_EPSILON) { tmp[keep] = poly[m]; depth[keep] = dist; index[keep] = m; keep++; }
   }
   let prefix = (select(AXIS_FACE_B, AXIS_FACE_A, refIsA) << 24u) | (min(refFace, 255u) << 16u) | (min(inc, 255u) << 8u);
   var chosen: array<bool, 32>;
@@ -256,7 +259,7 @@ fn hullFaceContact(A: Poly, B: Poly, refIsA: bool, refFace: u32) -> Found {
     chosen[pick] = true;
     let p = tmp[pick];
     let onRef = p - rn * depth[pick];
-    addFound(&found, select(p, onRef, refIsA), select(onRef, p, refIsA), prefix | min(pick, 255u));
+    addFound(&found, select(p, onRef, refIsA), select(onRef, p, refIsA), prefix | min(index[pick], 255u));
   }
   if (found.count == 0u) {
     let nAB = select(-rn, rn, refIsA);
@@ -306,8 +309,8 @@ fn collidePoly(A: Poly, B: Poly, sat: ptr<function, Sat>) -> Found {
     *sat = Sat(AXIS_EDGE, eq.ea, eq.eb, eq.sep, eq.n, true);
     return hullEdgeContact(A, B, eq);
   }
-  // A's face unless B's is clearly less penetrated (keeps the reference face from flickering)
-  if (fb.sep > 0.95 * fa.sep + 0.01) {
+  // A's face unless B's separates more, as collide does
+  if (fb.sep > fa.sep) {
     *sat = Sat(AXIS_FACE_B, 0u, fb.face, fb.sep, -facePlane(B, fb.face).xyz, true);
     return hullFaceContact(A, B, false, fb.face);
   }

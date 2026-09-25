@@ -66,6 +66,35 @@ gpuTest('a box-shaped hull rests on the ground where the same box does', async (
   solver.destroy();
 });
 
+gpuTest('a box-shaped hull topples onto a face exactly as the box does', async (device) => {
+  // Tipped 30° so it lands on an edge and falls over: the contact on the landing face must keep
+  // its feature keys (warm starts, static-friction anchors) from step to step, as boxes do
+  const ref = scene();
+  const q = [Math.sin(Math.PI / 12), 0, 0, Math.cos(Math.PI / 12)];
+  new Rigid(ref, [1, 1, 1], 1, 0.6, [0, 0, 1.2]).positionAng.set(q);
+  hull(ref, convexHull(boxPoints(1, 1, 1))!, 1, 0.6, [3, 0, 1.2], q);
+  const solver = new GpuSolver3D(device, ref, { spatialSort: false });
+  const b = await run(solver, 90);
+  const box = pos(b, 1);
+  const shape = pos(b, 2);
+  assert.ok(Math.abs(shape[0] - 3) < 1e-3 && Math.abs(shape[1] - box[1]) < 5e-3 && Math.abs(shape[2] - box[2]) < 5e-3, `box ${box} hull ${shape}`);
+  solver.destroy();
+});
+
+gpuTest('hulls added to a running solver collide (a tetrahedron that lands on an edge first)', async (device) => {
+  const ref = scene();
+  const solver = new GpuSolver3D(device, ref, { spatialSort: false });
+  await run(solver, 5);
+  const tetra = convexHull([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1])!;
+  const scratch = new Solver();
+  const first = solver.addBodies([hull(scratch, tetra, 1, 0.6, [0, 0, 1]), hull(scratch, convexHull(boxPoints(0.5, 0.5, 0.5))!, 1, 0.6, [2, 0, 1])]);
+  const b = await run(solver, 300);
+  const low = lowest(b, first, tetra);
+  assert.ok(low > -0.03 && low < 0.03, `tetrahedron's lowest vertex at ${low}`);
+  assert.ok(Math.abs(pos(b, first + 1)[2] - 0.24) < 0.02, `cube at ${pos(b, first + 1)[2]}`);
+  solver.destroy();
+});
+
 gpuTest('a tetrahedron falls onto a face and stays; a sphere rests on a hull slab', async (device) => {
   const ref = scene();
   const tetra = convexHull([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1])!;
