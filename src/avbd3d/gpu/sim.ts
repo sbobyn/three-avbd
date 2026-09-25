@@ -3,8 +3,12 @@
 // is refreshed asynchronously every few steps; rendering reads the GPU body buffer directly.
 
 import { Rigid } from '../ref/body.ts';
+import { Spring } from '../ref/forces.ts';
 import { Solver } from '../ref/solver.ts';
-import { DRAG_STIFFNESS, type PickResult3D, type Sim3D, type SimStats3D, sceneByName3D } from '../sim.ts';
+import { sphere } from '../shapes.ts';
+import type { SceneOptions } from '../bench-scenes.ts';
+import { CANNONBALL, DRAG_STIFFNESS, type LabelView3D, type PickResult3D, type RopeView3D, type Sim3D, type SimStats3D, type SpringView3D, sceneByName3D } from '../sim.ts';
+import { clothsOf, labelsOf, ropesOf, type Visual, visualOf } from '../visuals.ts';
 import { B_ANGVEL, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, JOINT_FLOATS, T_JOINT } from './layout.ts';
 import { type GpuParams3D, GpuSolver3D, type StepProfile } from './solver.ts';
 
@@ -18,6 +22,17 @@ export interface GpuStats3D extends SimStats3D {
   clashes: number;
   /** GPU time of one step (timestamp queries), when available. */
   gpuStepMs?: number;
+}
+
+/** What the viewer draws besides the bodies, in the GPU solver's body order. */
+export interface GpuLooks3D {
+  visuals: (Visual | undefined)[];
+  /** Level (unrotated) as built, per body (bodies shot later are never the floor). */
+  level: boolean[];
+  springs: SpringView3D[];
+  cloths: number[][][];
+  ropes: RopeView3D[];
+  labels: LabelView3D[];
 }
 
 export class GpuSim3D implements Sim3D {
@@ -34,8 +49,14 @@ export class GpuSim3D implements Sim3D {
   /** Keeps a scratch solver so shot boxes get the reference's mass properties. */
   private readonly scratch = new Solver();
 
-  constructor(solver: GpuSolver3D) {
+  private readonly looks: GpuLooks3D;
+
+  /** Steps between readbacks of poses and stats: fewer where labels follow bodies. */
+  readbackEvery = READBACK_EVERY;
+
+  constructor(solver: GpuSolver3D, looks: GpuLooks3D = { visuals: [], level: [], springs: [], cloths: [], ropes: [], labels: [] }) {
     this.solver = solver;
+    this.looks = looks;
     this.refresh();
   }
 
@@ -49,27 +70,46 @@ export class GpuSim3D implements Sim3D {
     return this.dragTarget;
   }
 
+  /**
+   * What the periodic readback copies besides the counters (which the solver's adapt needs):
+   * poses (picking, the drag line, labels, kinetic energy) and joints (joint stats). A pose
+   * readback is the whole body buffer (17.6 MB at 110k bodies), so the app asks only when it
+   * needs them; poses and stats are then as old as the last readback that had them.
+   */
+  needPoses = true;
+  needJoints = true;
+
   step(): void {
     this.steps++;
     if (this.steps % TIME_EVERY === 0) this.solver.profileNextStep((p) => (this.profile = p));
     this.solver.step();
-    if (this.steps % READBACK_EVERY === 0) this.refresh();
+    if (this.steps % this.readbackEvery === 0) this.refresh();
   }
 
   /** Readback of bodies, joints and counters now (tests; the app relies on `step`'s refresh). */
   async sync(): Promise<void> {
     while (this.reading) await new Promise((r) => setTimeout(r, 1));
-    this.refresh();
+    this.refresh(true);
     while (this.reading) await new Promise((r) => setTimeout(r, 1));
   }
 
-  private refresh(): void {
+  private refresh(everything = false): void {
     if (this.reading) return;
     this.reading = true;
-    Promise.all([this.solver.readBodies(), this.solver.readJoints(), this.solver.readCounters()])
-      .then(([bodies, joints, counters]) => {
-        this.bodies = bodies;
-        this.cachedStats = { ...this.jointStats(bodies, joints), contacts: counters.contacts, colors: counters.colors, clashes: counters.clashes, kineticEnergy: this.kineticEnergy(bodies) };
+    const joints = everything || this.needJoints;
+    const poses = joints || this.needPoses || this.bodies.length === 0;
+    Promise.all([poses ? this.solver.readBodies() : null, joints ? this.solver.readJoints() : null, this.solver.readCounters()])
+      .then(([bodies, jointData, counters]) => {
+        if (bodies) this.bodies = bodies;
+        const jointStats = bodies && jointData ? this.jointStats(bodies, jointData) : this.cachedStats;
+        this.cachedStats = {
+          joints: jointStats.joints,
+          maxJointError: jointStats.maxJointError,
+          contacts: counters.contacts,
+          colors: counters.colors,
+          clashes: counters.clashes,
+          kineticEnergy: bodies ? this.kineticEnergy(bodies) : this.cachedStats.kineticEnergy,
+        };
         this.solver.adapt(counters);
       })
       .catch((e) => {
@@ -133,15 +173,62 @@ export class GpuSim3D implements Sim3D {
   isSphere(i: number): boolean {
     return this.solver.bodies[i].sphere;
   }
+  isLevel(i: number): boolean {
+    return this.looks.level[i] === true;
+  }
+  visual(i: number): Visual | undefined {
+    return this.looks.visuals[i];
+  }
+  springs(): SpringView3D[] {
+    return this.looks.springs;
+  }
+  cloths(): number[][][] {
+    return this.looks.cloths;
+  }
+  ropes(): RopeView3D[] {
+    return this.looks.ropes;
+  }
+  labels(): LabelView3D[] {
+    return this.looks.labels;
+  }
   stats(): GpuStats3D {
     return { ...this.cachedStats, gpuStepMs: this.profile?.total };
+  }
+
+  private radii = new Float32Array(0);
+  private radiiKnown = 0;
+
+  /** Bounding radius of each of the first `n` bodies, 0 for static ones (never picked). */
+  private pickRadii(n: number): Float32Array {
+    if (this.radii.length < n) {
+      const radii = new Float32Array(Math.max(n, this.radii.length * 2));
+      radii.set(this.radii);
+      this.radii = radii;
+    }
+    for (; this.radiiKnown < n; this.radiiKnown++) {
+      const info = this.solver.bodies[this.radiiKnown];
+      this.radii[this.radiiKnown] = info.dynamic ? 0.5 * Math.hypot(info.size[0], info.size[1], info.size[2]) : 0;
+    }
+    return this.radii;
   }
 
   /** Ray-cast against the last readback (at most READBACK_EVERY steps old). */
   pick(origin: ArrayLike<number>, dir: ArrayLike<number>): PickResult3D | null {
     let best: PickResult3D | null = null;
-    for (let i = this.bodyCount - 1; i >= 0; i--) {
-      if (!this.isDynamic(i) || this.bodies.length < (i + 1) * BODY_FLOATS) continue;
+    const b = this.bodies;
+    const n = Math.min(this.bodyCount, b.length / BODY_FLOATS);
+    const reach = this.pickRadii(n);
+    const [ox, oy, oz, dx, dy, dz] = [origin[0], origin[1], origin[2], dir[0], dir[1], dir[2]];
+    for (let i = n - 1; i >= 0; i--) {
+      // Bounding sphere first (cheap, and most bodies are nowhere near the ray); static: 0
+      const r = reach[i];
+      if (r === 0) continue;
+      const o0 = i * BODY_FLOATS + B_POS;
+      const cx = b[o0] - ox;
+      const cy = b[o0 + 1] - oy;
+      const cz = b[o0 + 2] - oz;
+      const along = cx * dx + cy * dy + cz * dz;
+      if (cx * cx + cy * cy + cz * cz - along * along > r * r || along < -r || (best && along - r > best.t)) continue;
       const q = this.orientation(i);
       const p = this.position(i);
       const inv = [-q[0], -q[1], -q[2], q[3]];
@@ -169,6 +256,13 @@ export class GpuSim3D implements Sim3D {
 
   addBox(size: ArrayLike<number>, density: number, friction: number, position: ArrayLike<number>, velocity: ArrayLike<number>): void {
     this.solver.addBody(new Rigid(this.scratch, size, density, friction, position, velocity));
+    this.scratch.clear();
+  }
+
+  addBall(radius: number, mass: number, friction: number, position: ArrayLike<number>, velocity: ArrayLike<number>): void {
+    const density = mass / ((4 / 3) * Math.PI * radius ** 3);
+    const i = this.solver.addBody(sphere(this.scratch, radius, density, friction, position, velocity));
+    if (i >= 0) this.looks.visuals[i] = CANNONBALL;
     this.scratch.clear();
   }
 
@@ -216,13 +310,27 @@ export function createGpuSim3D(
   name: string,
   params: Partial<GpuParams3D> = {},
   allocateBodyBuffer?: (capacity: number) => GPUBuffer,
+  options?: SceneOptions,
 ): GpuSim3D {
   const scene = sceneByName3D(name);
   const ref = new Solver();
-  scene.build(ref);
+  scene.build(ref, options);
   // Room for bodies shot at runtime
   const capacity = ref.bodies.length + 4096;
   const solver = new GpuSolver3D(device, ref, { bodyBuffer: allocateBodyBuffer?.(capacity), bodyCapacity: capacity });
   Object.assign(solver.params, params);
-  return new GpuSim3D(solver);
+  // The viewer's tags, moved into the solver's (spatially sorted) body order
+  const gpu = solver.refToGpu;
+  const index = new Map(ref.bodies.map((b, i) => [b, gpu[i]]));
+  const visuals: (Visual | undefined)[] = [];
+  const level: boolean[] = [];
+  ref.bodies.forEach((b, i) => {
+    visuals[gpu[i]] = visualOf(b);
+    level[gpu[i]] = Math.abs(b.positionAng[3]) > 0.9999;
+  });
+  const springs = ref.forces.filter((f): f is Spring => f instanceof Spring).map((f) => ({ a: index.get(f.bodyA!)!, b: index.get(f.bodyB)!, rA: f.rA, rB: f.rB }));
+  const cloths = clothsOf(ref).map((grid) => grid.map((row) => row.map((b) => index.get(b)!)));
+  const ropes = ropesOf(ref).map((r) => ({ ...r, links: r.links.map((b) => index.get(b)!) }));
+  const labels = labelsOf(ref).map((l) => ({ bodies: l.bodies.map((b) => index.get(b)!), text: l.text }));
+  return new GpuSim3D(solver, { visuals, level, springs, cloths, ropes, labels });
 }
