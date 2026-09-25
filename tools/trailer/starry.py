@@ -42,8 +42,6 @@ def draw(name, s, x, y, size, t0, t1, color=INK):
 CAPTIONS = [
     ('20,000 spheres, poured in at random', '(w-tw)/2', 60, 46, 0.2, 4.2, INK),
     ('How do they know where to land?', '(w-tw)/2', 60, 46, 9.0, 13.0, INK),
-    ('Deterministic physics: run once to see where each sphere lands,', '(w-tw)/2', 'h-190', 30, 21.0, 32, INK),
-    ('colour it from the painting there, then run it again for real', '(w-tw)/2', 'h-130', 30, 21.2, 32, INK),
 ]
 TAG = 'Recorded live in Chrome, real time' + (f'  ·  {args.machine}' if args.machine else '')
 
