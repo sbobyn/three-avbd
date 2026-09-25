@@ -8,3 +8,4 @@ reference/
 # Trailer rig recordings and output (tools/trailer)
 tools/trailer/clips/
 tools/trailer/*.mp4
+.vercel
