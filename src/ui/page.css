@@ -152,3 +152,37 @@ body {
     display: none;
   }
 }
+
+/* Device calibration (device-budget.ts): the notice while it measures, and the GPU-lost panel */
+.calibrating {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 8px 16px;
+  color: var(--muted);
+  pointer-events: none;
+  z-index: 20;
+}
+.gpu-lost {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(360px, calc(100vw - 48px));
+  padding: 16px 18px;
+  z-index: 30;
+}
+.gpu-lost p {
+  margin: 6px 0 12px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.gpu-lost button {
+  font: 600 14px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  padding: 8px 16px;
+  color: #fff;
+  background: #b8503f;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}

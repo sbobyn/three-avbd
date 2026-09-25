@@ -40,6 +40,12 @@ elsewhere orbits, right-drag pans, wheel zooms, Space, B or middle-click fires a
 pauses, `.` steps, R resets. The smash, pile and Custom scenes have a panel for the cannonball's
 radius, mass and launch speed (also under Settings → Advanced everywhere).
 
+On a device's first visit both demos time a few solver steps off screen (`src/ui/device-budget.ts`)
+and remember what the GPU can run: a weaker GPU lands on a smaller scene, heavy scenes are marked
+"slow here" or "too heavy here" (the latter ask before loading), the Custom sizes stop at the
+device's limit, and a GPU reset shows a message instead of a frozen page. Settings → Advanced
+measures again.
+
 ## Layout
 
 | Path | What |

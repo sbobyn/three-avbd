@@ -12,7 +12,8 @@
   position: fixed;
   top: 16px;
   right: 16px;
-  z-index: 10;
+  /* Above the scene panels, so an open menu is never under one */
+  z-index: 12;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -175,6 +176,20 @@
 .avbd-ui .item.current::after {
   content: '✓';
   margin-left: auto;
+}
+/* Device calibration's remark on a scene (device-budget.ts) */
+.avbd-ui .item .note {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ui-muted);
+  white-space: nowrap;
+}
+.avbd-ui .item .note.heavy {
+  color: var(--ui-accent);
+}
+.avbd-ui .item.current .note {
+  margin-left: 8px;
 }
 
 /* Settings rows */

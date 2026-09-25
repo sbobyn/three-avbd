@@ -7,6 +7,7 @@ import type { SceneOptions } from '../avbd3d/bench-scenes.ts';
 import { CUSTOM_3D, CUSTOM_MAX_3D } from '../avbd3d/custom.ts';
 import type { SimStats3D } from '../avbd3d/sim.ts';
 import { customPanel } from '../ui/custom-panel.ts';
+import type { DeviceBudget } from '../ui/device-budget.ts';
 import { ICONS } from '../ui/controls.ts';
 import { type PanelItem, PANEL_ICONS, type PanelSpec } from '../ui/scene-panel.ts';
 
@@ -23,6 +24,8 @@ export interface ExtrasContext {
   apply(options: SceneOptions): void;
   stats(): SimStats3D;
   bodyCount(): number;
+  /** What this device can run (null without a GPU). */
+  budget(): DeviceBudget | null;
   /** The cannonball Space fires. */
   ball: {
     radius(): number;
@@ -122,7 +125,7 @@ const PANELS: Record<string, (ctx: ExtrasContext) => PanelSpec> = {
   }),
   'Ragdolls on Cloth (24k)': (ctx) => ({ title: 'Ragdolls', items: [speed(ctx), replay(ctx, 'Drop again')] }),
   Custom: withCannonball((ctx) =>
-    customPanel('Custom scene', CUSTOM_3D.map((k) => k.name), CUSTOM_MAX_3D, {
+    customPanel('Custom scene', CUSTOM_3D.map((k) => k.name), CUSTOM_MAX_3D, ctx.budget(), {
       current: () => ({ kind: ctx.option('kind'), bodies: ctx.option('bodies') }),
       build: (kind, bodies) => ctx.apply({ kind, bodies }),
       bodyCount: () => ctx.bodyCount(),

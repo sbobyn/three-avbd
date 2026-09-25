@@ -9,6 +9,8 @@ export type Dimension = '2d' | '3d';
 interface MenuItem {
   label: string;
   value: string;
+  /** A short remark shown beside it (e.g. that the scene will be slow on this device). */
+  note?: string;
 }
 
 export interface MenuGroup {
@@ -70,27 +72,29 @@ const PAGES: Record<Dimension, string> = { '3d': '/', '2d': '/2d.html' };
 const TITLES: Record<Dimension, string> = { '3d': '3D', '2d': '2D' };
 
 /** One demo's scenes among `names`, grouped and ordered by kind. */
-function groupsOf(dim: Dimension, names: string[], toValue: (name: string) => string): MenuGroup[] {
+function groupsOf(dim: Dimension, names: string[], toValue: (name: string) => string, noteOf: (name: string) => string | undefined = () => undefined): MenuGroup[] {
   const kinds = KINDS[dim];
   const listed = new Set(Object.values(kinds).flat());
+  const item = (n: string): MenuItem => ({ label: n, value: toValue(n), note: noteOf(n) });
   const groups = Object.entries(kinds).map(([kind, members]) => ({
     label: kind,
-    items: members.filter((n) => names.includes(n)).map((n) => ({ label: n, value: toValue(n) })),
+    items: members.filter((n) => names.includes(n)).map(item),
   }));
   const other = names.filter((n) => !listed.has(n) && !UNLISTED.has(n));
-  if (other.length) groups.push({ label: 'More', items: other.map((n) => ({ label: n, value: toValue(n) })) });
+  if (other.length) groups.push({ label: 'More', items: other.map(item) });
   return groups.filter((g) => g.items.length > 0);
 }
 
 /**
  * The menu for the demo `dim`: its own scenes (values are scene names; `available` lists the
- * ones this browser can run), and the other demo's (values "2d:Name" / "3d:Name").
+ * ones this browser can run; `noteOf` remarks on them), and the other demo's (values
+ * "2d:Name" / "3d:Name").
  */
-export function sceneMenu(dim: Dimension, available: string[]): SceneMenu {
+export function sceneMenu(dim: Dimension, available: string[], noteOf?: (name: string) => string | undefined): SceneMenu {
   const other: Dimension = dim === '3d' ? '2d' : '3d';
   const otherNames = (other === '3d' ? allScenes3D : allScenes2D).map((s) => s.name);
   return {
-    own: groupsOf(dim, available, (n) => n),
+    own: groupsOf(dim, available, (n) => n, noteOf),
     other: { title: `${TITLES[other]} demo`, groups: groupsOf(other, otherNames, (n) => `${other}:${n}`) },
   };
 }

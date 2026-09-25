@@ -8,7 +8,9 @@ import { createGpuSim3D, GpuSim3D } from '../avbd3d/gpu/sim.ts';
 import { gpuParams3D, PHASES } from '../avbd3d/gpu/solver.ts';
 import { DEFAULT_SCENE } from '../avbd3d/ref/scenes.ts';
 import { allScenes3D, along, createSim3D, type Sim3D, sceneByName3D } from '../avbd3d/sim.ts';
+import { CUSTOM_3D } from '../avbd3d/custom.ts';
 import { Controls, ICONS, openRepo } from '../ui/controls.ts';
+import { adapterName, bodiesInName, confirmHeavy, deviceBudget, forgetBudget, heaviness, timeSteps, watchDeviceLoss } from '../ui/device-budget.ts';
 import { titleCard } from '../ui/title-card.ts';
 import { otherDemoUrl, sceneMenu } from '../ui/scene-menu.ts';
 import { ScenePanel } from '../ui/scene-panel.ts';
@@ -40,8 +42,28 @@ const url = new URL(location.href);
 const gpuAvailable = renderer.device !== null;
 // The paper's showcase scenes first (GPU only), then the upstream demo's scenes
 const sceneNames = [...allScenes3D.filter((s) => s.gpuOnly && gpuAvailable), ...allScenes3D.filter((s) => !s.gpuOnly)].map((s) => s.name);
-/** What a first visit shows: a quarter-size Fig. 1 smash, smooth on modest GPUs. */
-const LANDING_SCENE = gpuAvailable ? 'Brick Ring (28k)' : DEFAULT_SCENE;
+
+/** ms per step of a Custom brick ring of about `bodies` bodies, off screen (no readbacks). */
+async function probe(bodies: number): Promise<number> {
+  const device = renderer.device!;
+  const kind = CUSTOM_3D.findIndex((k) => k.name === 'Brick Ring');
+  const sim = createGpuSim3D(device, 'Custom', { ...gpuParams3D(), ...CUSTOM_3D[kind].params }, undefined, { kind, bodies });
+  sim.readbackEvery = Number.MAX_SAFE_INTEGER;
+  const ms = await timeSteps(device, () => sim.step());
+  sim.destroy();
+  return ms;
+}
+/** What this device can run (measured on its first visit): see device-budget.ts. */
+const budget = gpuAvailable ? await deviceBudget('3d', adapterName(adapter), probe, [4_000, 24_000, 64_000]) : null;
+/** Too slow for the 28k landing scene in real time: lighter defaults (no AO, no reflections). */
+const weak = budget !== null && budget.realtime < 28_000;
+if (renderer.device) watchDeviceLoss('3d', renderer.device, () => state.scene);
+/** A scene's size, for the budget checks (Custom: the size it will be built at). */
+const sizeOf = (name: string): number =>
+  name === 'Custom' ? ({ ...sceneByName3D(name).options, ...state.sceneOptions[name] }.bodies ?? 0) : bodiesInName(name);
+
+/** What a first visit shows: a quarter-size Fig. 1 smash, or a smaller smash on a weaker GPU. */
+const LANDING_SCENE = !budget ? DEFAULT_SCENE : budget.realtime >= 28_000 ? 'Brick Ring (28k)' : budget.realtime >= 2_000 ? 'Wall Smash (2k)' : DEFAULT_SCENE;
 const backendParam = url.searchParams.get('backend');
 const state = {
   scene: sceneNames.includes(url.searchParams.get('scene') ?? '') ? url.searchParams.get('scene')! : LANDING_SCENE,
@@ -60,11 +82,13 @@ const state = {
   details: false,
   // Shadow maps redraw every body again each frame; off helps older GPUs with big scenes
   shadows: url.searchParams.get('shadows') !== '0',
-  /** Ambient occlusion (a post pass at half resolution). */
-  ambientOcclusion: url.searchParams.get('ao') !== '0',
+  /** Ambient occlusion (a post pass at half resolution); off by default on a weak GPU. */
+  ambientOcclusion: url.searchParams.has('ao') ? url.searchParams.get('ao') !== '0' : !weak,
   /** Floor reflections (the scene drawn twice): on by default in scenes up to REFLECT_UP_TO. */
   reflections: true,
 };
+// A heavy scene from a link (or the other demo's menu) asks first too
+if (!confirmHeavy(budget, state.scene, sizeOf(state.scene))) state.scene = LANDING_SCENE;
 /** Solver parameters owned by the app, copied into the solver before every step. */
 const params = gpuParams3D();
 /** The solver's defaults for the backend, with the scene's own settings (the paper's iterations). */
@@ -153,7 +177,7 @@ function loadScene(reset = true, now = false): void {
     if (reset) {
       state.speed = 1;
       // Reflections draw the scene twice: on for scenes small enough to afford it
-      state.reflections = sim.bodyCount <= REFLECT_UP_TO;
+      state.reflections = !weak && sim.bodyCount <= REFLECT_UP_TO;
     }
     panel.show(panelFor(state.scene, extras));
     setLabels(sim.labels());
@@ -172,13 +196,14 @@ function loadScene(reset = true, now = false): void {
 const toggle = (label: string, key: 'shadows' | 'ambientOcclusion' | 'reflections' | 'showContacts' | 'showJoints' | 'details') =>
   ({ kind: 'toggle', label, get: () => state[key], set: (v: boolean) => (state[key] = v) }) as const;
 const ui = new Controls({
-  scenes: sceneMenu('3d', sceneNames),
+  scenes: sceneMenu('3d', sceneNames, (name) => heaviness(budget, bodiesInName(name))),
   onScene: (value) => {
     const other = otherDemoUrl(value);
     if (other) {
       location.href = other;
       return;
     }
+    if (!confirmHeavy(budget, value, sizeOf(value))) return;
     state.scene = value;
     loadScene();
   },
@@ -231,6 +256,7 @@ const ui = new Controls({
       ],
     },
     { kind: 'action', label: 'Reset settings to defaults', run: () => Object.assign(params, defaults()) },
+    { kind: 'action', label: 'Measure this GPU again (reloads)', run: () => (forgetBudget('3d'), location.reload()) },
   ],
 });
 
@@ -264,6 +290,7 @@ const extras: ExtrasContext = {
     loadScene();
   },
   bodyCount: () => sim.bodyCount,
+  budget: () => budget,
   stats: () => sim.stats(),
   ball: {
     radius: () => state.ballRadius,

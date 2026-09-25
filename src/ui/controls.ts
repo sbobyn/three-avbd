@@ -188,8 +188,9 @@ export class Controls {
         }
       };
     };
-    const addItem = (body: HTMLElement, label: string, value: string, open: () => void) => {
+    const addItem = (body: HTMLElement, label: string, value: string, open: () => void, note?: string) => {
       const item = el('button', { class: 'item', type: 'button' }, label);
+      if (note) item.append(el('span', { class: note.includes('heavy') ? 'note heavy' : 'note' }, note));
       item.addEventListener('click', () => {
         this.close();
         onScene(value);
@@ -200,7 +201,7 @@ export class Controls {
     for (const group of menu.own) {
       const s = section(group.label, String(group.items.length), false);
       const open = exclusive(s);
-      for (const item of group.items) addItem(s.body, item.label, item.value, open);
+      for (const item of group.items) addItem(s.body, item.label, item.value, open, item.note);
       this.scenePopover.append(s.root);
     }
     const count = menu.other.groups.reduce((n, g) => n + g.items.length, 0);

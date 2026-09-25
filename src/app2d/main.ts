@@ -6,6 +6,7 @@ import { createGpuSim, GpuSim } from '../avbd2d/gpu/sim.ts';
 import { PHASES } from '../avbd2d/gpu/solver.ts';
 import { defaultParams, parallelParams } from '../avbd2d/ref/solver.ts';
 import { Controls, ICONS, openRepo } from '../ui/controls.ts';
+import { adapterName, bodiesInName, confirmHeavy, deviceBudget, forgetBudget, heaviness, timeSteps, watchDeviceLoss } from '../ui/device-budget.ts';
 import { otherDemoUrl, sceneMenu } from '../ui/scene-menu.ts';
 import { titleCard } from '../ui/title-card.ts';
 import { customPanel } from '../ui/custom-panel.ts';
@@ -30,6 +31,25 @@ const renderer = new Renderer2D(
 );
 await renderer.init();
 
+/** ms per step of a Custom joint lattice of about `bodies` bodies, off screen (no readbacks). */
+async function probe(bodies: number): Promise<number> {
+  const device = renderer.device!;
+  const saved = { ...custom2D };
+  Object.assign(custom2D, { kind: CUSTOM_2D.findIndex((k) => k.name === 'Joint Lattice'), bodies });
+  const gpu = createGpuSim(device, 'Custom', parallelParams());
+  Object.assign(custom2D, saved);
+  gpu.needPoses = false;
+  gpu.needStats = false;
+  const ms = await timeSteps(device, () => gpu.step());
+  gpu.destroy();
+  return ms;
+}
+/** What this device can run on the GPU (measured on its first visit): see device-budget.ts. */
+const budget = renderer.device ? await deviceBudget('2d', adapterName(adapter), probe, [10_000, 60_000, 160_000]) : null;
+if (renderer.device) watchDeviceLoss('2d', renderer.device, () => state.scene);
+/** A scene's size, for the budget checks (Custom: the size it will be built at). */
+const sizeOf = (name: string): number => (name === 'Custom' ? custom2D.bodies : bodiesInName(name));
+
 const url = new URL(location.href);
 const sceneNames = allScenes2D.map((s) => s.name);
 const backendParam = url.searchParams.get('backend') as Backend2D | null;
@@ -46,6 +66,8 @@ const state = {
   showJoints: true,
   details: false,
 };
+// A heavy scene from a link (or the other demo's menu) asks first
+if (!confirmHeavy(budget, state.scene, sizeOf(state.scene))) state.scene = DEFAULT_SCENE;
 /** The demo's defaults for the demo-order backends, measured parallel defaults otherwise. */
 const backendDefaults = (backend: Backend2D) => (backend === 'ref' || backend === 'soa-seq' ? defaultParams() : parallelParams());
 /** Solver parameters owned by the app, copied into whichever backend is running. */
@@ -93,7 +115,7 @@ const panel = new ScenePanel();
 const showPanel = () =>
   panel.show(
     state.scene === 'Custom'
-      ? customPanel('Custom scene', CUSTOM_2D.map((k) => k.name), CUSTOM_MAX_2D, {
+      ? customPanel('Custom scene', CUSTOM_2D.map((k) => k.name), CUSTOM_MAX_2D, budget, {
           current: () => ({ ...custom2D }),
           build: (kind, bodies) => {
             Object.assign(custom2D, { kind, bodies });
@@ -122,13 +144,14 @@ function loadScene(resetCamera = true): void {
 
 const resetParams = () => Object.assign(params, backendDefaults(state.backend));
 const ui = new Controls({
-  scenes: sceneMenu('2d', sceneNames),
+  scenes: sceneMenu('2d', sceneNames, (name) => heaviness(budget, bodiesInName(name))),
   onScene: (value) => {
     const other = otherDemoUrl(value);
     if (other) {
       location.href = other;
       return;
     }
+    if (!confirmHeavy(budget, value, sizeOf(value))) return;
     state.scene = value;
     loadScene();
   },
@@ -175,6 +198,7 @@ const ui = new Controls({
       ],
     },
     { kind: 'action', label: 'Reset settings to defaults', run: resetParams },
+    { kind: 'action', label: 'Measure this GPU again (reloads)', run: () => (forgetBudget('2d'), location.reload()) },
   ],
 });
 
