@@ -267,22 +267,23 @@ fn pairHash(a: u32, b: u32) -> u32 {
   return hash32((a * 0x9e3779b1u) ^ hash32(b));
 }
 
-/** Last step's pairs into the table (slot value = pair index + 1), linear probing. */
+/**
+ * Last step's pairs into the table (slot value = pair index + 1), linear probing. Slots are
+ * claimed by atomicExchange, not compare-exchange (Safari's Metal backend fails to compile
+ * atomicCompareExchangeWeak, github issue 1): a taken slot's occupant is swapped out and
+ * carried on to the next slot, which keeps it on its own probe chain.
+ */
 @compute @workgroup_size(64)
 fn hashInsert(@builtin(global_invocation_id) gid: vec3u) {
   let m = gid.x;
   if (m >= atomicLoad(&counters[C_PREV_MANIFOLDS])) { return; }
   let ids = prevManifolds[m].ids;
   var h = pairHash(ids.x, ids.y) & params.hashMask;
-  var probe = 0u;
-  while (probe <= params.hashMask) {
-    let r = atomicCompareExchangeWeak(&table[h], 0u, m + 1u);
-    if (r.exchanged) { return; }
-    // A weak exchange may fail spuriously on an empty slot: retry rather than skip it
-    if (r.old_value != 0u) {
-      h = (h + 1u) & params.hashMask;
-      probe++;
-    }
+  var value = m + 1u;
+  for (var probe = 0u; probe <= params.hashMask; probe++) {
+    value = atomicExchange(&table[h], value);
+    if (value == 0u) { return; }
+    h = (h + 1u) & params.hashMask;
   }
 }
 

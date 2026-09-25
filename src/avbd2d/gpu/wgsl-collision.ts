@@ -173,18 +173,17 @@ const PAIR_ENTRY = 0xffffffffu;
 /** Slot values: contact index + 1, with PAIR_BIT set on per-pair entries. */
 const PAIR_BIT = 0x80000000u;
 
-fn insert(a: u32, b: u32, feature: u32, value: u32) {
+// Slots are claimed by atomicExchange rather than compare-exchange (Safari's Metal backend
+// fails to compile atomicCompareExchangeWeak, github issue 1): a taken slot's occupant is
+// swapped out and carried on to the next slot, which keeps it on its own probe chain, with
+// no empty slot before it for a lookup to stop at.
+fn insert(a: u32, b: u32, feature: u32, first: u32) {
   var h = contactHash(a, b, feature) & params.hashMask;
-  var probe = 0u;
-  while (probe <= params.hashMask) {
-    let r = atomicCompareExchangeWeak(&table[h], 0u, value);
-    if (r.exchanged) { return; }
-    // A weak exchange may fail spuriously on an empty slot: retry it rather than skip it,
-    // or a lookup would stop at that empty slot and miss this entry.
-    if (r.old_value != 0u) {
-      h = (h + 1u) & params.hashMask;
-      probe++;
-    }
+  var value = first;
+  for (var probe = 0u; probe <= params.hashMask; probe++) {
+    value = atomicExchange(&table[h], value);
+    if (value == 0u) { return; }
+    h = (h + 1u) & params.hashMask;
   }
 }
 
