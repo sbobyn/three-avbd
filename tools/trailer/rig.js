@@ -156,6 +156,49 @@ T.warmGrab = async (body) => {
   pointer(canvas, 'pointerup', x, y, false);
   await raf();
 };
+/** No body under screen point (x, y): pressing there orbits or pans the camera, not grabs. */
+T.empty = (x, y) => {
+  const V = camera.position.constructor;
+  const dir = new V((x / W) * 2 - 1, 1 - (y / H) * 2, 0.5).unproject(camera).sub(camera.position).normalize();
+  return !sim().pick(camera.position.toArray(), dir.toArray());
+};
+/**
+ * Drag the camera as a person would: press at points[0] (button 0 orbits, 2 pans), sweep on an
+ * eased curve through the rest, and let go (the controls' damping carries it on a little).
+ */
+T.drag = async (points, ms, button = 0, e = T.smooth) => {
+  const buttons = button === 2 ? 2 : 1;
+  const send = (type, down) => canvas.dispatchEvent(new PointerEvent(type, { pointerId: 1, pointerType: 'mouse', clientX: cursor.x, clientY: cursor.y, button, buttons: down ? buttons : 0, bubbles: true }));
+  await T.glide(...points[0], 1);
+  cursor.down = true;
+  send('pointerdown', true);
+  const P = points, n = P.length - 1;
+  const cr = (a, b, c, d, t) => 0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t * t * t);
+  const t0 = performance.now();
+  for (;;) {
+    const u = Math.min((performance.now() - t0) / ms, 1), s = e(u) * n, i = Math.min(Math.floor(s), n - 1), f = s - i;
+    const p = (k) => P[Math.max(0, Math.min(n, k))];
+    cursor.x = cr(p(i - 1)[0], p(i)[0], p(i + 1)[0], p(i + 2)[0], f);
+    cursor.y = cr(p(i - 1)[1], p(i)[1], p(i + 1)[1], p(i + 2)[1], f);
+    send('pointermove', true);
+    if (u >= 1) break;
+    await raf();
+  }
+  send('pointerup', false);
+  cursor.down = false;
+};
+/** Scroll the wheel by `total` (negative zooms in) over `ms`, eased, as a trackpad's stream of small steps. */
+T.scroll = async (total, ms, e = T.smooth) => {
+  const t0 = performance.now();
+  let done = 0;
+  for (;;) {
+    const u = Math.min((performance.now() - t0) / ms, 1), to = total * e(u);
+    canvas.dispatchEvent(new WheelEvent('wheel', { deltaY: to - done, deltaMode: 0, clientX: cursor.x, clientY: cursor.y, bubbles: true, cancelable: true }));
+    done = to;
+    if (u >= 1) return;
+    await raf();
+  }
+};
 const center = (el) => {
   const r = el.getBoundingClientRect();
   return [r.left + r.width / 2, r.top + r.height / 2];

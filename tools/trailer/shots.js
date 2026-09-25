@@ -237,3 +237,54 @@ S.starry = async () => {
   });
   return { ...stats, grabs };
 };
+
+/**
+ * Mona Lisa Tower, for its own clip, shot the way a person plays with it: a nudge of the camera
+ * round the tower as it starts to sag, "Look from above" as it falls, then, with the picture
+ * settled, the face panned to the middle, the view tipped down and round, a scroll in close
+ * enough to see the bricks, and a last slow turn. Every move is real input to the orbit
+ * controls (drag orbits, right-drag pans, the wheel zooms), so it eases like a hand's.
+ */
+S.tower = async () => {
+  state.paused = true;
+  await T.load('Mona Lisa Tower (50k)');
+  T.ui = ['.avbd-panel'];
+  // The whole tower in frame, from a little above its foot
+  T.view({ target: [0, 0, 46], dist: 205, az: -35, el: 0.22 });
+  Object.assign(T.cursor, { x: 1320, y: 760 });
+  const firstEmpty = (points) => points.find(([x, y]) => T.empty(x, y)) ?? points[0];
+  return T.record('tower', 21000, async () => {
+    const t0 = performance.now();
+    const at = (s) => T.sleep(Math.max(0, t0 + 1000 * s - performance.now()));
+    state.paused = false;
+    // A little look round the tower, dragging on the sky beside it
+    await T.glide(1260, 330, 650);
+    await T.drag([[1260, 330], [1200, 322], [1120, 330]], 1300);
+    await T.sleep(250);
+    await T.click([...document.querySelectorAll('.avbd-panel .action')].find((b) => b.textContent.includes('Look from above')), 750);
+    // Out of the way while the camera glides up
+    await T.glide(430, 640, 1300, T.sine);
+    // The face into the middle (right-drag pans)
+    await at(6.7);
+    const face = T.screen([-4, 22, 2]);
+    await T.glide(face[0] + 14, face[1] + 10, 700);
+    await T.drag([[face[0] + 14, face[1] + 10], [W2() + 40, H2() - 30], [W2(), H2() - 40]], 1100, 2);
+    // Tip the view down and swing round it, dragging on the floor beside the picture
+    await at(8.9);
+    const floor = firstEmpty([[250, 720], [220, 520], [300, 900], [170, 330], [1700, 700]]);
+    await T.glide(...floor, 650);
+    await T.drag([floor, [floor[0] + 20, floor[1] - 80], [floor[0] + 45, floor[1] - 155]], 1500);
+    // Scroll in close
+    await at(11.5);
+    await T.glide(W2() + 30, H2() + 20, 500);
+    await T.scroll(-1500, 2200);
+    // A last slow turn, dragging along the sky
+    await at(14.9);
+    const sky = firstEmpty([[1180, 110], [1100, 160], [900, 120]]);
+    await T.glide(...sky, 600);
+    await T.drag([sky, [sky[0] - 40, sky[1] + 5], [sky[0] - 95, sky[1] + 10]], 3400, 0, T.sine);
+    T.cursor.fadeAt = performance.now() + 400;
+  });
+};
+const W2 = () => innerWidth / 2;
+const H2 = () => innerHeight / 2;
