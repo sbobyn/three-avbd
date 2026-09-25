@@ -2,7 +2,7 @@
 // mass properties and the principal frame.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { convexHull } from '../src/avbd3d/hull.ts';
+import { convexHull, hullFromTriangles } from '../src/avbd3d/hull.ts';
 
 const close = (a: number, b: number, eps = 1e-5) => assert.ok(Math.abs(a - b) <= eps, `${a} vs ${b}`);
 
@@ -99,4 +99,34 @@ test('points on a few planes (a fracture piece: many on each cut and face) make 
   // The unit cube minus the corner x + y + z > 1.6: with a = 1 - x (…), the simplex a + b + c < 1.4
   // less the three bits of it beyond a face (a > 1): 1.4³/6 - 3 · 0.4³/6
   close(h.volume, 1 - (1.4 ** 3 - 3 * 0.4 ** 3) / 6, 1e-4);
+});
+
+test('many points on a sphere, and triangles from elsewhere', () => {
+  let s = 3;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  let last = 0;
+  for (const n of [100, 400]) {
+    const pts: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const u = rnd() * 2 - 1;
+      const a = rnd() * 2 * Math.PI;
+      const r = Math.sqrt(1 - u * u);
+      pts.push(r * Math.cos(a), r * Math.sin(a), u);
+    }
+    const h = convexHull(pts)!;
+    assert.equal(h.vertices.length / 3, n);
+    assert.equal(h.vertices.length / 3 - h.edges.length + h.faces.length, 2);
+    // Inside the sphere (4.19), and closer to it with more points
+    assert.ok(h.volume > Math.max(last, 3) && h.volume < (4 / 3) * Math.PI);
+    last = h.volume;
+  }
+  // A cube as twelve triangles (as three.js's ConvexHull gives it): six quad faces
+  const box = hullFromTriangles(
+    [-1, -1, -1, 1, -1, -1, 1, 1, -1, -1, 1, -1, -1, -1, 1, 1, -1, 1, 1, 1, 1, -1, 1, 1],
+    [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 1, 2, 6, 1, 6, 5, 3, 0, 4, 3, 4, 7],
+  )!;
+  assert.equal(box.faces.length, 6);
+  close(box.volume, 8);
+  // An open surface is no hull
+  assert.equal(hullFromTriangles([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1], [0, 2, 1, 0, 1, 3, 0, 3, 2]), null);
 });

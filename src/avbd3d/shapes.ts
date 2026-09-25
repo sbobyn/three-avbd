@@ -8,7 +8,7 @@ import { Rigid } from './ref/body.ts';
 import type { Solver } from './ref/solver.ts';
 import type { HullShape } from './hull.ts';
 
-export { convexHull, type HullShape } from './hull.ts';
+export { convexHull, hullFromTriangles, type HullShape } from './hull.ts';
 
 const spheres = new WeakSet<Rigid>();
 

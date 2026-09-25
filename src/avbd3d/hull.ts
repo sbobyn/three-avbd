@@ -61,7 +61,7 @@ export function convexHull(points: ArrayLike<number>): HullShape | null {
     p.push(v);
   }
   if (p.length < 4) return null;
-  const tol = Math.max(scale, 1e-9) * 1e-7;
+  const tol = Math.max(scale, 1e-9) * 1e-10;
 
   // Initial tetrahedron from extreme points
   let i0 = 0;
@@ -144,31 +144,60 @@ export function convexHull(points: ArrayLike<number>): HullShape | null {
     for (const [a, b] of horizon) tris.push(make(a, b, i));
   }
 
-  // Merge coplanar neighbours into polygon faces: a box's face is one quad, not two triangles
+  return hullFromTriangles(p.flat(), tris.flatMap((t) => t.v));
+}
+
+/**
+ * A hull from a closed, outward-wound triangulation of a convex point set (e.g. three.js's
+ * ConvexHull, or `convexHull` above): coplanar neighbouring triangles merged into polygon faces,
+ * the edges with their two faces, and the mass properties. Null when the triangles don't close up
+ * (every edge on exactly two faces) or enclose no volume.
+ */
+export function hullFromTriangles(positions: ArrayLike<number>, indices: ArrayLike<number>): HullShape | null {
+  const p: V3[] = [];
+  for (let i = 0; i + 2 < positions.length; i += 3) p.push([positions[i], positions[i + 1], positions[i + 2]]);
+  let scale = 0;
+  for (const v of p) scale = Math.max(scale, Math.abs(v[0]), Math.abs(v[1]), Math.abs(v[2]));
+  const planeTol = Math.max(scale, 1e-9) * 1e-5;
+  const tris: Array<{ v: V3; n: V3; d: number }> = [];
+  for (let i = 0; i + 2 < indices.length; i += 3) {
+    const v: V3 = [indices[i], indices[i + 1], indices[i + 2]];
+    const c = cross(sub(p[v[1]], p[v[0]]), sub(p[v[2]], p[v[0]]));
+    const l = len(c);
+    if (!(l > 0)) continue;
+    const n: V3 = [c[0] / l, c[1] / l, c[2] / l];
+    tris.push({ v, n, d: dot(n, p[v[0]]) });
+  }
+
+  // Faces: regions grown from a seed triangle over neighbours on the seed's plane (a region grown
+  // pair by pair could bend along a curved surface into a face that isn't flat)
   const edgeTri = new Map<string, number>();
   tris.forEach((t, k) => {
     for (let j = 0; j < 3; j++) edgeTri.set(`${t.v[j]},${t.v[(j + 1) % 3]}`, k);
   });
-  const group = tris.map((_, k) => k);
-  const find = (k: number): number => (group[k] === k ? k : (group[k] = find(group[k])));
-  const planeTol = Math.max(scale, 1e-9) * 1e-5;
-  tris.forEach((t, k) => {
-    for (let j = 0; j < 3; j++) {
-      const other = edgeTri.get(`${t.v[(j + 1) % 3]},${t.v[j]}`);
-      if (other === undefined) continue;
-      const u = tris[other];
-      if (dot(t.n, u.n) > 1 - 1e-6 && Math.abs(t.d - u.d) < planeTol) group[find(k)] = find(other);
+  const groupOf = new Array<number>(tris.length).fill(-1);
+  const groups: number[][] = [];
+  tris.forEach((seed, k) => {
+    if (groupOf[k] >= 0) return;
+    const members = [k];
+    groupOf[k] = groups.length;
+    for (let m = 0; m < members.length; m++) {
+      const t = tris[members[m]];
+      for (let j = 0; j < 3; j++) {
+        const other = edgeTri.get(`${t.v[(j + 1) % 3]},${t.v[j]}`);
+        if (other === undefined || groupOf[other] >= 0) continue;
+        const u = tris[other];
+        if (dot(seed.n, u.n) > 1 - 1e-5 && u.v.every((v) => Math.abs(dot(seed.n, p[v]) - seed.d) <= planeTol)) {
+          groupOf[other] = groups.length;
+          members.push(other);
+        }
+      }
     }
-  });
-  const groups = new Map<number, number[]>();
-  tris.forEach((_, k) => {
-    const g = find(k);
-    if (!groups.has(g)) groups.set(g, []);
-    groups.get(g)!.push(k);
+    groups.push(members);
   });
 
   const polys: Array<{ n: V3; verts: number[] }> = [];
-  for (const members of groups.values()) {
+  for (const members of groups) {
     const inGroup = new Set<string>();
     for (const k of members) for (let j = 0; j < 3; j++) inGroup.add(`${tris[k].v[j]},${tris[k].v[(j + 1) % 3]}`);
     const next = new Map<number, number>();
@@ -176,7 +205,10 @@ export function convexHull(points: ArrayLike<number>): HullShape | null {
       for (let j = 0; j < 3; j++) {
         const a = tris[k].v[j];
         const b = tris[k].v[(j + 1) % 3];
-        if (!inGroup.has(`${b},${a}`)) next.set(a, b);
+        if (!inGroup.has(`${b},${a}`)) {
+          if (next.has(a)) return null; // the region's boundary isn't one loop
+          next.set(a, b);
+        }
       }
     }
     // Area-weighted normal of the group
@@ -190,6 +222,7 @@ export function convexHull(points: ArrayLike<number>): HullShape | null {
     const start = next.keys().next().value!;
     const loop = [start];
     for (let v = next.get(start)!; v !== start && loop.length <= next.size; v = next.get(v)!) loop.push(v);
+    if (loop.length !== next.size) return null;
     // Vertices where the boundary runs straight on stay: a neighbouring face may have a corner
     // there, and the two faces' edges must match (the edge list pairs them)
     polys.push({ n: [n[0] / l, n[1] / l, n[2] / l], verts: loop });
@@ -200,6 +233,13 @@ export function convexHull(points: ArrayLike<number>): HullShape | null {
   const verts: V3[] = [];
   for (const poly of polys) for (const v of poly.verts) if (!index.has(v)) { index.set(v, verts.length); verts.push(p[v]); }
   for (const poly of polys) poly.verts = poly.verts.map((v) => index.get(v)!);
+
+  // A closed surface: every edge on exactly two faces, in opposite directions (V - E + F = 2)
+  const directed = new Set<string>();
+  let sides = 0;
+  for (const poly of polys) poly.verts.forEach((v, k) => { directed.add(`${v},${poly.verts[(k + 1) % poly.verts.length]}`); sides++; });
+  if (directed.size !== sides || ![...directed].every((e) => { const [a, b] = e.split(','); return directed.has(`${b},${a}`); })) return null;
+  if (verts.length - directed.size / 2 + polys.length !== 2) return null;
 
   // Mass properties: signed tetrahedra from the origin over fan-triangulated faces (Blow & Binstock)
   let volume = 0;
