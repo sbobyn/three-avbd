@@ -2,9 +2,10 @@
 // interaction and diagnostics, mirroring the controls of the upstream avbd-demo2d web demo.
 
 import { DEFAULT_SCENE } from '../avbd2d/ref/scenes.ts';
-import { createGpuSim, GpuSim } from '../avbd2d/gpu/sim.ts';
+import { buildScene2D, createGpuSim, GpuSim } from '../avbd2d/gpu/sim.ts';
 import { PHASES } from '../avbd2d/gpu/solver.ts';
 import { defaultParams, parallelParams } from '../avbd2d/ref/solver.ts';
+import { BuildProgress } from '../ui/build-progress.ts';
 import { Controls, ICONS, openRepo } from '../ui/controls.ts';
 import { adapterName, bodiesInName, confirmHeavy, deviceBudget, forgetBudget, heaviness, timeSteps, watchDeviceLoss } from '../ui/device-budget.ts';
 import { otherDemoUrl, sceneMenu } from '../ui/scene-menu.ts';
@@ -95,20 +96,43 @@ const sceneCameras: Record<string, Camera2D> = {
   'Joint Lattice 512x512 (262k)': { x: 256, y: 180, zoom: 1 },
 };
 
-function buildSim(): Sim2D {
+/**
+ * Build the current scene's sim, in stages the progress bar follows: the scene on the CPU, then
+ * the GPU solver (the old sim is freed just before, in the same task). Null: a newer load took
+ * over while this one waited.
+ */
+async function buildSim(stillWanted: () => boolean): Promise<Sim2D | null> {
   if (state.backend !== 'gpu' && sceneByName(state.scene).gpuOnly) state.backend = 'gpu';
-  if (state.backend === 'gpu') {
-    const device = renderer.device;
-    if (device) return createGpuSim(device, state.scene, params, (n) => renderer.attachGpuBodies(n));
+  const device = state.backend === 'gpu' ? renderer.device : null;
+  if (state.backend === 'gpu' && !device) {
     hud.textContent = 'The WebGPU solver needs a WebGPU device; falling back to the CPU solver.';
     state.backend = 'soa-colored';
   }
-  renderer.detachGpuBodies();
-  return createSim(state.backend, state.scene, params);
+  const expected = sizeOf(state.scene) || 2000;
+  await progress.stage('build', `Building ${expected.toLocaleString('en')} bodies…`, device ? 0.3 : 0.85, expected);
+  if (!stillWanted()) return null;
+  if (!device) {
+    freeSim();
+    renderer.detachGpuBodies();
+    return createSim(state.backend as Exclude<Backend2D, 'gpu'>, state.scene, params);
+  }
+  const mirror = buildScene2D(state.scene);
+  await progress.stage('solver', `Setting up the GPU solver for ${mirror.bodyCount.toLocaleString('en')} bodies…`, 0.85, mirror.bodyCount);
+  if (!stillWanted()) return null;
+  freeSim();
+  return createGpuSim(device, state.scene, params, (n) => renderer.attachGpuBodies(n), mirror);
+}
+
+/** Free the current sim's GPU buffers (a new one replaces it at once). */
+function freeSim(): void {
+  sim?.endDrag();
+  if (sim instanceof GpuSim) sim.destroy();
 }
 
 /** Built by the first loadScene() at the bottom. */
 let sim!: Sim2D;
+let pendingLoad = 0;
+const progress = new BuildProgress('2d');
 
 /** The Custom scene's panel (kind and size, built on demand). */
 const panel = new ScenePanel();
@@ -126,10 +150,14 @@ const showPanel = () =>
       : null,
   );
 
-function loadScene(resetCamera = true): void {
-  sim?.endDrag();
-  if (sim instanceof GpuSim) sim.destroy();
-  sim = buildSim();
+/** (Re)build the current scene, with a progress bar; the old scene runs until replaced. */
+async function loadScene(resetCamera = true): Promise<void> {
+  const token = ++pendingLoad;
+  const stillWanted = () => token === pendingLoad;
+  progress.begin();
+  const next = await buildSim(stillWanted);
+  if (!next) return;
+  sim = next;
   ui.setScene(state.scene);
   ui.refresh();
   showPanel();
@@ -138,6 +166,13 @@ function loadScene(resetCamera = true): void {
   url.searchParams.set('scene', state.scene);
   url.searchParams.set('backend', state.backend);
   history.replaceState(null, '', url);
+  // The first step and frame compile the pipelines
+  await progress.stage('warm', 'Compiling shaders…', 1, sim.bodyCount);
+  if (!stillWanted()) return;
+  if (!state.paused) stepOnce();
+  renderer.render(sim, camera, canvas.clientWidth, canvas.clientHeight);
+  await renderer.device?.queue.onSubmittedWorkDone();
+  if (stillWanted()) progress.done();
 }
 
 // --- Controls --------------------------------------------------------------------------
@@ -417,8 +452,7 @@ function updateHud(): void {
   ].join('\n');
 }
 
-loadScene();
-requestAnimationFrame(frame);
+void loadScene().then(() => requestAnimationFrame(frame));
 
 // Exposed for debugging and automated checks
 function setScene(name: string, backend: Backend2D = state.backend): void {

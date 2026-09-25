@@ -4,11 +4,12 @@
 
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createGpuSim3D, GpuSim3D } from '../avbd3d/gpu/sim.ts';
+import { buildScene3D, createGpuSim3D, GpuSim3D } from '../avbd3d/gpu/sim.ts';
 import { gpuParams3D, PHASES } from '../avbd3d/gpu/solver.ts';
 import { DEFAULT_SCENE } from '../avbd3d/ref/scenes.ts';
 import { allScenes3D, along, createSim3D, type Sim3D, sceneByName3D } from '../avbd3d/sim.ts';
 import { CUSTOM_3D } from '../avbd3d/custom.ts';
+import { BuildProgress } from '../ui/build-progress.ts';
 import { Controls, ICONS, openRepo } from '../ui/controls.ts';
 import { adapterName, bodiesInName, confirmHeavy, deviceBudget, forgetBudget, heaviness, timeSteps, watchDeviceLoss } from '../ui/device-budget.ts';
 import { titleCard } from '../ui/title-card.ts';
@@ -25,7 +26,6 @@ const timing = document.querySelector<HTMLDivElement>('#timing')!;
 
 titleCard('avbd3d-card-collapsed');
 const keysHint = document.querySelector<HTMLDivElement>('#keys')!;
-const building = document.querySelector<HTMLDivElement>('#building')!;
 
 // Ask for the adapter's full storage-binding size, as the 2D app does, for large GPU scenes
 const adapter = 'gpu' in navigator ? await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null) : null;
@@ -123,20 +123,41 @@ function resetCamera(): void {
   controls.update();
 }
 
-function buildSim(): Sim3D {
+/**
+ * Build the current scene's sim, in stages the progress bar follows: the scene on the CPU, then
+ * the GPU solver (the old sim is freed just before, in the same task). `replace` swaps the new
+ * sim in; null means a newer load took over while this one waited.
+ */
+async function buildSim(stillWanted: () => boolean): Promise<Sim3D | null> {
   if (state.backend !== 'gpu' && sceneByName3D(state.scene).gpuOnly) {
     state.backend = 'gpu';
     Object.assign(params, defaults());
   }
-  if (state.backend === 'gpu') {
-    const device = renderer.device;
-    if (device) return createGpuSim3D(device, state.scene, params, (n) => renderer.attachGpuBodies(n), sceneOptions());
+  const device = state.backend === 'gpu' ? renderer.device : null;
+  if (state.backend === 'gpu' && !device) {
     hud.textContent = 'The WebGPU solver needs a WebGPU device; falling back to the CPU solver.';
     state.backend = 'ref';
     if (sceneByName3D(state.scene).gpuOnly) state.scene = DEFAULT_SCENE;
   }
-  renderer.detachGpuBodies();
-  return createSim3D(state.scene, params, sceneOptions());
+  const expected = sizeOf(state.scene) || 2000;
+  await progress.stage('build', `Building ${expected.toLocaleString('en')} bodies…`, device ? 0.1 : 0.85, expected);
+  if (!stillWanted()) return null;
+  if (!device) {
+    freeSim();
+    renderer.detachGpuBodies();
+    return createSim3D(state.scene, params, sceneOptions());
+  }
+  const ref = buildScene3D(state.scene, sceneOptions());
+  await progress.stage('solver', `Setting up the GPU solver for ${ref.bodies.length.toLocaleString('en')} bodies…`, 0.85, ref.bodies.length);
+  if (!stillWanted()) return null;
+  freeSim();
+  return createGpuSim3D(device, state.scene, params, (n) => renderer.attachGpuBodies(n), sceneOptions(), ref);
+}
+
+/** Free the current sim's GPU buffers (a new one replaces it at once). */
+function freeSim(): void {
+  endDrag();
+  if (sim instanceof GpuSim3D) sim.destroy();
 }
 
 function sceneOptions(): SceneOptions {
@@ -155,17 +176,21 @@ const REFLECT_UP_TO = 30_000;
 let sim!: Sim3D;
 
 let pendingLoad = 0;
+const progress = new BuildProgress('3d');
 
 /**
- * (Re)build the current scene. Big scenes take a second or two to build, so the page first
- * shows a note and lets it paint (the old scene keeps running meanwhile); `now` skips that.
+ * (Re)build the current scene. Big scenes take seconds to build, so a progress bar follows the
+ * stages, and the old scene keeps running until the new one replaces it.
  */
-function loadScene(reset = true, now = false): void {
-  const load = () => {
-    endDrag();
-    if (sim instanceof GpuSim3D) sim.destroy();
-    if (reset) Object.assign(params, defaults());
-    sim = buildSim();
+async function loadScene(reset = true): Promise<void> {
+  const token = ++pendingLoad;
+  const stillWanted = () => token === pendingLoad;
+  progress.begin();
+  if (reset) Object.assign(params, defaults());
+  const next = await buildSim(stillWanted);
+  if (!next) return;
+  sim = next;
+  {
     ui.setScene(state.scene);
     ui.refresh();
     if (reset) resetCamera();
@@ -183,12 +208,14 @@ function loadScene(reset = true, now = false): void {
     setLabels(sim.labels());
     // Captions follow their bodies: read poses back more often (label scenes are small)
     if (sim instanceof GpuSim3D && sim.labels().length) sim.readbackEvery = 2;
-    building.hidden = true;
-  };
-  if (now) return load();
-  const token = ++pendingLoad;
-  building.hidden = false;
-  requestAnimationFrame(() => setTimeout(() => token === pendingLoad && load(), 0));
+  }
+  // The first step and frame compile the pipelines (seconds, the first time in a browser)
+  await progress.stage('warm', 'Compiling shaders…', 1, sim.bodyCount);
+  if (!stillWanted()) return;
+  if (!state.paused) stepOnce();
+  renderer.render(sim, controls.target);
+  await renderer.device?.queue.onSubmittedWorkDone();
+  if (stillWanted()) progress.done();
 }
 
 // --- Controls --------------------------------------------------------------------------
@@ -567,8 +594,7 @@ function updateHud(): void {
     : summary;
 }
 
-loadScene(true, true);
-requestAnimationFrame(frame);
+void loadScene().then(() => requestAnimationFrame(frame));
 
 // Exposed for debugging and automated checks
 function setScene(name: string, backend: Backend3D = state.backend): void {
@@ -577,6 +603,6 @@ function setScene(name: string, backend: Backend3D = state.backend): void {
     Object.assign(params, defaults());
   }
   state.scene = name;
-  loadScene(true, true);
+  void loadScene();
 }
 Object.assign(window, { sim: () => sim, camera, controls, renderer, state, params, setScene, stepOnce, shootBall });

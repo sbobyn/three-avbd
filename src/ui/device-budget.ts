@@ -7,10 +7,12 @@
 import type { Dimension } from './scene-menu.ts';
 
 export interface DeviceBudget {
-  /** Bodies this device steps within REALTIME_MS: the scene runs in real time. */
+  /** Bodies this device steps within REALTIME_MS: the scene runs in real time at 60 fps. */
   realtime: number;
-  /** Bodies it steps within LIMIT_MS: slow motion but responsive. Past this, ask first. */
+  /** Bodies it steps within LIMIT_MS: at least 30 fps, in slow motion. Past this, ask first. */
   limit: number;
+  /** Bodies it steps within CEILING_MS: the most the Custom sizes offer at all. */
+  ceiling: number;
   /** The measurement behind them: ms per step for `probeBodies` bodies. */
   probeMs: number;
   probeBodies: number;
@@ -20,9 +22,11 @@ export interface DeviceBudget {
 
 /** A step's share of a 60 Hz frame (16.7 ms), leaving the rest for rendering. */
 const REALTIME_MS = 12;
-/** A step this long gives about 8 frames a second: still usable, and far from an OS GPU reset. */
-const LIMIT_MS = 120;
-const KEY = (dim: Dimension) => `avbd-device-budget-${dim}-v1`;
+/** A step's share of a 30 Hz frame (33 ms): the least that still feels interactive. */
+const LIMIT_MS = 28;
+/** About 4 frames a second: past this a scene is a slideshow, and a GPU nearer an OS reset. */
+const CEILING_MS = 250;
+const KEY = (dim: Dimension) => `avbd-device-budget-${dim}-v2`;
 
 /**
  * ms per call of `step` (which queues GPU work) once warm: the fastest of three timed runs, the
@@ -81,7 +85,7 @@ export async function deviceBudget(dim: Dimension, gpu: string, probe: (bodies: 
   // Cost grows about linearly with bodies (per-step overhead makes this conservative)
   ms = Math.max(ms, 0.05);
   const perBody = ms / bodies;
-  const budget = { realtime: Math.floor(REALTIME_MS / perBody), limit: Math.floor(LIMIT_MS / perBody), probeMs: ms, probeBodies: bodies, gpu };
+  const budget = { realtime: Math.floor(REALTIME_MS / perBody), limit: Math.floor(LIMIT_MS / perBody), ceiling: Math.floor(CEILING_MS / perBody), probeMs: ms, probeBodies: bodies, gpu };
   save(dim, budget);
   return budget;
 }
@@ -89,7 +93,7 @@ export async function deviceBudget(dim: Dimension, gpu: string, probe: (bodies: 
 /** After a GPU reset: halve the budgets, so the next visit stays further from the edge. */
 export function lowerBudget(dim: Dimension): void {
   const b = load(dim);
-  if (b) save(dim, { ...b, realtime: Math.floor(b.realtime / 2), limit: Math.floor(b.limit / 2) });
+  if (b) save(dim, { ...b, realtime: Math.floor(b.realtime / 2), limit: Math.floor(b.limit / 2), ceiling: Math.floor(b.ceiling / 2), probeMs: b.probeMs * 2 });
 }
 
 /** Measure again on the next load. */
@@ -110,24 +114,24 @@ export function bodiesInName(name: string): number {
 /** Predicted ms per step for `bodies` bodies on this device. */
 export const stepMs = (budget: DeviceBudget, bodies: number): number => (budget.probeMs * bodies) / budget.probeBodies;
 
-/** A menu note for a scene of `bodies`: nothing, "slow here", or "too heavy here". */
+/** A menu note for a scene of `bodies`: nothing (60 fps), "slow here" (30 to 60), or "too heavy here". */
 export function heaviness(budget: DeviceBudget | null, bodies: number): string | undefined {
   if (!budget || bodies <= budget.realtime) return undefined;
   return bodies <= budget.limit ? 'slow here' : 'too heavy here';
 }
 
 /**
- * Whether to go ahead with a scene of `bodies` bodies: past the limit, ask (a few seconds a
- * step can get the GPU reset).
+ * Whether to go ahead with a scene of `bodies` bodies: past the limit (under 30 fps), ask.
  */
 export function confirmHeavy(budget: DeviceBudget | null, name: string, bodies: number): boolean {
   if (!budget || bodies <= budget.limit) return true;
   const ms = stepMs(budget, bodies);
   const rate = ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
+  const fps = Math.max(1, Math.floor(1000 / (ms + 4)));
   return confirm(
-    `${name} is too heavy for this device: about ${rate} a step (it runs ${bodies.toLocaleString('en')} bodies; ` +
-      `this GPU keeps about ${budget.realtime.toLocaleString('en')} in real time).\n\n` +
-      'Heavy scenes can freeze the browser, or make the system reset the GPU. Load it anyway?',
+    `${name} is heavy for this device: about ${rate} a step, so around ${fps} fps in slow motion ` +
+      `(${bodies.toLocaleString('en')} bodies; this GPU runs about ${budget.realtime.toLocaleString('en')} in real time).\n\n` +
+      'Very heavy scenes can freeze the page, or make the system reset the GPU. Load it anyway?',
   );
 }
 

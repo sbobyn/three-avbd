@@ -65,15 +65,6 @@
         color: var(--ink);
         font: 600 12px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
       }
-      #building {
-        left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
-        padding: 8px 16px;
-        color: var(--muted);
-        pointer-events: none;
-      }
-      #building[hidden],
       #keys[hidden] {
         display: none;
       }
@@ -137,7 +128,6 @@
     </div>
     <div id="timing" class="panel"></div>
     <div id="hud" class="panel"></div>
-    <div id="building" class="panel">Building the scene…</div>
     <div id="keys" class="panel"><kbd>Space</kbd> fire a cannonball &nbsp;·&nbsp; drag a block to pull it</div>
     <script type="module" src="/src/app3d/main.ts"></script>
   </body>

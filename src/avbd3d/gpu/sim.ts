@@ -301,9 +301,17 @@ function rotate(q: ArrayLike<number>, v: ArrayLike<number>): number[] {
   return [v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx)];
 }
 
+/** Scene `name` built into a reference solver (the CPU half of createGpuSim3D). */
+export function buildScene3D(name: string, options?: SceneOptions): Solver {
+  const ref = new Solver();
+  sceneByName3D(name).build(ref, options);
+  return ref;
+}
+
 /**
- * Build scene `name` for the GPU. `allocateBodyBuffer(capacity)` supplies the body buffer
- * (e.g. one a renderer draws from); the solver writes the initial state into it.
+ * Build scene `name` for the GPU (from `ref`, if already built by buildScene3D).
+ * `allocateBodyBuffer(capacity)` supplies the body buffer (e.g. one a renderer draws from);
+ * the solver writes the initial state into it.
  */
 export function createGpuSim3D(
   device: GPUDevice,
@@ -311,10 +319,8 @@ export function createGpuSim3D(
   params: Partial<GpuParams3D> = {},
   allocateBodyBuffer?: (capacity: number) => GPUBuffer,
   options?: SceneOptions,
+  ref: Solver = buildScene3D(name, options),
 ): GpuSim3D {
-  const scene = sceneByName3D(name);
-  const ref = new Solver();
-  scene.build(ref, options);
   // Room for bodies shot at runtime
   const capacity = ref.bodies.length + 4096;
   const solver = new GpuSolver3D(device, ref, { bodyBuffer: allocateBodyBuffer?.(capacity), bodyCapacity: capacity });

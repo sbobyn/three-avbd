@@ -41,10 +41,11 @@ pauses, `.` steps, R resets. The smash, pile and Custom scenes have a panel for 
 radius, mass and launch speed (also under Settings → Advanced everywhere).
 
 On a device's first visit both demos time a few solver steps off screen (`src/ui/device-budget.ts`)
-and remember what the GPU can run: a weaker GPU lands on a smaller scene, heavy scenes are marked
-"slow here" or "too heavy here" (the latter ask before loading), the Custom sizes stop at the
-device's limit, and a GPU reset shows a message instead of a frozen page. Settings → Advanced
-measures again.
+and remember what the GPU can run: a weaker GPU lands on a smaller scene, scenes that would run
+under 60 fps are marked "slow here" and those under 30 fps "too heavy here" (asking before they
+load, as Custom builds do past that size), and a GPU reset shows a message instead of a frozen
+page. Settings → Advanced measures again. Scenes build behind a progress bar
+(`src/ui/build-progress.ts`) whose stages are timed per device.
 
 ## Layout
 

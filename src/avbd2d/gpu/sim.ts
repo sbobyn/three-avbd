@@ -155,16 +155,8 @@ export class GpuSim implements Sim2D {
   }
 }
 
-/**
- * Build `sceneName` for the GPU. `allocateBodyBuffer(capacity)` supplies the body buffer (e.g.
- * one a renderer draws from); the solver writes the initial state into it.
- */
-export function createGpuSim(
-  device: GPUDevice,
-  sceneName: string,
-  params: Partial<SolverParams>,
-  allocateBodyBuffer?: (bodyCount: number) => GPUBuffer,
-): GpuSim {
+/** `sceneName` built into the CPU mirror the GPU solver starts from (createGpuSim's CPU half). */
+export function buildScene2D(sceneName: string): SoaSolver2D {
   const scene = sceneByName(sceneName);
   const mirror = new SoaSolver2D();
   if (scene.buildSoa) {
@@ -174,6 +166,21 @@ export function createGpuSim(
     scene.build!(ref);
     mirror.loadFromReference(ref);
   }
+  return mirror;
+}
+
+/**
+ * Build `sceneName` for the GPU (from `mirror`, if already built by buildScene2D).
+ * `allocateBodyBuffer(capacity)` supplies the body buffer (e.g. one a renderer draws from); the
+ * solver writes the initial state into it.
+ */
+export function createGpuSim(
+  device: GPUDevice,
+  sceneName: string,
+  params: Partial<SolverParams>,
+  allocateBodyBuffer?: (bodyCount: number) => GPUBuffer,
+  mirror: SoaSolver2D = buildScene2D(sceneName),
+): GpuSim {
   Object.assign(mirror.params, parallelParams(), params);
   // Room for bodies spawned at runtime
   const capacity = mirror.bodyCount + 4096;

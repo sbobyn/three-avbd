@@ -186,3 +186,58 @@ body {
   border-radius: 8px;
   cursor: pointer;
 }
+
+/* The scene build's progress (build-progress.ts): its fill is moved by CSS transitions, which
+   keep running on the compositor while the page's script builds the scene */
+.build-progress {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(300px, calc(100vw - 48px));
+  padding: 12px 16px 14px;
+  box-sizing: border-box;
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 15;
+}
+.build-progress[hidden] {
+  display: none;
+}
+.build-progress .text {
+  display: block;
+  margin-bottom: 8px;
+}
+.build-progress .track {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgb(31 35 40 / 0.1);
+}
+.build-progress .fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transform: scaleX(0);
+  will-change: transform;
+  background: #b8503f;
+}
+/* A glint sweeping the track: it moves even when a stage outlasts its prediction */
+.build-progress .track::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+  will-change: transform;
+  animation: build-glint 1.2s linear infinite;
+}
+@keyframes build-glint {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
