@@ -65,6 +65,8 @@ export const C_PREV_MANIFOLDS = 7;
 export const SHAPE_BOX = 0;
 export const SHAPE_SPHERE = 1;
 export const SHAPE_SAIL = 2;
+/** Hulls (../hull.ts): angVel.w = SHAPE_HULL + the hull's header offset in the hull buffer (vec4s). */
+export const SHAPE_HULL = 3;
 
 export const T_JOINT = 1;
 export const T_SPRING = 2;
@@ -105,6 +107,7 @@ const STICK_THRESH = 0.00001;
 
 const SHAPE_SPHERE = ${SHAPE_SPHERE}.0;
 const SHAPE_SAIL = ${SHAPE_SAIL}.0;
+const SHAPE_HULL = ${SHAPE_HULL}.0;
 const STICK_BIT = ${STICK_BIT}u;
 const C_MANIFOLDS = ${C_MANIFOLDS}u;
 const C_PREV_MANIFOLDS = ${C_PREV_MANIFOLDS}u;
@@ -129,7 +132,7 @@ struct Body {
   inertialPos: vec4f,  // inertial target y, w: step it last moved from its reference pose (u32)
   inertialRot: vec4f,
   vel: vec4f,          // xyz, w: previous step's vel.z (adaptive warm start)
-  angVel: vec4f,       // xyz, w: shape (SHAPE_BOX, SHAPE_SPHERE, SHAPE_SAIL)
+  angVel: vec4f,       // xyz, w: shape (SHAPE_BOX, SHAPE_SPHERE, SHAPE_SAIL, or SHAPE_HULL + hull offset)
 }
 
 struct Joint {

@@ -2,6 +2,39 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-25 — Convex hull shapes (GPU-only)
+
+Why: three-destruction (sbobyn/three-destruction, `three-destruction/avbd`) runs Voronoi fracture
+pieces on this solver. As fitted boxes they were 2–4× their own volume: pieces rested on corners
+with gaps or sank into the ground, a break's pieces were born overlapping (the solver pushed them
+apart at ~0.5 m/s, with contact forces of 7–157 kN between 0.1 kg pieces), and non-convex
+originals collided as one box.
+
+What: `SHAPE_HULL` bodies (`hull(solver, convexHull(points), …)`, `src/avbd3d/shapes.ts`). The CPU
+builds the hull (incremental, coplanar triangles merged into polygon faces so a flat side is one
+face), the edges with their two faces, and the mass properties; vertices go into the principal
+frame (the solver keeps three principal moments). The GPU narrowphase (`gpu/wgsl-hull.ts`) handles
+any pair with a hull on a side: SAT over both shapes' face normals by support points, then only
+the edge pairs whose Gauss-map arcs cross (Gregorius, GDC 2013), so an edge pair costs a few dot
+products; face contacts clip the incident face by the reference face's side planes and keep at
+most 8 points (the deepest, then the farthest from those kept); edge contacts take the edges'
+closest points; a sphere meets the hull's closest surface point. Box-box and sphere pairs keep
+their paths.
+
+Binding limit: the contacts module then binds nine storage buffers, over WebGPU's default of
+eight per stage. Hulls are on where the device was created with
+`maxStorageBuffersPerShaderStage >= 9` (Apple and desktop GPUs report 10–31+; the apps and GPU
+tests now request the adapter's limit); otherwise a hull collides as its bounding box
+(`GpuSolverOptions.hulls`, test). The hull narrowphase compiles when the first hull is added.
+
+Measured (M4 Max, Dawn): 5 GPU tests: a box-shaped hull rests within 2 mm of the same box; a
+tipped tetrahedron lands on a face and stays (lowest vertex within 3 cm of the ground, i.e. the
+collision margin); a sphere rests on a hull slab; a pile of 24 random 14-point hulls settles
+(none below −3 cm, fastest < 5 cm/s after 8 s) with hulls resting on hulls; the box fallback.
+`pnpm check`: 56 CPU and 31 GPU tests pass (the GPU tests now run with hulls on). Box scenes are
+unchanged: Brick ring 110k, three alternating runs each, wall 11.9 / 12.7 / 10.1 ms (main) vs
+10.9 / 11.4 / 9.3 ms (branch), collision 2.7–3.7 ms on both (the machine was noisy).
+
 ## 2026-09-25 — Stage 8o: deterministic GPU steps (same device)
 
 Measured with `tools/determinism.ts`: build a scene twice, step both, and compare the body

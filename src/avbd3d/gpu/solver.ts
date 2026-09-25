@@ -21,12 +21,12 @@ import { defaultParams, type Solver, type SolverParams } from '../ref/solver.ts'
 import {
   ARGS_ITEMS_3D, B_ANGVEL, B_INERTIAL_POS, B_INERTIAL_ROT, B_INITIAL_POS, B_INITIAL_ROT, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS,
   C_MANIFOLDS, CONTACT_WORDS, FLAG_FACE_BIAS, FLAG_MASS_PENALTY, FLAG_MATCH_NEAREST, FLAG_REUSE_CONTACTS, FLAG_START_AT_REST, J_C0_ANG, J_C0_LIN, J_LAM_ANG, K_LAM, K_PEN, K_RA, K_RB, M_GEO, MANIFOLD_WORDS, STICK_BIT,
-  J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_SAIL, SHAPE_SPHERE, T_JOINT, T_SPRING,
+  J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_HULL, SHAPE_SAIL, SHAPE_SPHERE, T_JOINT, T_SPRING,
   TOPOLOGY_ACCESSORS_3D,
 } from './layout.ts';
-import { isSail, isSphere } from '../shapes.ts';
+import { hullOf, isSail, isSphere, type HullShape } from '../shapes.ts';
 import { rotate, vec3 } from '../ref/math.ts';
-import { broadphaseWGSL, contactsWGSL, refsWGSL } from './wgsl-collision.ts';
+import { broadphaseWGSL, contactsHullWGSL, contactsWGSL, refsWGSL } from './wgsl-collision.ts';
 import { solveWGSL } from './wgsl-solve.ts';
 
 export { PHASES, type StepProfile };
@@ -144,6 +144,8 @@ export interface GpuSolverOptions {
   capacity?: { contacts?: number; pairs?: number; manifolds?: number; colors?: number };
   /** A/B timing of kernel variants: replacement WGSL for a module. */
   shaders?: { contacts?: string; solve?: string };
+  /** Collide hull shapes as hulls (default: when the device can bind nine storage buffers per stage; see GpuSolver3D.hulls). */
+  hulls?: boolean;
 }
 
 /** Per-body static data the host needs: broadphase radius and whether the body moves. */
@@ -152,6 +154,43 @@ interface BodyInfo {
   dynamic: boolean;
   sphere: boolean;
   size: [number, number, number];
+  /** The hull it collides as (../shapes.ts hull), when hulls are on. */
+  hull?: HullShape;
+}
+
+/** A hull's record in the hull buffer (../gpu/wgsl-hull.ts): where, how long, and bodies using it. */
+interface HullSlot {
+  offset: number;
+  size: number;
+  refs: number;
+}
+
+/** The hull buffer layout of wgsl-hull.ts, as vec4s, at header offset `at`. */
+function packHull(shape: HullShape, at: number): Float32Array<ArrayBuffer> {
+  const V = shape.vertices.length / 3;
+  const F = shape.faces.length;
+  const indexCount = shape.faces.reduce((n, f) => n + f.verts.length, 0);
+  const I = Math.ceil(indexCount / 4);
+  const E = shape.edges.length;
+  const out = new Float32Array((2 + V + 2 * F + I + E) * 4);
+  const u = new Uint32Array(out.buffer);
+  const vs = at + 2;
+  const fs = vs + V;
+  const is = fs + 2 * F;
+  const es = is + I;
+  u.set([vs, V, fs, F, es, E, is, 0], 0);
+  for (let v = 0; v < V; v++) out.set(shape.vertices.subarray(v * 3, v * 3 + 3), (2 + v) * 4);
+  let index = 0;
+  shape.faces.forEach((f, k) => {
+    const o = (2 + V + 2 * k) * 4;
+    out.set(f.normal, o);
+    out[o + 3] = f.d;
+    u[o + 4] = index;
+    u[o + 5] = f.verts.length;
+    for (const v of f.verts) u[(2 + V + 2 * F) * 4 + index++] = v;
+  });
+  shape.edges.forEach((e, k) => u.set(e, (2 + V + 2 * F + I + k) * 4));
+  return out;
 }
 
 /** Separation up to which the CPU estimate counts a pair as touching (resting exactly = 0). */
@@ -315,6 +354,20 @@ export class GpuSolver3D {
   bodyCount = 0;
   readonly bodyCapacity: number;
   readonly bodies: BodyInfo[] = [];
+  /**
+   * Hull shapes collide as hulls (./wgsl-hull.ts). The contacts module then binds a ninth storage
+   * buffer, over WebGPU's default of eight per stage: on by default where the device allows it
+   * (request maxStorageBuffersPerShaderStage >= 9), else hulls collide as their bounding boxes.
+   */
+  readonly hulls: boolean;
+  private hullBuffer: GPUBuffer;
+  private hullCapacity = 4096;
+  private hullTop = 0;
+  private readonly hullSlots = new Map<HullShape, HullSlot>();
+  private contactShaders!: { make: (code: string) => void; custom: boolean };
+  private hullShaders = false;
+  /** Freed hull records (offset, size in vec4s), reused first-fit. */
+  private hullFree: Array<{ offset: number; size: number }> = [];
   /** GPU slot of each of the reference's bodies (identity unless spatially sorted). */
   readonly refToGpu: Int32Array;
   jointCount = 0;
@@ -427,6 +480,8 @@ export class GpuSolver3D {
     this.colorBuffer = device.createBuffer({ label: 'colours', size: (3 * cap + 65 + MAX_COLORS * this.colorGroups + 1) * 4, usage: storageUsage() });
     this.paramsBuffer = device.createBuffer({ label: 'params 3d', size: PARAM_WORDS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.refBuffer = device.createBuffer({ label: 'reference poses', size: cap * 32, usage: storageUsage() });
+    this.hulls = options.hulls ?? device.limits.maxStorageBuffersPerShaderStage >= 9;
+    this.hullBuffer = device.createBuffer({ label: 'hulls', size: this.hullCapacity * 16, usage: storageUsage() });
     device.queue.writeBuffer(this.colorBuffer, 0, new Uint32Array(cap).fill(NO_COLOR));
 
     const stamps = 2 * PHASES.length;
@@ -508,7 +563,7 @@ export class GpuSolver3D {
     const U: GPUBufferBindingType = 'uniform';
     return {
       broad: layout('broadphase 3d', [U, R, W, W, W, R, R]),
-      contacts: layout('contacts 3d', [U, R, R, W, R, W, R, W, W]),
+      contacts: layout('contacts 3d', [U, R, R, W, R, W, R, W, W, ...(this.hulls ? [R] : [])]),
       topo: layout('topology 3d', [U, R, R, R, R, W, W, W]),
       solve: layout('solve 3d', [U, W, W, R, W, R, R, R, R]),
       pass: d.createBindGroupLayout({
@@ -530,7 +585,10 @@ export class GpuSolver3D {
     const L = this.layouts;
     make(broadphaseWGSL, [L.broad], ['beginFrame', 'gridCount', 'gridScatter', 'findPairs']);
     make(refsWGSL, [L.refs], ['updateRefs']);
+    // The hull narrowphase costs box scenes a few % of collision time (register pressure): it is
+    // compiled when the first hull arrives (acquireHull). The layout binds the hull buffer anyway.
     make(shaders.contacts ?? contactsWGSL, [L.contacts], ['hashInsert', 'narrowphase']);
+    this.contactShaders = { make: (code) => make(code, [L.contacts], ['hashInsert', 'narrowphase']), custom: !!shaders.contacts };
     make(makeTopologyWGSL(PRELUDE_3D, TOPOLOGY_ACCESSORS_3D), [L.topo], [
       'degreeJoints', 'degreeContacts', 'fillJoints', 'fillContacts', 'sortAdjacency',
       'colorCompact', 'colorMark', 'colorRoundAB', 'colorRoundBA', 'colorCount', 'colorStarts', 'colorScatter',
@@ -619,8 +677,8 @@ export class GpuSolver3D {
     this.groups = {
       broad: group(this.layouts.broad, [P, this.bodyBuffer, this.gridBuffer, this.pairBuffer, C, this.staticBuffer, this.jointBuffer]),
       contacts: [
-        group(this.layouts.contacts, [P, this.bodyBuffer, this.pairBuffer, c0, c1, m0, m1, T, C]),
-        group(this.layouts.contacts, [P, this.bodyBuffer, this.pairBuffer, c1, c0, m1, m0, T, C]),
+        group(this.layouts.contacts, [P, this.bodyBuffer, this.pairBuffer, c0, c1, m0, m1, T, C, ...(this.hulls ? [this.hullBuffer] : [])]),
+        group(this.layouts.contacts, [P, this.bodyBuffer, this.pairBuffer, c1, c0, m1, m0, T, C, ...(this.hulls ? [this.hullBuffer] : [])]),
       ],
       topo: [m0, m1].map((m) =>
         group(this.layouts.topo, [P, this.bodyBuffer, this.jointBuffer, this.infoBuffer, m, C, adj, this.colorBuffer]),
@@ -655,8 +713,13 @@ export class GpuSolver3D {
       f[o + B_VEL + 3] = b.prevVelocityLin[2];
       f.set(b.velocityAng, o + B_ANGVEL);
       const sphere = isSphere(b);
-      f[o + B_ANGVEL + 3] = sphere ? SHAPE_SPHERE : isSail(b) ? SHAPE_SAIL : SHAPE_BOX;
-      this.bodies[first + k] = { radius: b.radius, dynamic: b.mass > 0, sphere, size: [b.size[0], b.size[1], b.size[2]] };
+      const shape = this.hulls ? hullOf(b) : undefined;
+      // A slot's old hull goes when nothing else uses it
+      const old = this.bodies[first + k]?.hull;
+      if (old && old !== shape) this.releaseHull(old);
+      const hullAt = shape ? (old === shape ? this.hullSlots.get(shape)!.offset : this.acquireHull(shape)) : -1;
+      f[o + B_ANGVEL + 3] = sphere ? SHAPE_SPHERE : hullAt >= 0 ? SHAPE_HULL + hullAt : isSail(b) ? SHAPE_SAIL : SHAPE_BOX;
+      this.bodies[first + k] = { radius: b.radius, dynamic: b.mass > 0, sphere, size: [b.size[0], b.size[1], b.size[2]], hull: shape };
     });
     this.device.queue.writeBuffer(this.bodyBuffer, first * BODY_FLOATS * 4, f, 0, bodies.length * BODY_FLOATS);
     this.staticsDirty = true;
@@ -788,6 +851,68 @@ export class GpuSolver3D {
     for (let i = this.bodyCount - 1; i >= 0; i--) if (this.bodies[i].dynamic) colors[i] = next++;
     if (next > MAX_COLORS) throw new Error(`sequentialColors: ${next} dynamic bodies, at most ${MAX_COLORS}`);
     return colors;
+  }
+
+  // --- Hulls ----------------------------------------------------------------------------------
+
+  /** A hull's header offset in the hull buffer, uploading it on first use. */
+  private acquireHull(shape: HullShape): number {
+    if (!this.hullShaders && !this.contactShaders.custom) {
+      this.contactShaders.make(contactsHullWGSL);
+      this.hullShaders = true;
+    }
+    const slot = this.hullSlots.get(shape);
+    if (slot) {
+      slot.refs++;
+      return slot.offset;
+    }
+    const size = 2 + shape.vertices.length / 3 + 2 * shape.faces.length + Math.ceil(shape.faces.reduce((n, f) => n + f.verts.length, 0) / 4) + shape.edges.length;
+    let offset = -1;
+    const free = this.hullFree.findIndex((b) => b.size >= size);
+    if (free >= 0) {
+      const block = this.hullFree[free];
+      offset = block.offset;
+      if (block.size === size) this.hullFree.splice(free, 1);
+      else Object.assign(block, { offset: block.offset + size, size: block.size - size });
+    } else {
+      offset = this.hullTop;
+      this.hullTop += size;
+      if (this.hullTop > this.hullCapacity) this.growHulls(this.hullTop);
+    }
+    // f32 holds offsets exactly up to 2^24 (angVel.w = SHAPE_HULL + offset)
+    if (offset + SHAPE_HULL >= 2 ** 24) throw new Error('hull buffer beyond 2^24 vec4s');
+    this.device.queue.writeBuffer(this.hullBuffer, offset * 16, packHull(shape, offset));
+    this.hullSlots.set(shape, { offset, size, refs: 1 });
+    return offset;
+  }
+
+  private releaseHull(shape: HullShape): void {
+    const slot = this.hullSlots.get(shape);
+    if (!slot || --slot.refs > 0) return;
+    this.hullSlots.delete(shape);
+    this.hullFree.push({ offset: slot.offset, size: slot.size });
+    // Merge neighbouring free blocks so big hulls fit again
+    this.hullFree.sort((a, b) => a.offset - b.offset);
+    const merged: Array<{ offset: number; size: number }> = [];
+    for (const b of this.hullFree) {
+      const last = merged[merged.length - 1];
+      if (last && last.offset + last.size === b.offset) last.size += b.size;
+      else merged.push({ ...b });
+    }
+    this.hullFree = merged;
+  }
+
+  private growHulls(needed: number): void {
+    let capacity = this.hullCapacity;
+    while (capacity < needed) capacity *= 2;
+    const buffer = this.device.createBuffer({ label: 'hulls', size: capacity * 16, usage: storageUsage() });
+    const encoder = this.device.createCommandEncoder();
+    encoder.copyBufferToBuffer(this.hullBuffer, 0, buffer, 0, this.hullCapacity * 16);
+    this.device.queue.submit([encoder.finish()]);
+    this.hullBuffer.destroy();
+    this.hullBuffer = buffer;
+    this.hullCapacity = capacity;
+    if (this.contactBuffers) this.rebuildBindings();
   }
 
   // --- Scene edits -----------------------------------------------------------------------------
@@ -1183,7 +1308,7 @@ export class GpuSolver3D {
     if (this.ownsBodyBuffer) this.bodyBuffer.destroy();
     const buffers = [
       this.jointBuffer, this.infoBuffer, ...this.contactBuffers, ...this.manifoldBuffers, this.pairBuffer, this.tableBuffer, this.gridBuffer, this.staticBuffer,
-      this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.refBuffer, this.passBuffer, this.timing?.resolve, this.timing?.read,
+      this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.refBuffer, this.hullBuffer, this.passBuffer, this.timing?.resolve, this.timing?.read,
     ];
     for (const b of buffers) b?.destroy();
     this.timing?.querySet.destroy();

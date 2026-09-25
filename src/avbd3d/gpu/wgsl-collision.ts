@@ -9,6 +9,7 @@
 //   through a hash table of last step's pairs.
 
 import { PRELUDE_3D, REUSE_ANG_TOL, REUSE_LIN_TOL } from './layout.ts';
+import { HULL_WGSL } from './wgsl-hull.ts';
 
 /**
  * Per-body reference poses for contact reuse: a body that has moved or turned beyond the
@@ -250,7 +251,11 @@ fn findPairs(@builtin(global_invocation_id) gid: vec3u) {
 }
 `;
 
-export const contactsWGSL = /* wgsl */ `
+/**
+ * The contacts module; with `hulls`, it also binds the hull buffer (binding 9) and collides hull
+ * shapes (./wgsl-hull.ts). Without, hull bodies are written as boxes (GpuSolver3D).
+ */
+export const makeContactsWGSL = (hulls: boolean): string => /* wgsl */ `
 ${PRELUDE_3D}
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -262,6 +267,7 @@ ${PRELUDE_3D}
 @group(0) @binding(6) var<storage, read> prevManifolds: array<Manifold>;
 @group(0) @binding(7) var<storage, read_write> table: array<atomic<u32>>;
 @group(0) @binding(8) var<storage, read_write> counters: array<atomic<u32>>;
+${hulls ? '@group(0) @binding(9) var<storage, read> hulls: array<vec4f>;' : ''}
 
 fn pairHash(a: u32, b: u32) -> u32 {
   return hash32((a * 0x9e3779b1u) ^ hash32(b));
@@ -665,6 +671,8 @@ fn reuseContacts(a: u32, b: u32) -> bool {
   return true;
 }
 
+${hulls ? HULL_WGSL : 'fn isHull(i: u32) -> bool { return false; }'}
+
 @compute @workgroup_size(64)
 fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
   let p = gid.x;
@@ -680,7 +688,22 @@ fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
   let sphereB = bodies[b].angVel.w == SHAPE_SPHERE;
   if (sphereA && sphereB) {
     found = sphereSphere(A, B, &sat);
-  } else if (sphereA || sphereB) {
+  }${hulls ? /* wgsl */ ` else if (isHull(a) || isHull(b)) {
+    if (sphereA || sphereB) {
+      // sat.n points from A towards B
+      if (sphereA) {
+        let h = sphereHull(A.c, A.h.x, polyOf(b));
+        sat.n = h.n;
+        if (h.hit) { addFound(&found, h.onSphere, h.onBox, SPHERE_FEATURE); }
+      } else {
+        let h = sphereHull(B.c, B.h.x, polyOf(a));
+        sat.n = -h.n;
+        if (h.hit) { addFound(&found, h.onBox, h.onSphere, SPHERE_FEATURE); }
+      }
+    } else {
+      found = collidePoly(polyOf(a), polyOf(b), &sat);
+    }
+  }` : ''} else if (sphereA || sphereB) {
     // sat.n points from A towards B
     var h: SphereBoxHit;
     if (sphereA) {
@@ -778,3 +801,6 @@ fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
   }
 }
 `;
+
+export const contactsWGSL = makeContactsWGSL(false);
+export const contactsHullWGSL = makeContactsWGSL(true);
