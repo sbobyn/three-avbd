@@ -170,6 +170,46 @@ gpuTest('a pile of irregular hulls comes to rest on the ground and on each other
   solver.destroy();
 });
 
+gpuTest('the hull buffer grows, frees and reuses space while hulls keep colliding', async (device) => {
+  const ref = scene();
+  const solver = new GpuSolver3D(device, ref, { spatialSort: false });
+  let seed = 9;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+  const shapes: HullShape[] = [];
+  const make = () => {
+    const points: number[] = [];
+    for (let k = 0; k < 60; k++) points.push(rnd() * 0.3, rnd() * 0.3, rnd() * 0.3);
+    return convexHull(points)!;
+  };
+  // 40 different hulls of ~40 vertices: several times the buffer's first 4096 vec4s
+  const scratch = new Solver();
+  const bodies = [];
+  for (let i = 0; i < 40; i++) {
+    const shape = make();
+    shapes.push(shape);
+    bodies.push(hull(scratch, shape, 1, 0.6, [(i % 8) * 0.8 - 3, Math.floor(i / 8) * 0.8 - 2, 0.5]));
+  }
+  const first = solver.addBodies(bodies);
+  const internals = solver as unknown as { hullCapacity: number; writeBodies(first: number, bodies: Rigid[]): void; hullFree: unknown[] };
+  assert.ok(internals.hullCapacity > 4096, `grew to ${internals.hullCapacity}`);
+  await run(solver, 60);
+  // Every other hull becomes a box (its hull's space is freed), then new hulls take their place
+  for (let i = 0; i < 40; i += 2) internals.writeBodies(first + i, [new Rigid(scratch, [0.2, 0.2, 0.2], 1, 0.6, [(i % 8) * 0.8 - 3, Math.floor(i / 8) * 0.8 - 2, 0.5])]);
+  assert.ok(internals.hullFree.length > 0, 'freed space');
+  const capacity = internals.hullCapacity;
+  for (let i = 0; i < 40; i += 2) {
+    shapes[i] = make();
+    internals.writeBodies(first + i, [hull(scratch, shapes[i], 1, 0.6, [(i % 8) * 0.8 - 3, Math.floor(i / 8) * 0.8 - 2, 0.5])]);
+  }
+  assert.equal(internals.hullCapacity, capacity, 'new hulls reuse the freed space');
+  const b = await run(solver, 240);
+  shapes.forEach((shape, i) => {
+    const low = lowest(b, first + i, shape);
+    assert.ok(low > -0.03 && low < 0.03, `hull ${i} rests at ${low}`);
+  });
+  solver.destroy();
+});
+
 gpuTest('without hulls, a hull collides as its bounding box', async (device) => {
   const ref = scene();
   const tetra = convexHull([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1])!;

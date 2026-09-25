@@ -23,15 +23,23 @@ their paths.
 
 Binding limit: the contacts module then binds nine storage buffers, over WebGPU's default of
 eight per stage. Hulls are on where the device was created with
-`maxStorageBuffersPerShaderStage >= 9` (Apple and desktop GPUs report 10–31+; the apps and GPU
-tests now request the adapter's limit); otherwise a hull collides as its bounding box
+`maxStorageBuffersPerShaderStage >= 9` (Apple and desktop GPUs report 10–31+; app3d and the GPU
+tests request the adapter's limit, the bench pages don't); otherwise a hull collides as its bounding box
 (`GpuSolverOptions.hulls`, test). The hull narrowphase compiles when the first hull is added.
 
-Measured (M4 Max, Dawn): 5 GPU tests: a box-shaped hull rests within 2 mm of the same box; a
+Measured (M4 Max, Dawn): hull GPU tests (8 in the first PR, 9 since): a box-shaped hull rests within 2 mm of the same box; a
 tipped tetrahedron lands on a face and stays (lowest vertex within 3 cm of the ground, i.e. the
 collision margin); a sphere rests on a hull slab; a pile of 24 random 14-point hulls settles
 (none below −3 cm, fastest < 5 cm/s after 8 s) with hulls resting on hulls; the box fallback.
-`pnpm check`: 56 CPU and 31 GPU tests pass (the GPU tests now run with hulls on). Box scenes are
+`pnpm check`: 58 CPU and 34 GPU tests pass (the GPU tests now run with hulls on); 35 GPU tests with the growth test below.
+
+Review follow-ups: hulls are capped at 32 vertices (the builders keep the most spread-out ones), so
+faces, edges and contact points fit the 8-bit feature keys and a pair's cost is bounded; the hull
+buffer holds u32 words (floats bitcast: small integers stored as f32 would be subnormals, which an
+implementation may flush); an explicit `hulls: true` still respects the device limit; a test grows,
+frees and reuses the hull buffer. Cost, 80 random hulls falling in a heap, collision phase per step:
+~0.9 ms at 14 vertices each, ~2.2 ms at 25 (boxes: 0.07 ms for 40). The edge query is 70-75% of it
+(0.5 ms without); caching each pair's last separating axis (Gregorius) would be the next step. Box scenes are
 unchanged: Brick ring 110k, three alternating runs each, wall 11.9 / 12.7 / 10.1 ms (main) vs
 10.9 / 11.4 / 9.3 ms (branch), collision 2.7–3.7 ms on both (the machine was noisy).
 

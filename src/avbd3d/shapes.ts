@@ -6,9 +6,9 @@
 
 import { Rigid } from './ref/body.ts';
 import type { Solver } from './ref/solver.ts';
-import type { HullShape } from './hull.ts';
+import { MAX_HULL_VERTICES, type HullShape } from './hull.ts';
 
-export { convexHull, hullFromTriangles, type HullShape } from './hull.ts';
+export { convexHull, hullFromTriangles, MAX_HULL_VERTICES, type HullShape } from './hull.ts';
 
 const spheres = new WeakSet<Rigid>();
 
@@ -41,9 +41,9 @@ const hulls = new WeakMap<Rigid, HullShape>();
 export const hullOf = (body: Rigid): HullShape | undefined => hulls.get(body);
 
 /**
- * A convex hull (./hull.ts: \`convexHull(points)\`) of the given density, its principal frame at
- * \`position\` (the hull's centre of mass) turned by \`rotation\` (x, y, z, w). Place it where points
- * were with the hull's \`center\` and \`rotation\`. The GPU solver collides it as a hull when the device
+ * A convex hull (./hull.ts: `convexHull(points)`) of the given density, its principal frame at
+ * `position` (the hull's centre of mass) turned by `rotation` (x, y, z, w). Place it where points
+ * were with the hull's `center` and `rotation`. The GPU solver collides it as a hull when the device
  * can bind the hull buffer (GpuSolver3D.hulls), else as its bounding box; the CPU reference would
  * treat it as that box.
  */
@@ -56,6 +56,10 @@ export function hull(
   rotation: ArrayLike<number> = [0, 0, 0, 1],
   velocity: ArrayLike<number> = [0, 0, 0],
 ): Rigid {
+  // The narrowphase's limits (hull.ts MAX_HULL_VERTICES): the builders keep to them
+  if (shape.vertices.length / 3 > MAX_HULL_VERTICES || shape.faces.length > 255 || shape.edges.length > 255) {
+    throw new Error(`hull: ${shape.vertices.length / 3} vertices, ${shape.faces.length} faces, ${shape.edges.length} edges (at most ${MAX_HULL_VERTICES} vertices, 255 faces and edges)`);
+  }
   const body = new Rigid(solver, shape.size, density, friction, position, velocity);
   body.positionAng.set([rotation[0], rotation[1], rotation[2], rotation[3]]);
   body.mass = density > 0 ? shape.volume * density : 0;

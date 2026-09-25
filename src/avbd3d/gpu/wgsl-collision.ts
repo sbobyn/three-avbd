@@ -267,7 +267,7 @@ ${PRELUDE_3D}
 @group(0) @binding(6) var<storage, read> prevManifolds: array<Manifold>;
 @group(0) @binding(7) var<storage, read_write> table: array<atomic<u32>>;
 @group(0) @binding(8) var<storage, read_write> counters: array<atomic<u32>>;
-${hulls ? '@group(0) @binding(9) var<storage, read> hulls: array<vec4f>;' : ''}
+${hulls ? '@group(0) @binding(9) var<storage, read> hulls: array<vec4u>;' : ''}
 
 fn pairHash(a: u32, b: u32) -> u32 {
   return hash32((a * 0x9e3779b1u) ^ hash32(b));

@@ -2,7 +2,7 @@
 // mass properties and the principal frame.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { convexHull, hullFromTriangles } from '../src/avbd3d/hull.ts';
+import { convexHull, hullFromTriangles, MAX_HULL_VERTICES } from '../src/avbd3d/hull.ts';
 
 const close = (a: number, b: number, eps = 1e-5) => assert.ok(Math.abs(a - b) <= eps, `${a} vs ${b}`);
 
@@ -114,10 +114,12 @@ test('many points on a sphere, and triangles from elsewhere', () => {
       pts.push(r * Math.cos(a), r * Math.sin(a), u);
     }
     const h = convexHull(pts)!;
-    assert.equal(h.vertices.length / 3, n);
+    // Simplified to at most MAX_HULL_VERTICES, spread over the sphere
+    assert.equal(h.vertices.length / 3, Math.min(n, MAX_HULL_VERTICES));
+    assert.ok(h.faces.length <= 255 && h.edges.length <= 255);
     assert.equal(h.vertices.length / 3 - h.edges.length + h.faces.length, 2);
     // Inside the sphere (4.19), and closer to it with more points
-    assert.ok(h.volume > Math.max(last, 3) && h.volume < (4 / 3) * Math.PI);
+    assert.ok(h.volume > Math.max(last * 0.95, 3) && h.volume < (4 / 3) * Math.PI);
     last = h.volume;
   }
   // A cube as twelve triangles (as three.js's ConvexHull gives it): six quad faces

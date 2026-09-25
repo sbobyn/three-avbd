@@ -11,7 +11,8 @@
 // - Sphere against hull: the closest point of the hull's surface, or the shallowest face when the
 //   centre is inside.
 //
-// Hull buffer (array<vec4f>, offsets in vec4s; u32 fields bitcast): at a hull's header h,
+// Hull buffer (array<vec4u>, offsets in vec4s; f32 fields bitcast, so small integers are never read as
+// f32 subnormals, which implementations may flush): at a hull's header h,
 //   h:   vertex start, vertex count, face start, face count
 //   h+1: edge start, edge count, index start, 0
 // vertices (xyz), faces (2 vec4: normal + plane offset, then first index + count), vertex indices
@@ -19,7 +20,7 @@
 // is a hull when angVel.w >= SHAPE_HULL, its header at angVel.w - SHAPE_HULL.
 
 export const HULL_WGSL = /* wgsl */ `
-const MAX_CLIP = 32u;
+const MAX_CLIP = 64u;
 const NO_HULL = 0xffffffffu;
 
 /** A convex shape as the hull code sees it: a box (hull = NO_HULL, extents h) or a hull. */
@@ -52,8 +53,8 @@ fn polyOf(i: u32) -> Poly {
   P.nv = 8u; P.nf = 6u; P.ne = 12u;
   if (isHull(i)) {
     let h = u32(bodies[i].angVel.w - SHAPE_HULL + 0.5);
-    let h0 = bitcast<vec4u>(hulls[h]);
-    let h1 = bitcast<vec4u>(hulls[h + 1u]);
+    let h0 = hulls[h];
+    let h1 = hulls[h + 1u];
     P.hull = h;
     P.vs = h0.x; P.nv = h0.y; P.fs = h0.z; P.nf = h0.w;
     P.es = h1.x; P.ne = h1.y; P.is = h1.z;
@@ -65,7 +66,7 @@ fn vertLocal(P: Poly, v: u32) -> vec3f {
   if (P.hull == NO_HULL) {
     return vec3f(select(-P.h.x, P.h.x, (v & 1u) != 0u), select(-P.h.y, P.h.y, (v & 2u) != 0u), select(-P.h.z, P.h.z, (v & 4u) != 0u));
   }
-  return hulls[P.vs + v].xyz;
+  return bitcast<vec4f>(hulls[P.vs + v]).xyz;
 }
 
 fn vert(P: Poly, v: u32) -> vec3f {
@@ -83,7 +84,7 @@ fn facePlane(P: Poly, f: u32) -> vec4f {
     nl[k] = s;
     d = P.h[k];
   } else {
-    let p = hulls[P.fs + 2u * f];
+    let p = bitcast<vec4f>(hulls[P.fs + 2u * f]);
     nl = p.xyz;
     d = p.w;
   }
@@ -93,18 +94,18 @@ fn facePlane(P: Poly, f: u32) -> vec4f {
 
 fn faceVertCount(P: Poly, f: u32) -> u32 {
   if (P.hull == NO_HULL) { return 4u; }
-  return bitcast<u32>(hulls[P.fs + 2u * f + 1u].y);
+  return hulls[P.fs + 2u * f + 1u].y;
 }
 
 fn faceVert(P: Poly, f: u32, j: u32) -> u32 {
   if (P.hull == NO_HULL) { return BOX_FACE_VERTS[f * 4u + j]; }
-  let k = bitcast<u32>(hulls[P.fs + 2u * f + 1u].x) + j;
-  return bitcast<u32>(hulls[P.is + k / 4u][k % 4u]);
+  let k = hulls[P.fs + 2u * f + 1u].x + j;
+  return hulls[P.is + k / 4u][k % 4u];
 }
 
 fn edgeOf(P: Poly, e: u32) -> vec4u {
   if (P.hull == NO_HULL) { return BOX_EDGES[e]; }
-  return bitcast<vec4u>(hulls[P.es + e]);
+  return hulls[P.es + e];
 }
 
 fn polySupport(P: Poly, dir: vec3f) -> vec3f {
@@ -113,7 +114,7 @@ fn polySupport(P: Poly, dir: vec3f) -> vec3f {
   var best = -3.4e38;
   var at = vec3f(0.0);
   for (var v = 0u; v < P.nv; v++) {
-    let p = hulls[P.vs + v].xyz;
+    let p = bitcast<vec4f>(hulls[P.vs + v]).xyz;
     let s = dot(p, l);
     if (s > best) { best = s; at = p; }
   }
@@ -146,20 +147,30 @@ fn minkowskiFace(a: vec3f, b: vec3f, c: vec3f, d: vec3f) -> bool {
 
 struct EdgeQuery { sep: f32, ea: u32, eb: u32, n: vec3f, valid: bool }
 
+/** Face f's outward normal in the shape's own frame. */
+fn faceNormalLocal(P: Poly, f: u32) -> vec3f {
+  if (P.hull == NO_HULL) {
+    var n = vec3f(0.0);
+    n[f / 2u] = select(1.0, -1.0, (f & 1u) != 0u);
+    return n;
+  }
+  return bitcast<vec4f>(hulls[P.fs + 2u * f]).xyz;
+}
+
 fn queryEdges(A: Poly, B: Poly) -> EdgeQuery {
   var out: EdgeQuery;
   out.sep = -3.4e38;
+  // The Gauss-map test in B's frame: A's normals turned once per A edge, B's read as stored
+  let toB = qmul(qconj(B.q), A.q);
   for (var i = 0u; i < A.ne; i++) {
     let ea = edgeOf(A, i);
-    let pa = vert(A, ea.x);
-    let qa = vert(A, ea.y);
-    let a = facePlane(A, ea.z).xyz;
-    let b = facePlane(A, ea.w).xyz;
+    let a = qrotate(toB, faceNormalLocal(A, ea.z));
+    let b = qrotate(toB, faceNormalLocal(A, ea.w));
     for (var j = 0u; j < B.ne; j++) {
       let eb = edgeOf(B, j);
-      let c = facePlane(B, eb.z).xyz;
-      let d = facePlane(B, eb.w).xyz;
-      if (!minkowskiFace(a, b, -c, -d)) { continue; }
+      if (!minkowskiFace(a, b, -faceNormalLocal(B, eb.z), -faceNormalLocal(B, eb.w))) { continue; }
+      let pa = vert(A, ea.x);
+      let qa = vert(A, ea.y);
       let pb = vert(B, eb.x);
       let qb = vert(B, eb.y);
       var n = cross(qa - pa, qb - pb);
@@ -176,7 +187,7 @@ fn queryEdges(A: Poly, B: Poly) -> EdgeQuery {
 }
 
 /** Clip poly (n points) to dot(pn, x) <= offset. */
-fn clipHull(src: ptr<function, array<vec3f, 32>>, n: u32, dst: ptr<function, array<vec3f, 32>>, pn: vec3f, offset: f32) -> u32 {
+fn clipHull(src: ptr<function, array<vec3f, 64>>, n: u32, dst: ptr<function, array<vec3f, 64>>, pn: vec3f, offset: f32) -> u32 {
   if (n == 0u) { return 0u; }
   var count = 0u;
   var a = (*src)[n - 1u];
@@ -222,8 +233,8 @@ fn hullFaceContact(A: Poly, B: Poly, refIsA: bool, refFace: u32) -> Found {
     let d = dot(facePlane(I, f).xyz, rn);
     if (d < least) { least = d; inc = f; }
   }
-  var poly: array<vec3f, 32>;
-  var tmp: array<vec3f, 32>;
+  var poly: array<vec3f, 64>;
+  var tmp: array<vec3f, 64>;
   var n = min(faceVertCount(I, inc), MAX_CLIP);
   for (var j = 0u; j < n; j++) { poly[j] = vert(I, faceVert(I, inc, j)); }
   // Side planes of the reference face, outward from its centre
@@ -246,15 +257,15 @@ fn hullFaceContact(A: Poly, B: Poly, refIsA: bool, refFace: u32) -> Found {
   // farthest from those chosen (the patch's extent is what keeps a resting shape upright)
   // (feature keys use the point's index in the clipped polygon, as faceManifold does: stable from
   // step to step, so warm starts and static-friction anchors stay with their point)
-  var depth: array<f32, 32>;
-  var index: array<u32, 32>;
+  var depth: array<f32, 64>;
+  var index: array<u32, 64>;
   var keep = 0u;
   for (var m = 0u; m < n; m++) {
     let dist = dot(rn, poly[m]) - plane.w;
     if (dist <= PLANE_EPSILON) { tmp[keep] = poly[m]; depth[keep] = dist; index[keep] = m; keep++; }
   }
   let prefix = (select(AXIS_FACE_B, AXIS_FACE_A, refIsA) << 24u) | (min(refFace, 255u) << 16u) | (min(inc, 255u) << 8u);
-  var chosen: array<bool, 32>;
+  var chosen: array<bool, 64>;
   for (var c = 0u; c < min(keep, MAX_CONTACTS); c++) {
     var pick = 0u;
     var bestScore = -3.4e38;
