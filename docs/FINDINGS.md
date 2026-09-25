@@ -31,7 +31,7 @@ Measured (M4 Max, Dawn): hull GPU tests (8 in the first PR, 9 since): a box-shap
 tipped tetrahedron lands on a face and stays (lowest vertex within 3 cm of the ground, i.e. the
 collision margin); a sphere rests on a hull slab; a pile of 24 random 14-point hulls settles
 (none below −3 cm, fastest < 5 cm/s after 8 s) with hulls resting on hulls; the box fallback.
-`pnpm check`: 58 CPU and 34 GPU tests pass (the GPU tests now run with hulls on).
+`pnpm check`: 58 CPU and 34 GPU tests pass (the GPU tests now run with hulls on); 35 GPU tests with the growth test below.
 
 Review follow-ups: hulls are capped at 32 vertices (the builders keep the most spread-out ones), so
 faces, edges and contact points fit the 8-bit feature keys and a pair's cost is bounded; the hull

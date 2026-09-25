@@ -43,11 +43,7 @@ interface Tri {
 }
 
 /**
- * The convex hull of xyz points and its mass properties, or null when the points span no volume
- * (fewer than four, or all on a plane or line).
- */
-/**
- * Most vertices a hull keeps (bigger ones are simplified: see \`convexHull\`). The GPU narrowphase
+ * Most vertices a hull keeps (bigger ones are simplified: see `convexHull`). The GPU narrowphase
  * costs faces × vertices and edges × edges per touching pair, in one thread, and its contact feature
  * keys hold face and point indices in 8 bits; 32 vertices means at most 60 faces and 90 edges (a
  * fracture piece has 10-30 vertices).
@@ -66,7 +62,7 @@ export function convexHull(points: ArrayLike<number>): HullShape | null {
   return buildHull(spreadVertices(full, MAX_HULL_VERTICES));
 }
 
-/** \`count\` of a hull's vertices, spread out, in the input points' frame. */
+/** `count` of a hull's vertices, spread out, in the input points' frame. */
 function spreadVertices(h: HullShape, count: number): number[] {
   const [x, y, z, w] = h.rotation;
   const back = (v: V3): V3 => {
