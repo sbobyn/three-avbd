@@ -1,0 +1,154 @@
+/* Page chrome shared by the demos (index.html, 2d.html): colour tokens, the full-window
+   canvas, frosted panels, and the title card (title-card.ts). */
+
+:root {
+  --ink: #1f2328;
+  --muted: #5b6168;
+  --card: rgb(255 253 249 / 0.86);
+  --line: rgb(31 35 40 / 0.12);
+  --accent: #b8503f;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #f6f3ec;
+  color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+#view {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  touch-action: none;
+}
+.panel {
+  position: fixed;
+  background: var(--card);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgb(40 30 20 / 0.08);
+}
+#card {
+  left: 16px;
+  top: 16px;
+  width: min(360px, calc(100vw - 32px));
+  padding: 14px 16px 12px;
+  box-sizing: border-box;
+}
+#card-head {
+  margin: -6px -8px 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+#card-head:hover {
+  background: rgb(31 35 40 / 0.04);
+}
+#card h1 {
+  margin: 0 28px 0 0;
+  font-size: 17px;
+  letter-spacing: 0.01em;
+}
+#card p {
+  margin: 0 0 8px;
+  color: var(--muted);
+}
+#card .links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 10px 0 8px;
+}
+#card a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 550;
+}
+#card a:hover {
+  text-decoration: underline;
+}
+#card .credits {
+  font-size: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  margin: 0;
+}
+#card .warning {
+  color: #8a3a12;
+  background: rgb(240 162 90 / 0.18);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+#card-toggle {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+#card-toggle:hover {
+  background: var(--line);
+}
+#card.collapsed {
+  width: auto;
+  padding: 8px 44px 8px 14px;
+}
+#card.collapsed h1 {
+  margin: 0;
+  font-size: 15px;
+}
+#card.collapsed #card-head {
+  margin: -8px -44px -8px -14px;
+  padding: 8px 44px 8px 14px;
+}
+#card.collapsed .body {
+  display: none;
+}
+#card.collapsed #card-toggle {
+  top: 4px;
+}
+
+/* Narrow screens: the controls take the top, the card sits at the bottom */
+@media (max-width: 760px) {
+  #card {
+    left: 12px;
+    top: auto;
+    bottom: 12px;
+  }
+  #card:not(.collapsed) {
+    bottom: 64px;
+    width: calc(100vw - 24px);
+  }
+}
+
+/* Hints for a mouse and keyboard, or for touch */
+.touch-only {
+  display: none;
+}
+@media (hover: none) {
+  .touch-only {
+    display: revert;
+  }
+  .pointer-only {
+    display: none;
+  }
+}
+
+/* A phone with the card open: it's what you're reading, so the scene's panels step aside */
+@media (max-width: 760px) {
+  body:has(#card:not(.collapsed)) :is(.avbd-panel, .avbd-wind, #timing) {
+    display: none;
+  }
+}

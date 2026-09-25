@@ -3,11 +3,14 @@
 // avbd-demo3d. Instances are rewritten from solver state each frame, fine for the CPU
 // reference; the GPU solver's bodies are drawn straight from its buffer (gpu-bodies3d.ts).
 
-import { color, mix, normalize, positionGeometry, positionLocal, smoothstep, vec3 } from 'three/tsl';
+import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
+import { ao } from 'three/addons/tsl/display/GTAONode.js';
+import { float, instancedBufferAttribute, mrt, normalize, normalView, output, pass, positionGeometry, positionLocal, reflector, renderOutput, vec3, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import type { Sim3D } from '../avbd3d/sim.ts';
+import { coilGeometry, coilMaterial } from './coils.ts';
 import { GpuBodies3D, Shape } from './gpu-bodies3d.ts';
-import { BLOCK_PALETTE, edgeShade, FLOOR_EXTENT, floorChecker, isFloorSize, LOOK, SPHERE_PALETTE } from './look.ts';
+import { BLOCK_PALETTE, edgeShade, FLOOR_EXTENT, glossyFloor, isFloorSize, LOOK, shadowTexel, SPHERE_PALETTE, skyColor, studioEnvironment } from './look.ts';
 
 /** Integer hash (lowbias32) for picking a body's palette colour on the CPU path. */
 function hashIndex(i: number): number {
@@ -54,6 +57,38 @@ class Instances {
   }
 }
 
+/** Coil springs for the CPU path: end points written from the solver each frame. */
+class CpuCoils {
+  readonly mesh: THREE.Mesh;
+  private readonly p0: THREE.InstancedBufferAttribute;
+  private readonly p1: THREE.InstancedBufferAttribute;
+  private readonly geometry: THREE.InstancedBufferGeometry;
+  readonly capacity: number;
+
+  constructor(capacity: number) {
+    this.capacity = capacity;
+    this.p0 = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
+    this.p1 = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
+    this.geometry = new THREE.InstancedBufferGeometry().copy(coilGeometry() as THREE.InstancedBufferGeometry);
+    this.geometry.instanceCount = 0;
+    const material = coilMaterial(instancedBufferAttribute(this.p0) as unknown as THREE.Node<'vec3'>, instancedBufferAttribute(this.p1) as unknown as THREE.Node<'vec3'>);
+    this.mesh = new THREE.Mesh(this.geometry, material);
+    this.mesh.frustumCulled = false;
+    this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
+  }
+
+  set(ends: number[]): void {
+    const n = Math.min(ends.length / 6, this.capacity);
+    for (let k = 0; k < n; k++) {
+      (this.p0.array as Float32Array).set(ends.slice(k * 6, k * 6 + 3), k * 3);
+      (this.p1.array as Float32Array).set(ends.slice(k * 6 + 3, k * 6 + 6), k * 3);
+    }
+    this.p0.needsUpdate = this.p1.needsUpdate = true;
+    this.geometry.instanceCount = n;
+  }
+}
+
 export class Renderer3D {
   readonly renderer: THREE.WebGPURenderer;
   readonly camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
@@ -63,6 +98,8 @@ export class Renderer3D {
   /** Cast shadows (the shadow pass draws every body a second time). */
   shadows = true;
   selected = -1;
+  /** The body under the pointer, tinted (-1 = none). */
+  hovered = -1;
   /** World-space drag line (anchor on the body, then the target), or null. */
   dragLine: [ArrayLike<number>, ArrayLike<number>] | null = null;
 
@@ -72,6 +109,7 @@ export class Renderer3D {
   private readonly boxes: Instances;
   private readonly floors: Instances;
   private readonly contacts: Instances;
+  private readonly coils = new CpuCoils(64);
   private readonly sky: THREE.Mesh;
   private readonly fog: THREE.Fog;
   /** Camera distance the fog, shadows and far plane are set for (setViewScale). */
@@ -84,6 +122,31 @@ export class Renderer3D {
   private readonly quaternion = new THREE.Quaternion();
   private readonly scale = new THREE.Vector3();
   private readonly color = new THREE.Color();
+  private readonly hoverColor = new THREE.Color(LOOK.hoverTint);
+  /**
+   * The frame goes through post-processing: the scene (with normals for the AO), ground truth
+   * ambient occlusion (GTAO, at half resolution) darkening creases and contacts, tone mapping,
+   * then FXAA (the AO reads the scene's depth, which a multisampled pass can't give it).
+   */
+  private readonly post: THREE.RenderPipeline;
+  /** The pipeline's outputs with and without the occlusion (off, the GTAO pass never runs). */
+  private readonly outputs: { withAO: THREE.Node; plain: THREE.Node };
+  /** The GTAO pass (its radius and thickness are tunable uniforms). */
+  readonly occlusion: ReturnType<typeof ao>;
+  /** Darken with ambient occlusion (contacts and creases). */
+  ambientOcclusion = true;
+  /**
+   * The floor's planar reflection: the scene rendered mirrored in the floor's plane (at half
+   * resolution, mipmapped so the floor can take a blurred copy), shown with Fresnel.
+   */
+  private readonly mirror = reflector({ resolutionScale: 0.5, generateMipmaps: true, bounces: false });
+  /** Show the floor's reflections (renders the scene a second time). */
+  reflections = true;
+  /** The body whose top face is the floor, if any (the mirror's plane follows it), and the sim
+   * it was found in. */
+  private floorBody = -1;
+  private floorSim: Sim3D | null = null;
+  private readonly floorMaterials: { mirror: THREE.Material; plain: THREE.Material };
 
   constructor(canvas: HTMLCanvasElement, requiredLimits?: Record<string, number>) {
     this.renderer = new THREE.WebGPURenderer({ canvas, antialias: true, requiredLimits });
@@ -98,7 +161,7 @@ export class Renderer3D {
     // Sky: a dome following the camera, pale blue overhead fading to a warm white haze at the
     // horizon, which the fog matches so the floor dissolves into it
     const skyMaterial = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide, depthWrite: false, fog: false });
-    skyMaterial.colorNode = mix(color(LOOK.skyHorizon), color(LOOK.skyZenith), smoothstep(0.02, 0.6, normalize(positionLocal).z));
+    skyMaterial.colorNode = skyColor(normalize(positionLocal).z);
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), skyMaterial);
     this.sky.renderOrder = -1;
     this.sky.frustumCulled = false;
@@ -110,8 +173,6 @@ export class Renderer3D {
     const light = this.light;
     light.castShadow = true;
     light.shadow.mapSize.set(2048, 2048);
-    light.shadow.bias = -0.0005;
-    light.shadow.normalBias = 0.02;
     this.scene.add(light, light.target);
     this.setViewScale(50);
 
@@ -119,20 +180,43 @@ export class Renderer3D {
     const blockMaterial = new THREE.MeshStandardNodeMaterial({ roughness: 0.72, metalness: 0 });
     blockMaterial.colorNode = vec3(edgeShade(positionGeometry, vec3(1)));
     this.boxes = new Instances(this.scene, new THREE.BoxGeometry(1, 1, 1), blockMaterial, true);
-    const floorMaterial = new THREE.MeshStandardNodeMaterial({ roughness: 0.85, metalness: 0 });
-    floorMaterial.colorNode = floorChecker();
+    const floorMaterial = new THREE.MeshStandardNodeMaterial({ metalness: 0 });
+    glossyFloor(floorMaterial, this.mirror.level(float(LOOK.mirrorBlur)).rgb as unknown as THREE.Node<'vec3'>);
+    const plainFloor = new THREE.MeshStandardNodeMaterial({ metalness: 0 });
+    glossyFloor(plainFloor);
+    this.floorMaterials = { mirror: floorMaterial, plain: plainFloor };
     this.floors = new Instances(this.scene, new THREE.BoxGeometry(1, 1, 1), floorMaterial, true);
     this.contacts = new Instances(this.scene, new THREE.BoxGeometry(0.08, 0.08, 0.08), new THREE.MeshBasicNodeMaterial({ color: LOOK.contact, depthTest: false }), false);
     this.contacts.mesh.renderOrder = 2;
+
+    this.scene.add(this.coils.mesh);
+    this.scene.add(this.mirror.target);
 
     this.lines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicNodeMaterial({ vertexColors: true, depthTest: false }));
     this.lines.frustumCulled = false;
     this.lines.renderOrder = 3;
     this.scene.add(this.lines);
+
+    this.post = new THREE.RenderPipeline(this.renderer);
+    const scene = pass(this.scene, this.camera, { samples: 0 });
+    scene.setMRT(mrt({ output, normal: normalView }));
+    const colour = scene.getTextureNode('output');
+    const occlusion = ao(scene.getTextureNode('depth'), scene.getTextureNode('normal'), this.camera);
+    this.occlusion = occlusion;
+    occlusion.resolutionScale = 0.5;
+    occlusion.radius.value = LOOK.aoRadius;
+    occlusion.thickness.value = LOOK.aoThickness;
+    occlusion.scale.value = LOOK.aoStrength;
+    const finish = (node: THREE.Node) => fxaa(renderOutput(node));
+    this.outputs = { withAO: finish(vec4(colour.rgb.mul(occlusion.getTextureNode().r), colour.a)), plain: finish(colour) };
+    this.post.outputColorTransform = false;
+    this.post.outputNode = this.outputs.withAO;
   }
 
   async init(): Promise<void> {
     await this.renderer.init();
+    this.scene.environment = studioEnvironment(this.renderer);
+    this.scene.environmentIntensity = LOOK.environmentIntensity;
   }
 
   get isWebGPU(): boolean {
@@ -150,7 +234,8 @@ export class Renderer3D {
    */
   attachGpuBodies(count: number): GPUBuffer {
     this.detachGpuBodies();
-    this.gpuBodies = new GpuBodies3D(count);
+    this.gpuBodies = new GpuBodies3D(count, this.mirror);
+    this.floorBody = -1;
     this.gpuBodiesShown = -1;
     this.scene.add(this.gpuBodies.group);
     return this.gpuBodies.gpuBuffer(this.renderer);
@@ -178,6 +263,13 @@ export class Renderer3D {
     cam.near = 1;
     cam.far = distance * 6;
     cam.updateProjectionMatrix();
+    // Offset lookups by about two shadow-map texels, in depth: less and curved surfaces shadow
+    // themselves in fine stripes. (Not along the normal: Three offsets along the mesh's vertex
+    // normals, which for bodies turned in the vertex shader point the wrong way.)
+    const texel = (2 * extent) / this.light.shadow.mapSize.x;
+    shadowTexel.value = texel;
+    this.light.shadow.normalBias = 0;
+    this.light.shadow.bias = (-2 * texel) / (cam.far - cam.near);
   }
 
   resize(width: number, height: number): void {
@@ -201,27 +293,79 @@ export class Renderer3D {
     this.sky.scale.setScalar(this.camera.far * 0.9);
   }
 
+  /** Keep the mirror's plane on the floor's top face; the floor shows it only when on. */
+  private placeMirror(sim: Sim3D): void {
+    if (sim !== this.floorSim) {
+      this.floorSim = sim;
+      this.floorBody = -1;
+      for (let i = 0; i < sim.bodyCount && this.floorBody < 0; i++) if (this.shapeOf(sim, i) === Shape.Floor) this.floorBody = i;
+    }
+    // Only the floor in use may sample the mirror: the reflector hides just the material it is
+    // drawing for, and another floor sampling it in the mirror's own render is invalid
+    const on = this.reflections && this.floorBody >= 0;
+    this.gpuBodies?.setReflections(on);
+    this.floors.mesh.material = on && !this.gpuBodies ? this.floorMaterials.mirror : this.floorMaterials.plain;
+    if (this.floorBody < 0) return;
+    const p = sim.position(this.floorBody);
+    if (p.length >= 3) this.mirror.target.position.set(0, 0, p[2] + sim.size(this.floorBody)[2] / 2);
+  }
+
   render(sim: Sim3D, target: THREE.Vector3): void {
     this.placeLight(target);
+    this.placeMirror(sim);
     this.light.castShadow = this.shadows;
     if (this.gpuBodies) {
+      if (this.gpuBodiesShown < 0) {
+        this.gpuBodies.setSprings(sim.springs());
+        this.gpuBodies.setCloths(sim.cloths());
+        this.gpuBodies.setRopes(sim.ropes());
+      }
       if (sim.bodyCount !== this.gpuBodiesShown) {
-        this.gpuBodies.setBodies(sim.bodyCount, (i) => this.shapeOf(sim, i));
+        this.gpuBodies.setBodies(sim.bodyCount, (i) => this.shapeOf(sim, i), (i) => sim.visual(i));
         this.gpuBodiesShown = sim.bodyCount;
       }
       this.gpuBodies.selected.value = this.selected >= 0 ? this.selected : 0xffffffff;
+      this.gpuBodies.hovered.value = this.hovered >= 0 ? this.hovered : 0xffffffff;
       this.boxes.mesh.count = 0;
       this.floors.mesh.count = 0;
+      this.coils.set([]);
     } else {
       this.drawBodies(sim);
+      this.drawSprings(sim);
     }
     this.drawForces(sim);
-    this.renderer.render(this.scene, this.camera);
+    const output = this.ambientOcclusion ? this.outputs.withAO : this.outputs.plain;
+    if (this.post.outputNode !== output) {
+      this.post.outputNode = output;
+      this.post.needsUpdate = true;
+    }
+    this.post.render();
   }
 
   private shapeOf(sim: Sim3D, i: number): Shape {
     if (sim.isSphere?.(i)) return Shape.Sphere;
-    return !sim.isDynamic(i) && isFloorSize(sim.size(i)) ? Shape.Floor : Shape.Box;
+    const shape = sim.visual(i)?.shape;
+    if (shape) return { capsule: Shape.Capsule, ringFlat: Shape.RingFlat, ringX: Shape.RingX, ringY: Shape.RingY, hidden: Shape.Hidden }[shape];
+    return !sim.isDynamic(i) && sim.isLevel(i) && isFloorSize(sim.size(i)) ? Shape.Floor : Shape.Box;
+  }
+
+  private readonly ends: number[] = [];
+
+  /** CPU path: each spring's two anchors in world space. */
+  private drawSprings(sim: Sim3D): void {
+    const ends = this.ends;
+    ends.length = 0;
+    const world = (body: number, r: ArrayLike<number>) => {
+      const p = sim.position(body);
+      const q = sim.orientation(body);
+      this.position.set(r[0], r[1], r[2]).applyQuaternion(this.quaternion.set(q[0], q[1], q[2], q[3]));
+      ends.push(this.position.x + p[0], this.position.y + p[1], this.position.z + p[2]);
+    };
+    for (const s of sim.springs()) {
+      world(s.a, s.rA);
+      world(s.b, s.rB);
+    }
+    this.coils.set(ends);
   }
 
   private drawBodies(sim: Sim3D): void {
@@ -238,16 +382,22 @@ export class Renderer3D {
       this.quaternion.set(q[0], q[1], q[2], q[3]);
       this.scale.set(s[0], s[1], s[2]);
       this.matrix.compose(this.position, this.quaternion, this.scale);
-      if (this.shapeOf(sim, i) === Shape.Floor) {
+      // The CPU path draws no rope or cloth meshes: hidden moving links show as their boxes,
+      // hidden static parts (a rope's eye) not at all
+      const shape = this.shapeOf(sim, i);
+      if (shape === Shape.Hidden && !sim.isDynamic(i)) continue;
+      if (shape === Shape.Floor) {
         // Drawn on to the horizon, as the GPU path does
         this.scale.set(FLOOR_EXTENT, FLOOR_EXTENT, s[2]);
         floors.setMatrixAt(f++, this.matrix.compose(this.position, this.quaternion, this.scale));
         continue;
       }
       const h = hashIndex(i);
-      const paint = sim.isSphere?.(i) ? SPHERE_PALETTE[h % SPHERE_PALETTE.length] : BLOCK_PALETTE[h % BLOCK_PALETTE.length];
-      this.color.setHex(i === this.selected ? LOOK.selected : sim.isDynamic(i) ? paint : LOOK.static);
-      if (i !== this.selected && sim.isDynamic(i)) this.color.multiplyScalar(0.92 + 0.16 * ((hashIndex(i + 7919) & 0xffff) / 0xffff));
+      const own = sim.visual(i)?.color;
+      const paint = own ?? (sim.isSphere?.(i) ? SPHERE_PALETTE[h % SPHERE_PALETTE.length] : BLOCK_PALETTE[h % BLOCK_PALETTE.length]);
+      this.color.setHex(i === this.selected ? LOOK.selected : sim.isDynamic(i) || own !== undefined ? paint : LOOK.static);
+      if (i !== this.selected && sim.isDynamic(i) && own === undefined) this.color.multiplyScalar(0.92 + 0.16 * ((hashIndex(i + 7919) & 0xffff) / 0xffff));
+      if (i === this.hovered && i !== this.selected) this.color.lerp(this.hoverColor, LOOK.hoverAmount);
       boxes.setMatrixAt(b, this.matrix);
       boxes.setColorAt(b++, this.color);
     }

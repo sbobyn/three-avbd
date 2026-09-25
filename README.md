@@ -29,11 +29,16 @@ with bench3d.html's "Download results" or `pnpm bench3d:gpu <tiers> --json <file
 space/shift + drag or middle-drag pans, WASD/QE move the camera, P pauses, `.` steps, R resets.
 
 3D scenes: the 14 demo scenes (CPU reference or WebGPU) plus GPU-only showcase scenes after
-the paper's figures: Wall Smash, Breakable Wall, Chain Mail, Heavy Pendulum 50000:1, Brick Ring
-(110k, Fig. 1), Jointed Drop (34k bodies, 71k joints), box piles.
+the paper's figures: Brick Ring (Fig. 1), Brick Walls (Fig. 3), Wall Smash, Breakable Wall,
+Chain Mail, Ragdolls on Cloth (Fig. 14), Heavy Pendulum 50000:1, a Flag in the Wind (the GPU solver's
+wind: pressure drag and skin friction on bodies marked as sails), plus scale tests (Jointed Drop,
+box piles and columns). How bodies are drawn (capsules, chain-mail rings, cloth sheets, springs as
+coils) is cosmetic, tagged by the scenes in `src/avbd3d/visuals.ts`.
 
-3D demo controls: left-drag on a body grabs it, left-drag elsewhere orbits, right-drag pans,
-wheel zooms, middle-click or B shoots a box, P pauses, `.` steps, R resets.
+3D demo controls: left-drag on a body grabs it (the body under the pointer glows), left-drag
+elsewhere orbits, right-drag pans, wheel zooms, Space, B or middle-click fires a cannonball, P
+pauses, `.` steps, R resets. The smash, pile and Custom scenes have a panel for the cannonball's
+radius, mass and launch speed (also under Settings → Advanced everywhere).
 
 ## Layout
 

@@ -33,10 +33,18 @@ export const ICONS = {
   pause: '<line x1="9" y1="5" x2="9" y2="19"/><line x1="15" y1="5" x2="15" y2="19"/>',
   restart: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
   box: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
+  ball: '<circle cx="11" cy="13" r="7"/><path d="M7.5 11a4 4 0 0 1 3-3"/><path d="M16 6l2.5-2.5M17.5 8.5l3-.5M14 4.5l.5-3"/>',
   focus: '<circle cx="12" cy="12" r="4"/><path d="M3 12h3M18 12h3M12 3v3M12 18v3"/>',
   settings: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
   step: '<polygon points="5 5 13 12 5 19 5 5"/><line x1="17" y1="5" x2="17" y2="19"/>',
+  /** GitHub's mark (filled, unlike the others). */
+  github:
+    '<g transform="translate(2 2) scale(1.25)"><path fill="currentColor" stroke="none" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></g>',
 };
+
+/** The project's source. */
+export const REPO_URL = 'https://github.com/sbobyn/three-avbd';
+export const openRepo = (): void => void window.open(REPO_URL, '_blank', 'noopener');
 const CHEVRON_DOWN = '<polyline points="6 9 12 15 18 9"/>';
 const CHEVRON_RIGHT = '<polyline points="9 6 15 12 9 18"/>';
 const svg = (inner: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`;

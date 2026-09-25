@@ -1,6 +1,6 @@
 // 3D AVBD viewer: the site's landing page. A dock with the scene picker (the paper's showcase
-// scenes first) and settings (../ui/controls.ts), orbit camera, mouse drag and box shooting as
-// in the upstream avbd-demo3d, and a title card.
+// scenes first) and settings (../ui/controls.ts), orbit camera, mouse drag as in the upstream
+// avbd-demo3d (the body under the pointer is tinted), cannonballs, and a title card.
 
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -8,38 +8,22 @@ import { createGpuSim3D, GpuSim3D } from '../avbd3d/gpu/sim.ts';
 import { gpuParams3D, PHASES } from '../avbd3d/gpu/solver.ts';
 import { DEFAULT_SCENE } from '../avbd3d/ref/scenes.ts';
 import { allScenes3D, along, createSim3D, type Sim3D, sceneByName3D } from '../avbd3d/sim.ts';
-import { Controls, ICONS } from '../ui/controls.ts';
+import { Controls, ICONS, openRepo } from '../ui/controls.ts';
+import { titleCard } from '../ui/title-card.ts';
 import { otherDemoUrl, sceneMenu } from '../ui/scene-menu.ts';
+import { ScenePanel } from '../ui/scene-panel.ts';
+import { WindPanel } from '../ui/wind-panel.ts';
+import type { SceneOptions } from '../avbd3d/bench-scenes.ts';
+import { type ExtrasContext, kilograms, panelFor } from './scene-extras.ts';
 import { Renderer3D } from './renderer3d.ts';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const hud = document.querySelector<HTMLDivElement>('#hud')!;
 const timing = document.querySelector<HTMLDivElement>('#timing')!;
 
-// Title card, collapsed state remembered per viewer
-const card = document.querySelector<HTMLDivElement>('#card')!;
-const cardToggle = document.querySelector<HTMLButtonElement>('#card-toggle')!;
-const CARD_KEY = 'avbd3d-card-collapsed';
-const setCard = (collapsed: boolean) => {
-  card.classList.toggle('collapsed', collapsed);
-  cardToggle.textContent = collapsed ? '+' : '–';
-  cardToggle.title = collapsed ? 'About this demo' : 'Hide';
-};
-const NARROW = 760;
-try {
-  setCard(localStorage.getItem(CARD_KEY) === '1' || window.innerWidth < NARROW);
-} catch {
-  setCard(window.innerWidth < NARROW);
-}
-cardToggle.onclick = () => {
-  const collapsed = !card.classList.contains('collapsed');
-  setCard(collapsed);
-  try {
-    localStorage.setItem(CARD_KEY, collapsed ? '1' : '0');
-  } catch {
-    // Storage unavailable: the card just doesn't remember
-  }
-};
+titleCard('avbd3d-card-collapsed');
+const keysHint = document.querySelector<HTMLDivElement>('#keys')!;
+const building = document.querySelector<HTMLDivElement>('#building')!;
 
 // Ask for the adapter's full storage-binding size, as the 2D app does, for large GPU scenes
 const adapter = 'gpu' in navigator ? await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null) : null;
@@ -63,14 +47,23 @@ const state = {
   scene: sceneNames.includes(url.searchParams.get('scene') ?? '') ? url.searchParams.get('scene')! : LANDING_SCENE,
   backend: ((backendParam ?? (gpuAvailable ? 'gpu' : 'ref')) === 'gpu' ? 'gpu' : 'ref') as Backend3D,
   paused: url.searchParams.has('paused'),
-  boxFriction: 0.5,
-  boxSize: { x: 1, y: 1, z: 1 },
-  boxVelocity: 10,
+  ballRadius: 0.7,
+  /** kg: 30 times a brick's density at the default radius, heavy enough to knock walls down. */
+  ballMass: 43,
+  ballSpeed: 45,
+  /** Simulated seconds per real second (slow motion below 1). */
+  speed: 1,
+  /** Settings changed in scene panels, per scene (over Scene3D.options). */
+  sceneOptions: {} as Record<string, SceneOptions>,
   showContacts: false,
   showJoints: false,
   details: false,
   // Shadow maps redraw every body again each frame; off helps older GPUs with big scenes
   shadows: url.searchParams.get('shadows') !== '0',
+  /** Ambient occlusion (a post pass at half resolution). */
+  ambientOcclusion: url.searchParams.get('ao') !== '0',
+  /** Floor reflections (the scene drawn twice): on by default in scenes up to REFLECT_UP_TO. */
+  reflections: true,
 };
 /** Solver parameters owned by the app, copied into the solver before every step. */
 const params = gpuParams3D();
@@ -79,7 +72,7 @@ const defaults = () => ({
   ...gpuParams3D(),
   matchNearest: state.backend === 'gpu',
   faceBias: state.backend === 'gpu',
-  ...sceneByName3D(state.scene).params,
+  ...resolve(sceneByName3D(state.scene).params),
 });
 Object.assign(params, defaults());
 
@@ -91,7 +84,7 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.15;
 
 function resetCamera(): void {
-  const view = sceneByName3D(state.scene).camera;
+  const view = resolve(sceneByName3D(state.scene).camera);
   const distance = view?.distance ?? 50;
   const azimuth = ((view?.azimuth ?? 90) * Math.PI) / 180;
   const elevation = view?.elevation ?? 0.35;
@@ -113,34 +106,70 @@ function buildSim(): Sim3D {
   }
   if (state.backend === 'gpu') {
     const device = renderer.device;
-    if (device) return createGpuSim3D(device, state.scene, params, (n) => renderer.attachGpuBodies(n));
+    if (device) return createGpuSim3D(device, state.scene, params, (n) => renderer.attachGpuBodies(n), sceneOptions());
     hud.textContent = 'The WebGPU solver needs a WebGPU device; falling back to the CPU solver.';
     state.backend = 'ref';
     if (sceneByName3D(state.scene).gpuOnly) state.scene = DEFAULT_SCENE;
   }
   renderer.detachGpuBodies();
-  return createSim3D(state.scene, params);
+  return createSim3D(state.scene, params, sceneOptions());
 }
+
+function sceneOptions(): SceneOptions {
+  return { ...sceneByName3D(state.scene).options, ...state.sceneOptions[state.scene] };
+}
+
+/** A scene setting that may depend on the scene's options (Scene3D.camera, .params). */
+function resolve<T>(setting: T | ((options: SceneOptions) => T)): T {
+  return typeof setting === 'function' ? (setting as (options: SceneOptions) => T)(sceneOptions()) : setting;
+}
+
+/** Bodies up to which a scene starts with floor reflections on. */
+const REFLECT_UP_TO = 30_000;
 
 /** Built by the first loadScene() at the bottom. */
 let sim!: Sim3D;
 
-function loadScene(reset = true): void {
-  endDrag();
-  if (sim instanceof GpuSim3D) sim.destroy();
-  if (reset) Object.assign(params, defaults());
-  sim = buildSim();
-  ui.setScene(state.scene);
-  ui.refresh();
-  if (reset) resetCamera();
-  url.searchParams.set('scene', state.scene);
-  url.searchParams.set('backend', state.backend);
-  history.replaceState(null, '', url);
+let pendingLoad = 0;
+
+/**
+ * (Re)build the current scene. Big scenes take a second or two to build, so the page first
+ * shows a note and lets it paint (the old scene keeps running meanwhile); `now` skips that.
+ */
+function loadScene(reset = true, now = false): void {
+  const load = () => {
+    endDrag();
+    if (sim instanceof GpuSim3D) sim.destroy();
+    if (reset) Object.assign(params, defaults());
+    sim = buildSim();
+    ui.setScene(state.scene);
+    ui.refresh();
+    if (reset) resetCamera();
+    url.searchParams.set('scene', state.scene);
+    url.searchParams.set('backend', state.backend);
+    history.replaceState(null, '', url);
+    wind.show(sceneByName3D(state.scene).windControl === true);
+    restless = 3;
+    if (reset) {
+      state.speed = 1;
+      // Reflections draw the scene twice: on for scenes small enough to afford it
+      state.reflections = sim.bodyCount <= REFLECT_UP_TO;
+    }
+    panel.show(panelFor(state.scene, extras));
+    setLabels(sim.labels());
+    // Captions follow their bodies: read poses back more often (label scenes are small)
+    if (sim instanceof GpuSim3D && sim.labels().length) sim.readbackEvery = 2;
+    building.hidden = true;
+  };
+  if (now) return load();
+  const token = ++pendingLoad;
+  building.hidden = false;
+  requestAnimationFrame(() => setTimeout(() => token === pendingLoad && load(), 0));
 }
 
 // --- Controls --------------------------------------------------------------------------
 
-const toggle = (label: string, key: 'shadows' | 'showContacts' | 'showJoints' | 'details') =>
+const toggle = (label: string, key: 'shadows' | 'ambientOcclusion' | 'reflections' | 'showContacts' | 'showJoints' | 'details') =>
   ({ kind: 'toggle', label, get: () => state[key], set: (v: boolean) => (state[key] = v) }) as const;
 const ui = new Controls({
   scenes: sceneMenu('3d', sceneNames),
@@ -156,8 +185,9 @@ const ui = new Controls({
   buttons: [
     { label: 'Play / pause (P)', icon: () => (state.paused ? ICONS.play : ICONS.pause), onClick: () => (state.paused = !state.paused) },
     { label: 'Restart the scene (R)', icon: ICONS.restart, onClick: () => loadScene(false) },
-    { label: 'Shoot a box (B)', icon: ICONS.box, onClick: () => shootBox() },
+    { label: 'Fire a cannonball (Space)', icon: ICONS.ball, onClick: () => shootBall() },
     { label: 'Reset the camera', icon: ICONS.focus, onClick: () => resetCamera() },
+    { label: 'Source on GitHub', icon: ICONS.github, onClick: openRepo },
   ],
   settings: [
     {
@@ -176,6 +206,8 @@ const ui = new Controls({
     { kind: 'range', label: 'Iterations', min: 1, max: 30, step: 1, get: () => params.iterations, set: (v) => (params.iterations = Math.round(v)), format: (v) => String(Math.round(v)) },
     { kind: 'range', label: 'Gravity', min: -20, max: 0, step: 0.5, get: () => params.gravity, set: (v) => (params.gravity = v), format: (v) => `${v.toFixed(1)} m/s²` },
     toggle('Shadows', 'shadows'),
+    toggle('Ambient occlusion', 'ambientOcclusion'),
+    toggle('Floor reflections', 'reflections'),
     toggle('Show contacts', 'showContacts'),
     toggle('Show joints and springs', 'showJoints'),
     toggle('Detailed stats', 'details'),
@@ -191,22 +223,94 @@ const ui = new Controls({
         { kind: 'range', label: 'Gamma (warm start)', min: 0, max: 1, step: 0.001, get: () => params.gamma, set: (v) => (params.gamma = v) },
         { kind: 'toggle', label: 'Nearest warm start (GPU)', get: () => params.matchNearest, set: (v) => (params.matchNearest = v) },
         { kind: 'toggle', label: 'Face-biased SAT (GPU)', get: () => params.faceBias, set: (v) => (params.faceBias = v) },
-        {
-          kind: 'range',
-          label: 'Shot box size',
-          min: 0.2,
-          max: 4,
-          step: 0.1,
-          get: () => state.boxSize.x,
-          set: (v) => Object.assign(state.boxSize, { x: v, y: v, z: v }),
-          format: (v) => `${v.toFixed(1)} m`,
-        },
-        { kind: 'range', label: 'Shot box speed', min: 0, max: 40, step: 1, get: () => state.boxVelocity, set: (v) => (state.boxVelocity = v), format: (v) => `${v.toFixed(0)} m/s` },
+        { kind: 'toggle', label: 'Slow bodies start at rest (GPU)', get: () => params.startAtRest, set: (v) => (params.startAtRest = v) },
+        { kind: 'toggle', label: 'Contacts as stiff as the mass (GPU)', get: () => params.massPenalty, set: (v) => (params.massPenalty = v) },
+        { kind: 'range', label: 'Cannonball radius', min: 0.2, max: 2, step: 0.05, get: () => state.ballRadius, set: (v) => (state.ballRadius = v), format: (v) => `${v.toFixed(2)} m` },
+        { kind: 'range', label: 'Cannonball mass', min: 1, max: 10_000, log: true, get: () => state.ballMass, set: (v) => (state.ballMass = v), format: kilograms },
+        { kind: 'range', label: 'Cannonball speed', min: 5, max: 80, step: 1, get: () => state.ballSpeed, set: (v) => (state.ballSpeed = v), format: (v) => `${v.toFixed(0)} m/s` },
       ],
     },
     { kind: 'action', label: 'Reset settings to defaults', run: () => Object.assign(params, defaults()) },
   ],
 });
+
+// The wind panel, for scenes with wind: its dial is the ground as the camera sees it
+const heading = new THREE.Vector3();
+const wind = new WindPanel({
+  get: () => ({ speed: params.windSpeed, angle: params.windAngle }),
+  set: (speed, angle) => Object.assign(params, { windSpeed: speed, windAngle: angle }),
+  basis: () => {
+    camera.getWorldDirection(heading);
+    const l = Math.hypot(heading.x, heading.y) || 1;
+    const [fx, fy] = [heading.x / l, heading.y / l];
+    return { forward: [fx, fy], right: [fy, -fx] };
+  },
+  max: 30,
+});
+
+// The scene's own panel, and captions over bodies
+const panel = new ScenePanel();
+const extras: ExtrasContext = {
+  restart: () => loadScene(false),
+  speed: () => state.speed,
+  setSpeed: (v) => (state.speed = v),
+  option: (key) => sceneOptions()[key],
+  setOption: (key, value) => {
+    state.sceneOptions[state.scene] = { ...state.sceneOptions[state.scene], [key]: value };
+    loadScene(false);
+  },
+  apply: (options) => {
+    state.sceneOptions[state.scene] = { ...state.sceneOptions[state.scene], ...options };
+    loadScene();
+  },
+  bodyCount: () => sim.bodyCount,
+  stats: () => sim.stats(),
+  ball: {
+    radius: () => state.ballRadius,
+    setRadius: (v) => (state.ballRadius = v),
+    mass: () => state.ballMass,
+    setMass: (v) => (state.ballMass = v),
+    speed: () => state.ballSpeed,
+    setSpeed: (v) => (state.ballSpeed = v),
+    fire: () => shootBall(),
+  },
+};
+
+let labels: { el: HTMLDivElement; bodies: number[] }[] = [];
+function setLabels(list: { bodies: number[]; text: string }[]): void {
+  for (const l of labels) l.el.remove();
+  labels = list.map(({ bodies, text }) => {
+    const el = document.createElement('div');
+    el.className = 'avbd-label';
+    el.textContent = text;
+    document.body.append(el);
+    return { el, bodies };
+  });
+}
+const labelPoint = new THREE.Vector3();
+const cameraRight = new THREE.Vector3();
+/**
+ * Beside its body (to the right as the camera sees it, clear of it), or above the midpoint of
+ * two; hidden behind the camera.
+ */
+function placeLabels(): void {
+  const rect = canvas.getBoundingClientRect();
+  cameraRight.setFromMatrixColumn(camera.matrixWorld, 0);
+  for (const { el, bodies } of labels) {
+    const p = sim.position(bodies[0]);
+    if (p.length < 3) continue;
+    labelPoint.set(p[0], p[1], p[2]);
+    const pair = bodies.length > 1;
+    if (pair) {
+      const q = sim.position(bodies[1]);
+      labelPoint.set((p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2 + 0.5);
+    } else labelPoint.addScaledVector(cameraRight, 0.5 * Math.max(...Array.from(sim.size(bodies[0]))) + 0.25);
+    labelPoint.project(camera);
+    el.hidden = labelPoint.z > 1;
+    const [x, y] = [rect.left + ((labelPoint.x + 1) / 2) * rect.width, rect.top + ((1 - labelPoint.y) / 2) * rect.height];
+    el.style.transform = `translate(${x}px, ${y}px) ${pair ? 'translate(-50%, -100%)' : 'translate(0, -50%)'}`;
+  }
+}
 
 // --- Input -----------------------------------------------------------------------------
 
@@ -226,22 +330,43 @@ function endDrag(): void {
   if (sim) sim.endDrag();
   drag = null;
   controls.enabled = true;
+  canvas.style.cursor = '';
 }
 
-/** Spawn a box in front of the eye along `dir`, moving along it (the demo's shootBox). */
-function shootBox(dir?: THREE.Vector3): void {
+/** The mouse ray while hovering; the body it hits is tinted and shows a grab cursor. */
+let hoverRay: THREE.Ray | null = null;
+let hoverPicked = 0;
+
+function updateHover(now: number): void {
+  if (drag) return;
+  // Picking walks every body on the CPU: less often in big scenes
+  if (hoverRay && now - hoverPicked < (sim.bodyCount > 50_000 ? 150 : 50)) return;
+  hoverPicked = now;
+  const hit = hoverRay ? sim.pick(arr(hoverRay.origin), arr(hoverRay.direction)) : null;
+  renderer.hovered = hit ? hit.body : -1;
+  canvas.style.cursor = hit ? 'grab' : '';
+}
+
+let lastShot = 0;
+
+/**
+ * Fire a cannonball from just in front of the eye along `dir` (default: at the orbit target),
+ * as the demo's shootBox does with boxes. Held keys fire at most ~8 a second.
+ */
+function shootBall(dir?: THREE.Vector3): void {
+  const now = performance.now();
+  if (now - lastShot < 120) return;
+  lastShot = now;
   const forward = dir ?? controls.target.clone().sub(camera.position).normalize();
-  const size = [state.boxSize.x, state.boxSize.y, state.boxSize.z];
-  const offset = 2 + 0.5 * Math.hypot(size[0], size[1], size[2]);
-  const position = camera.position.clone().addScaledVector(forward, offset);
-  sim.addBox(size, 1, state.boxFriction, arr(position), arr(forward.clone().multiplyScalar(state.boxVelocity)));
+  const position = camera.position.clone().addScaledVector(forward, 2 + state.ballRadius);
+  sim.addBall(state.ballRadius, state.ballMass, 0.5, arr(position), arr(forward.clone().multiplyScalar(state.ballSpeed)));
 }
 
 // Registered before OrbitControls sees the event: grabbing a body disables orbiting
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button === 1) {
     e.preventDefault();
-    shootBox(mouseRay(e).direction.clone());
+    shootBall(mouseRay(e).direction.clone());
     return;
   }
   if (e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) return;
@@ -255,21 +380,42 @@ canvas.addEventListener('pointerdown', (e) => {
   drag = { local: hit.local, distance: Math.max(hit.t, 0.1), target };
   sim.startDrag(hit.body, hit.local, target);
   canvas.setPointerCapture(e.pointerId);
+  hoverRay = null;
+  canvas.style.cursor = 'grabbing';
 });
 canvas.addEventListener('pointermove', (e) => {
-  if (!drag) return;
+  if (!drag) {
+    // Hovering with the mouse (not orbiting): the frame loop picks along this ray
+    hoverRay = e.pointerType === 'mouse' && e.buttons === 0 ? mouseRay(e).clone() : null;
+    return;
+  }
   const ray = mouseRay(e);
   drag.target = along(arr(ray.origin), arr(ray.direction), drag.distance);
   sim.moveDrag(drag.target);
 });
+canvas.addEventListener('pointerleave', () => {
+  hoverRay = null;
+  pointerInside = false;
+});
+canvas.addEventListener('pointerenter', () => (pointerInside = true));
+// Touch has no hover: poses must always be at hand for a tap to grab
+canvas.addEventListener('pointerdown', (e) => e.pointerType !== 'mouse' && (touched = true), { capture: true });
+// Any input may change what's on screen: render a few frames even when paused (below)
+for (const type of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'resize'] as const) window.addEventListener(type, () => (restless = 3), { passive: true });
 canvas.addEventListener('pointerup', () => drag && endDrag());
 canvas.addEventListener('pointercancel', () => drag && endDrag());
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+window.addEventListener('keyup', (e) => (e.code === 'Space' || e.key === ' ') && e.preventDefault());
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+  // Space fires, even with a dock button focused (which would otherwise be clicked)
+  if (e.code === 'Space' || e.key === ' ') {
+    e.preventDefault();
+    shootBall();
+  }
   if (e.code === 'KeyP') state.paused = !state.paused;
   if (e.code === 'KeyR') loadScene(false);
-  if (e.code === 'KeyB') shootBox();
+  if (e.code === 'KeyB') shootBall();
   if (e.code === 'Period' && state.paused) stepOnce();
   ui.refresh();
 });
@@ -304,30 +450,45 @@ const q = new THREE.Quaternion();
 
 let viewScale = 0;
 
+/** The pointer is over the canvas; a touch screen has been used. */
+let pointerInside = false;
+let touched = matchMedia('(hover: none)').matches;
+/** Frames still to render after the last input while paused. */
+let restless = 3;
+
 function frame(now: number): void {
   const elapsed = Math.min((now - last) / 1000, 0.25);
   last = now;
-  controls.update();
+  const orbiting = controls.update();
   // Fog, shadow range and far plane follow the zoom
   const distance = camera.position.distanceTo(controls.target);
   if (Math.abs(distance - viewScale) > viewScale * 0.05) renderer.setViewScale((viewScale = distance));
 
   // Fixed-timestep stepping in real time; cap the catch-up so slow scenes degrade to slow
   // motion instead of a spiral of death.
+  // A step costing over half a timestep (a huge scene) gets one step a frame: slow motion at
+  // a steady frame rate, rather than catch-up steps stalling every frame
   if (!state.paused) {
-    accumulator += elapsed;
+    accumulator += elapsed * state.speed;
+    const cost = sim instanceof GpuSim3D ? (sim.profile?.total ?? 0) : stepMs;
+    const most = cost > (params.dt * 1000) / 2 ? 1 : 4;
     let steps = 0;
-    while (accumulator >= params.dt && steps < 4) {
+    while (accumulator >= params.dt && steps < most) {
       stepOnce();
       accumulator -= params.dt;
       steps++;
     }
-    if (steps === 4) accumulator = 0;
+    if (steps === most) accumulator = 0;
   }
 
   renderer.showContacts = state.showContacts;
   renderer.showJoints = state.showJoints;
   renderer.shadows = state.shadows;
+  renderer.ambientOcclusion = state.ambientOcclusion;
+  renderer.reflections = state.reflections;
+  updateHover(now);
+  wind.update();
+  placeLabels();
   renderer.selected = sim.dragBody;
   renderer.dragLine = null;
   if (drag && sim.dragBody >= 0) {
@@ -337,7 +498,14 @@ function frame(now: number): void {
     anchor.set(...drag.local).applyQuaternion(q.set(o[0], o[1], o[2], o[3])).add(new THREE.Vector3(p[0], p[1], p[2]));
     renderer.dragLine = [arr(anchor), drag.target];
   }
-  renderer.render(sim, controls.target);
+  // The GPU sim reads back only what's in use (the whole body buffer is megabytes)
+  if (sim instanceof GpuSim3D) {
+    sim.needJoints = state.details || panel.hasReadouts;
+    sim.needPoses = sim.needJoints || pointerInside || touched || drag !== null || labels.length > 0;
+  }
+  // Paused and still, the frame wouldn't change: skip it (a hovered body's glow animates)
+  if (!state.paused || orbiting || drag || renderer.hovered >= 0 || restless > 0) renderer.render(sim, controls.target);
+  restless = Math.max(0, restless - 1);
 
   frames++;
   if (now - fpsTime > 500) {
@@ -359,6 +527,8 @@ function updateHud(): void {
   const simMs = gs?.gpuStepMs ?? (gpu ? undefined : stepMs);
   timing.innerHTML = simMs === undefined ? '' : `<b>${simMs.toFixed(1)} ms</b> <span>/ step</span>`;
   const summary = `${sim.bodyCount.toLocaleString('en')} bodies · ${fps.toFixed(0)} fps · ${gpu ? 'WebGPU solver' : 'CPU solver'}`;
+  keysHint.hidden = state.details;
+  panel.refresh();
   hud.textContent = state.details
     ? [
         `${sim.label} · ${renderer.isWebGPU ? 'WebGPU' : 'WebGL2'} render · ${fps.toFixed(0)} fps · ` +
@@ -370,7 +540,7 @@ function updateHud(): void {
     : summary;
 }
 
-loadScene();
+loadScene(true, true);
 requestAnimationFrame(frame);
 
 // Exposed for debugging and automated checks
@@ -380,6 +550,6 @@ function setScene(name: string, backend: Backend3D = state.backend): void {
     Object.assign(params, defaults());
   }
   state.scene = name;
-  loadScene();
+  loadScene(true, true);
 }
-Object.assign(window, { sim: () => sim, camera, controls, state, params, setScene, stepOnce, shootBox });
+Object.assign(window, { sim: () => sim, camera, controls, renderer, state, params, setScene, stepOnce, shootBall });

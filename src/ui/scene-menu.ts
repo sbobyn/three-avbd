@@ -32,13 +32,14 @@ const KINDS: Record<Dimension, Record<string, string[]>> = {
       'Wall Smash (2k)',
       'Breakable Wall (600)',
       'Chain Mail (1.6k)',
-      'Jointed Drop (34k)',
-      'Heavy Pendulum 50000:1',
+      'Ragdolls on Cloth (24k)',
+      'Flag in the Wind (1.5k)',
+      'Heavy Pendulum',
     ],
-    'Scale tests (GPU)': ['Box Pile (4k)', 'Box Pile (32k)', 'Box Columns (100k)'],
+    'Scale tests (GPU)': ['Jointed Drop (34k)', 'Box Pile (4k)', 'Box Pile (32k)', 'Box Columns (100k)'],
     'Contacts & friction': ['Pyramid', 'Stack', 'Stack Ratio', 'Dynamic Friction', 'Static Friction'],
     'Joints & springs': ['Rope', 'Heavy Rope', 'Bridge', 'Breakable', 'Spring', 'Spring Ratio', 'Soft Body'],
-    Sandbox: ['Ground', 'Empty'],
+    'Build your own': ['Custom'],
   },
   '2d': {
     'Contacts & friction': ['Pyramid', 'Cards', 'Stack', 'Stack Ratio', 'Dynamic Friction', 'Static Friction'],
@@ -58,9 +59,12 @@ const KINDS: Record<Dimension, Record<string, string[]>> = {
       'Joint Lattice 320x320 (100k)',
       'Joint Lattice 512x512 (262k)',
     ],
-    Sandbox: ['Ground', 'Empty'],
+    'Build your own': ['Custom'],
   },
 };
+
+/** Scenes kept for the tests and URLs but not listed (the demos' empty sandboxes). */
+const UNLISTED = new Set(['Ground', 'Empty']);
 
 const PAGES: Record<Dimension, string> = { '3d': '/', '2d': '/2d.html' };
 const TITLES: Record<Dimension, string> = { '3d': '3D', '2d': '2D' };
@@ -73,7 +77,7 @@ function groupsOf(dim: Dimension, names: string[], toValue: (name: string) => st
     label: kind,
     items: members.filter((n) => names.includes(n)).map((n) => ({ label: n, value: toValue(n) })),
   }));
-  const other = names.filter((n) => !listed.has(n));
+  const other = names.filter((n) => !listed.has(n) && !UNLISTED.has(n));
   if (other.length) groups.push({ label: 'More', items: other.map((n) => ({ label: n, value: toValue(n) })) });
   return groups.filter((g) => g.items.length > 0);
 }
