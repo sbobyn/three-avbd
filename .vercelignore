@@ -1,0 +1,6 @@
+# Local-only files the site doesn't need (the same as .gitignore's)
+node_modules/
+dist/
+reference/
+tools/trailer/clips/
+tools/trailer/*.mp4
