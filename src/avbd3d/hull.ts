@@ -106,10 +106,29 @@ export function convexHull(points: ArrayLike<number>): HullShape | null {
   tris.push(make(base[2], i3, base[0]));
 
   const used = new Set([i0, i1, i2, i3]);
-  for (let i = 0; i < p.length; i++) {
-    if (used.has(i)) continue;
-    const visible = tris.filter((t) => dot(t.n, p[i]) - t.d > tol);
-    if (!visible.length) continue;
+  // Farthest points first: the hull grows in big steps and fewer points meet nearly flat faces
+  const order = p.map((_, i) => i).filter((i) => !used.has(i));
+  const centre = [i0, i1, i2, i3].reduce<V3>((c, i) => [c[0] + p[i][0] / 4, c[1] + p[i][1] / 4, c[2] + p[i][2] / 4], [0, 0, 0]);
+  order.sort((a, b) => len(sub(p[b], centre)) - len(sub(p[a], centre)));
+  for (const i of order) {
+    // Faces the point is clearly in front of; none: it is inside (or on) the hull
+    const seeds = tris.filter((t) => dot(t.n, p[i]) - t.d > tol);
+    if (!seeds.length) continue;
+    // The visible region grows from those across neighbours the point is level with or in front
+    // of: coplanar triangles of one face are then removed together (with a strict test alone, one
+    // of two coplanar triangles could stay and the new fan would overlap it)
+    const byEdge = new Map<string, Tri>();
+    for (const t of tris) for (let k = 0; k < 3; k++) byEdge.set(`${t.v[k]},${t.v[(k + 1) % 3]}`, t);
+    const region = new Set<Tri>(seeds);
+    const queue = [...seeds];
+    while (queue.length) {
+      const t = queue.pop()!;
+      for (let k = 0; k < 3; k++) {
+        const u = byEdge.get(`${t.v[(k + 1) % 3]},${t.v[k]}`);
+        if (u && !region.has(u) && dot(u.n, p[i]) - u.d > -tol) { region.add(u); queue.push(u); }
+      }
+    }
+    const visible = [...region];
     // Horizon: directed edges of visible faces whose reverse is on a face that stays
     const onVisible = new Set<string>();
     for (const t of visible) for (let k = 0; k < 3; k++) onVisible.add(`${t.v[k]},${t.v[(k + 1) % 3]}`);

@@ -78,3 +78,24 @@ test('flat and tiny point sets have no hull', () => {
   assert.equal(convexHull([0, 0, 0, 1, 0, 0, 0, 1, 0]), null);
   assert.equal(convexHull([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0.5, 0.5, 0]), null);
 });
+
+test('points on a few planes (a fracture piece: many on each cut and face) make a closed hull', () => {
+  // A cube corner cut by a slanted plane, with many points on every face
+  const points: number[] = [];
+  let s = 11;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const inside = (x: number, y: number, z: number) => x + y + z <= 1.6;
+  for (let k = 0; k < 400; k++) {
+    const face = k % 4;
+    const [u, v] = [rnd(), rnd()];
+    const p = face === 0 ? [0, u, v] : face === 1 ? [u, 0, v] : face === 2 ? [u, v, 0] : [u, v, 1.6 - u - v];
+    if (face === 3 ? p[2] >= 0 && p[2] <= 1 : inside(p[0], p[1], p[2])) points.push(p[0], p[1], p[2]);
+  }
+  for (const c of [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 0.6, 0], [0.6, 1, 0], [1, 0, 0.6], [0, 1, 0.6], [0.6, 0, 1], [0, 0.6, 1]]) points.push(...c);
+  const h = convexHull(points)!;
+  assert.equal(h.vertices.length / 3 - h.edges.length + h.faces.length, 2);
+  assert.equal(h.faces.length, 7);        // three cube faces, three more, and the cut
+  // The unit cube minus the corner x + y + z > 1.6: with a = 1 - x (…), the simplex a + b + c < 1.4
+  // less the three bits of it beyond a face (a > 1): 1.4³/6 - 3 · 0.4³/6
+  close(h.volume, 1 - (1.4 ** 3 - 3 * 0.4 ** 3) / 6, 1e-4);
+});
