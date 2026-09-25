@@ -794,13 +794,23 @@ export class GpuSolver3D {
 
   /** Append a body (refused beyond the capacity). Returns its index or -1. */
   addBody(body: Rigid): number {
-    if (this.bodyCount >= this.bodyCapacity) return -1;
-    const i = this.bodyCount++;
-    this.writeBodies(i, [body]);
-    this.device.queue.writeBuffer(this.colorBuffer, i * 4, new Uint32Array([NO_COLOR]));
+    return this.addBodies([body]);
+  }
+
+  /**
+   * Append bodies (as many as fit), returning the first one's index (-1 if none fit). One
+   * call for a batch: each call rebuilds the adjacency scan.
+   */
+  addBodies(bodies: Rigid[]): number {
+    const n = Math.min(bodies.length, this.bodyCapacity - this.bodyCount);
+    if (n <= 0) return -1;
+    const first = this.bodyCount;
+    this.bodyCount += n;
+    this.writeBodies(first, bodies.slice(0, n));
+    this.device.queue.writeBuffer(this.colorBuffer, first * 4, new Uint32Array(n).fill(NO_COLOR));
     this.adjScan!.destroy();
     this.adjScan = new PrefixScan(this.device, this.adjBuffer!, 0, this.bodyCount + 1);
-    return i;
+    return first;
   }
 
   /** Append a joint between body indices (a = -1: world point rA) with fresh state. */

@@ -5,6 +5,7 @@
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildScene3D, createGpuSim3D, GpuSim3D } from '../avbd3d/gpu/sim.ts';
+import { BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
 import { gpuParams3D, PHASES } from '../avbd3d/gpu/solver.ts';
 import { DEFAULT_SCENE } from '../avbd3d/ref/scenes.ts';
 import { allScenes3D, along, createSim3D, type Sim3D, sceneByName3D } from '../avbd3d/sim.ts';
@@ -16,7 +17,7 @@ import { titleCard } from '../ui/title-card.ts';
 import { otherDemoUrl, sceneMenu } from '../ui/scene-menu.ts';
 import { ScenePanel } from '../ui/scene-panel.ts';
 import { WindPanel } from '../ui/wind-panel.ts';
-import type { SceneOptions } from '../avbd3d/bench-scenes.ts';
+import type { Picture3D, SceneOptions } from '../avbd3d/bench-scenes.ts';
 import { type ExtrasContext, kilograms, panelFor } from './scene-extras.ts';
 import { Renderer3D } from './renderer3d.ts';
 
@@ -109,7 +110,11 @@ controls.dampingFactor = 0.15;
 
 function resetCamera(): void {
   const view = resolve(sceneByName3D(state.scene).camera);
-  const distance = view?.distance ?? 50;
+  let distance = view?.distance ?? 50;
+  if (view?.fit) {
+    const tan = Math.tan((camera.fov * Math.PI) / 360);
+    distance = Math.max(distance, (0.54 * view.fit[0]) / (tan * camera.aspect), (0.54 * view.fit[1]) / tan);
+  }
   const azimuth = ((view?.azimuth ?? 90) * Math.PI) / 180;
   const elevation = view?.elevation ?? 0.35;
   const [tx, ty, tz] = view?.target ?? [0, 0, 5];
@@ -147,11 +152,87 @@ async function buildSim(stillWanted: () => boolean): Promise<Sim3D | null> {
     renderer.detachGpuBodies();
     return createSim3D(state.scene, params, sceneOptions());
   }
+  // A picture scene runs once off screen first, to colour its bodies (painting.ts)
+  const picture = sceneByName3D(state.scene).picture;
+  let paint: Uint32Array | null = null;
+  if (picture) {
+    const key = JSON.stringify([state.scene, sceneOptions(), params]);
+    paint = pictures.get(key) ?? (await composePicture(device, picture, stillWanted));
+    if (!paint || !stillWanted()) return null;
+    pictures.set(key, paint);
+  }
   const ref = buildScene3D(state.scene, sceneOptions());
-  await progress.stage('solver', `Setting up the GPU solver for ${ref.bodies.length.toLocaleString('en')} bodies…`, 0.85, ref.bodies.length);
+  await progress.stage('solver', `Setting up the GPU solver for ${ref.bodies.length.toLocaleString('en')} bodies…`, 0.9, ref.bodies.length);
   if (!stillWanted()) return null;
   freeSim();
-  return createGpuSim3D(device, state.scene, params, (n) => renderer.attachGpuBodies(n), sceneOptions(), ref);
+  const next = createGpuSim3D(device, state.scene, params, (n) => renderer.attachGpuBodies(n), sceneOptions(), ref);
+  if (paint) next.setPaint(paint);
+  return next;
+}
+
+/** Picture colours by scene, options and parameters: a replay skips the off-screen run. */
+const pictures = new Map<string, Uint32Array>();
+
+/**
+ * A picture scene's first run: step it off screen as far as its picture takes (a chunk at a
+ * time, so the page and the bar stay live), then colour each emitted body from the image at
+ * the spot it came to rest. The scene is deterministic, so the run shown next ends the same.
+ */
+async function composePicture(device: GPUDevice, picture: Picture3D, stillWanted: () => boolean): Promise<Uint32Array | null> {
+  const options = sceneOptions();
+  const image = loadPixels(picture.url);
+  const off = createGpuSim3D(device, state.scene, params, undefined, options);
+  off.readbackEvery = Number.MAX_SAFE_INTEGER;
+  const total = picture.steps(options);
+  try {
+    for (let s = 0; s < total; ) {
+      for (const end = Math.min(total, s + 60); s < end; s++) {
+        Object.assign(off.params, params);
+        off.step();
+      }
+      await device.queue.onSubmittedWorkDone();
+      if (!stillWanted()) return null;
+      progress.set(0.1 + 0.75 * (s / total), `Working out where every sphere lands… ${Math.round((100 * s) / total)}%`);
+    }
+    const bodies = await off.solver.readBodies();
+    const n = off.bodyCount - off.firstEmitted;
+    const x = new Float32Array(n);
+    const z = new Float32Array(n);
+    for (let k = 0; k < n; k++) {
+      x[k] = bodies[(off.firstEmitted + k) * BODY_FLOATS];
+      z[k] = bodies[(off.firstEmitted + k) * BODY_FLOATS + 2];
+    }
+    const uv = picture.coords(options, x, z);
+    const { data, width, height } = await image;
+    // Each sphere covers a few of the image's pixels: average a 3 x 3 patch
+    const paint = new Uint32Array(n);
+    for (let k = 0; k < n; k++) {
+      const cx = Math.round(uv[2 * k] * (width - 1));
+      const cy = Math.round(uv[2 * k + 1] * (height - 1));
+      let [r, g, b, count] = [0, 0, 0, 0];
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const px = Math.min(width - 1, Math.max(0, cx + dx));
+          const py = Math.min(height - 1, Math.max(0, cy + dy));
+          const o = (py * width + px) * 4;
+          [r, g, b, count] = [r + data[o], g + data[o + 1], b + data[o + 2], count + 1];
+        }
+      }
+      paint[k] = (Math.round(r / count) << 16) | (Math.round(g / count) << 8) | Math.round(b / count);
+    }
+    return paint;
+  } finally {
+    off.destroy();
+  }
+}
+
+/** An image's pixels (RGBA). */
+async function loadPixels(url: string): Promise<{ data: Uint8ClampedArray; width: number; height: number }> {
+  const bitmap = await createImageBitmap(await (await fetch(url)).blob());
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const context = canvas.getContext('2d')!;
+  context.drawImage(bitmap, 0, 0);
+  return { data: context.getImageData(0, 0, bitmap.width, bitmap.height).data, width: bitmap.width, height: bitmap.height };
 }
 
 /** Free the current sim's GPU buffers (a new one replaces it at once). */

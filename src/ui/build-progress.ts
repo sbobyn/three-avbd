@@ -79,6 +79,18 @@ export class BuildProgress {
     await nextFrame();
   }
 
+  /**
+   * Show measured progress (`fraction` of the way, 0 to 1): for work that yields as it goes,
+   * unlike the blocking stages. Ends the current stage without learning from it.
+   */
+  set(fraction: number, text: string): void {
+    this.current = null;
+    this.text.textContent = text;
+    this.fill.style.transition = 'transform 150ms linear';
+    this.fill.style.transform = `scaleX(${fraction})`;
+    this.root.setAttribute('aria-valuenow', String(Math.round(fraction * 100)));
+  }
+
   /** Hide the bar (the scene is ready, or the load was superseded). */
   done(): void {
     this.learn();

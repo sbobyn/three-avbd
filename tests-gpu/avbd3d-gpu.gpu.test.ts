@@ -12,7 +12,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BODY_FLOATS } from '../src/avbd3d/gpu/layout.ts';
 import { createGpuSim3D, GpuSim3D } from '../src/avbd3d/gpu/sim.ts';
-import { GpuSolver3D } from '../src/avbd3d/gpu/solver.ts';
+import { GpuSolver3D, gpuParams3D } from '../src/avbd3d/gpu/solver.ts';
+import { starryNight } from '../src/avbd3d/painting.ts';
 import { Rigid } from '../src/avbd3d/ref/body.ts';
 import { collide } from '../src/avbd3d/ref/collide.ts';
 import { IgnoreCollision } from '../src/avbd3d/ref/forces.ts';
@@ -431,4 +432,28 @@ gpuTest('showcase scenes run clean: wall smash, breakable wall, chain mail, heav
   assert.ok(pendulum.stats().maxJointError < 0.15, `pendulum joint error ${pendulum.stats().maxJointError}`);
   assert.equal(pendulum.stats().joints, 51);
   pendulum.destroy();
+});
+
+// The painting scene's trick needs its runs to repeat exactly: two runs through GpuSim3D (the
+// emitter spawning spheres, readbacks in between) end with every body in the same place, to
+// the bit. A small painting (3k spheres) keeps it quick.
+gpuTest('a picture scene runs identically twice (painting.ts)', async (device) => {
+  const options = { bodies: 3000 };
+  const steps = starryNight.picture!.steps(options);
+  const run = async () => {
+    const sim = createGpuSim3D(device, starryNight.name, { ...gpuParams3D(), ...(starryNight.params as (o: object) => object)(options) }, undefined, options);
+    for (let s = 0; s < steps; s++) sim.step();
+    const bodies = await sim.solver.readBodies();
+    const counters = await sim.solver.readCounters();
+    sim.destroy();
+    return { bodies: new Uint32Array(bodies.buffer), counters, count: sim.bodyCount };
+  };
+  const a = await run();
+  const b = await run();
+  assert.equal(a.count, b.count);
+  assert.equal(a.count - 7, 3000, 'every sphere poured');
+  assert.equal(a.counters.overflow, 0, 'fixed storage never overflowed');
+  let differ = 0;
+  for (let i = 0; i < a.bodies.length; i++) if (a.bodies[i] !== b.bodies[i]) differ++;
+  assert.equal(differ, 0, `${differ} words differ between the runs`);
 });

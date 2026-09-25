@@ -2,6 +2,7 @@
 // drive either, and the scene registry: the demo's scenes plus the GPU-only showcase scenes.
 
 import { type CameraView, gpuScenes3D, hangingRope, type Scene3D, type SceneOptions } from './bench-scenes.ts';
+import { starryNight } from './painting.ts';
 import { CUSTOM_3D } from './custom.ts';
 import { Rigid } from './ref/body.ts';
 import { Joint, Spring } from './ref/forces.ts';
@@ -257,6 +258,7 @@ export const allScenes3D: Scene3D[] = [
     return { ...s, build: look ? (solver: Solver) => (s.build(solver), look(solver)) : s.build, camera: CAMERAS[s.name] };
   }),
   ...gpuScenes3D,
+  starryNight,
   {
     // Any showcase scene at a chosen size (./custom.ts; the viewer's panel sets the options)
     name: 'Custom',

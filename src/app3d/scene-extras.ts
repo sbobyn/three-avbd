@@ -124,6 +124,7 @@ const PANELS: Record<string, (ctx: ExtrasContext) => PanelSpec> = {
     ],
   }),
   'Ragdolls on Cloth (24k)': (ctx) => ({ title: 'Ragdolls', items: [speed(ctx), replay(ctx, 'Drop again')] }),
+  'Starry Night (20k)': withCannonball((ctx) => ({ title: 'Starry Night', items: [speed(ctx), replay(ctx, 'Pour it again')] })),
   Custom: withCannonball((ctx) =>
     customPanel('Custom scene', CUSTOM_3D.map((k) => k.name), CUSTOM_MAX_3D, ctx.budget(), {
       current: () => ({ kind: ctx.option('kind'), bodies: ctx.option('bodies') }),

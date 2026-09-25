@@ -6,7 +6,7 @@ import { Rigid } from '../ref/body.ts';
 import { Spring } from '../ref/forces.ts';
 import { Solver } from '../ref/solver.ts';
 import { sphere } from '../shapes.ts';
-import type { SceneOptions } from '../bench-scenes.ts';
+import type { Emitter3D, SceneOptions } from '../bench-scenes.ts';
 import { CANNONBALL, DRAG_STIFFNESS, type LabelView3D, type PickResult3D, type RopeView3D, type Sim3D, type SimStats3D, type SpringView3D, sceneByName3D } from '../sim.ts';
 import { clothsOf, labelsOf, ropesOf, type Visual, visualOf } from '../visuals.ts';
 import { B_ANGVEL, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, JOINT_FLOATS, T_JOINT } from './layout.ts';
@@ -50,14 +50,46 @@ export class GpuSim3D implements Sim3D {
   private readonly scratch = new Solver();
 
   private readonly looks: GpuLooks3D;
+  /** Adds the scene's bodies as it runs (Scene3D.emitter). */
+  private readonly emitter: Emitter3D | null;
+  /** Never adapt the solver's storage (its scene must run the same every time). */
+  private readonly deterministic: boolean;
+  /** Paint for the emitted bodies, in the order they're added (a picture's colours). */
+  private paint: Uint32Array | null = null;
+  /** Index of the first emitted body. */
+  readonly firstEmitted: number;
 
   /** Steps between readbacks of poses and stats: fewer where labels follow bodies. */
   readbackEvery = READBACK_EVERY;
 
-  constructor(solver: GpuSolver3D, looks: GpuLooks3D = { visuals: [], level: [], springs: [], cloths: [], ropes: [], labels: [] }) {
+  constructor(
+    solver: GpuSolver3D,
+    looks: GpuLooks3D = { visuals: [], level: [], springs: [], cloths: [], ropes: [], labels: [] },
+    emitter: Emitter3D | null = null,
+    deterministic = false,
+  ) {
     this.solver = solver;
     this.looks = looks;
+    this.emitter = emitter;
+    this.deterministic = deterministic;
+    this.firstEmitted = solver.bodyCount;
     this.refresh();
+  }
+
+  /** Steps taken so far. */
+  get stepCount(): number {
+    return this.steps;
+  }
+
+  /** Paint the emitted bodies (in the order they're added), those added already and to come. */
+  setPaint(colors: Uint32Array): void {
+    this.paint = colors;
+    for (let i = this.firstEmitted; i < this.bodyCount; i++) this.looks.visuals[i] = this.paintOf(i);
+  }
+
+  private paintOf(i: number): Visual | undefined {
+    const k = i - this.firstEmitted;
+    return this.paint && k < this.paint.length ? { color: this.paint[k] } : undefined;
   }
 
   get params(): GpuParams3D {
@@ -80,6 +112,14 @@ export class GpuSim3D implements Sim3D {
   needJoints = true;
 
   step(): void {
+    if (this.emitter) {
+      this.emitter.spawn(this.steps, this.scratch);
+      if (this.scratch.bodies.length) {
+        const first = this.solver.addBodies(this.scratch.bodies);
+        if (first >= 0) for (let i = first; i < this.solver.bodyCount; i++) this.looks.visuals[i] = this.paintOf(i);
+        this.scratch.clear();
+      }
+    }
     this.steps++;
     if (this.steps % TIME_EVERY === 0) this.solver.profileNextStep((p) => (this.profile = p));
     this.solver.step();
@@ -110,7 +150,7 @@ export class GpuSim3D implements Sim3D {
           clashes: counters.clashes,
           kineticEnergy: bodies ? this.kineticEnergy(bodies) : this.cachedStats.kineticEnergy,
         };
-        this.solver.adapt(counters);
+        if (!this.deterministic) this.solver.adapt(counters);
       })
       .catch((e) => {
         // A readback still in flight when the scene is torn down is expected to fail
@@ -321,9 +361,12 @@ export function createGpuSim3D(
   options?: SceneOptions,
   ref: Solver = buildScene3D(name, options),
 ): GpuSim3D {
-  // Room for bodies shot at runtime
-  const capacity = ref.bodies.length + 4096;
-  const solver = new GpuSolver3D(device, ref, { bodyBuffer: allocateBodyBuffer?.(capacity), bodyCapacity: capacity });
+  const scene = sceneByName3D(name);
+  const opts = { ...scene.options, ...options };
+  const emitter = scene.emitter?.(opts) ?? null;
+  // Room for the scene's emitted bodies and bodies shot at runtime
+  const capacity = ref.bodies.length + (emitter?.bodies ?? 0) + 4096;
+  const solver = new GpuSolver3D(device, ref, { bodyBuffer: allocateBodyBuffer?.(capacity), bodyCapacity: capacity, capacity: scene.capacity?.(opts) });
   Object.assign(solver.params, params);
   // The viewer's tags, moved into the solver's (spatially sorted) body order
   const gpu = solver.refToGpu;
@@ -338,5 +381,5 @@ export function createGpuSim3D(
   const cloths = clothsOf(ref).map((grid) => grid.map((row) => row.map((b) => index.get(b)!)));
   const ropes = ropesOf(ref).map((r) => ({ ...r, links: r.links.map((b) => index.get(b)!) }));
   const labels = labelsOf(ref).map((l) => ({ bodies: l.bodies.map((b) => index.get(b)!), text: l.text }));
-  return new GpuSim3D(solver, { visuals, level, springs, cloths, ropes, labels });
+  return new GpuSim3D(solver, { visuals, level, springs, cloths, ropes, labels }, emitter, scene.capacity !== undefined);
 }

@@ -5,7 +5,7 @@
 import { Rigid } from './ref/body.ts';
 import { IgnoreCollision, Joint } from './ref/forces.ts';
 import { cross, length, qmul, qnormalize, quat, rotate, rotateInv, sub3, vec3 } from './ref/math.ts';
-import type { GpuParams3D } from './gpu/solver.ts';
+import type { GpuParams3D, GpuSolverOptions } from './gpu/solver.ts';
 import type { Solver } from './ref/solver.ts';
 import { sail, sphere } from './shapes.ts';
 import { addCloth, addLabel, addRope, EYE, hsl, RING, setVisual } from './visuals.ts';
@@ -530,6 +530,9 @@ export interface CameraView {
   target: [number, number, number];
   azimuth?: number;
   elevation?: number;
+  /** A width and height (m, square to the view) to keep in frame: on a narrow screen the
+   * camera backs off past `distance` until the width fits. */
+  fit?: [number, number];
 }
 
 /** A scene's adjustable settings (the viewer's scene panel), by name. */
@@ -549,6 +552,35 @@ export interface Scene3D {
   params?: Partial<GpuParams3D> | ((options: SceneOptions) => Partial<GpuParams3D>);
   /** Show the wind panel (scenes with sails). */
   windControl?: boolean;
+  /** Bodies the scene adds as it runs (see Emitter3D). */
+  emitter?: (options: SceneOptions) => Emitter3D;
+  /**
+   * Contact storage and colours sized up front. Set, the scene runs deterministically: the same
+   * bits every run on a device, since nothing overflows and nothing is resized mid-run.
+   */
+  capacity?: (options: SceneOptions) => GpuSolverOptions['capacity'];
+  /** The picture the scene's emitted bodies come to rest in (see painting.ts). */
+  picture?: Picture3D;
+}
+
+/**
+ * Bodies a scene adds as it runs: `spawn(step, solver)` builds into `solver` those to add before
+ * step `step`, a function of the step number alone so every run adds the same; `bodies` at most.
+ */
+export interface Emitter3D {
+  bodies: number;
+  spawn(step: number, solver: Solver): void;
+}
+
+/**
+ * A picture a deterministic scene forms: run it `steps` steps off screen, find each emitted
+ * body's place in the image (`coords`: u, v per body from its final x and z), colour it from
+ * `url` there, and run it again for real.
+ */
+export interface Picture3D {
+  url: string;
+  steps(options: SceneOptions): number;
+  coords(options: SceneOptions, x: ArrayLike<number>, z: ArrayLike<number>): Float32Array;
 }
 
 /** The viewer's GPU showcase scenes, after the paper's figures, plus scale tests. */

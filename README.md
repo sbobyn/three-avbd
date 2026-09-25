@@ -40,6 +40,11 @@ wind: pressure drag and skin friction on bodies marked as sails), plus scale tes
 box piles and columns). How bodies are drawn (capsules, chain-mail rings, cloth sheets, springs as
 coils) is cosmetic, tagged by the scenes in `src/avbd3d/visuals.ts`.
 
+Starry Night pours 20,000 spheres into a glass-fronted box and they come to rest as the
+painting. The scene is deterministic (the same bits every run on a device), so it runs once off
+screen to find where each sphere lands, colours each from the painting there, and then pours
+them again for real (`src/avbd3d/painting.ts`).
+
 3D demo controls: left-drag on a body grabs it (the body under the pointer glows), left-drag
 elsewhere orbits, right-drag pans, wheel zooms, Space, B or middle-click fires a cannonball, P
 pauses, `.` steps, R resets. The smash, pile and Custom scenes have a panel for the cannonball's
