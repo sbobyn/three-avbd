@@ -95,6 +95,29 @@ gpuTest('hulls added to a running solver collide (a tetrahedron that lands on an
   solver.destroy();
 });
 
+gpuTest('a corner below a face: the contact is at the deepest vertex', async (device) => {
+  // A hull turned so its face turned most downward doesn't have its lowest corner, though one of
+  // that face's corners is only 1.1 cm higher (both below the ground here) (an irregular hull; a box's always does). Clipping that face
+  // would leave the corner without a contact, and it would dig in unopposed (a fracture piece sank
+  // 12 cm in three-destruction); the incident face must be one with the deepest vertex
+  const shape = convexHull([0.2561, 0.0951, -0.0968, 0.8172, -0.2425, -0.056, -0.0405, 0.3724, -0.1458, 0.1848, -0.3987, 0.1566, 0.7349, -0.2247, -0.1935, -0.4959, -0.3936, -0.0024, 0.5888, -0.3632, 0.2444, -0.0599, -0.0911, 0.0487])!;
+  const q = [0.51974, -0.63238, -0.44381, 0.36469];
+  let deepest = 0;
+  let low = Infinity;
+  for (let v = 0; v < shape.vertices.length / 3; v++) {
+    const z = rotate(q, [shape.vertices[v * 3], shape.vertices[v * 3 + 1], shape.vertices[v * 3 + 2]])[2];
+    if (z < low) { low = z; deepest = v; }
+  }
+  const ref = scene();
+  hull(ref, shape, 1, 0.6, [0, 0, -low - 0.03], q);
+  const solver = new GpuSolver3D(device, ref, { spatialSort: false });
+  solver.step();
+  const contacts = await solver.readContactList();
+  const corner = [...shape.vertices.subarray(deepest * 3, deepest * 3 + 3)];
+  assert.ok(contacts.some((c) => Math.hypot(...c.rA.map((v, k) => v - corner[k])) < 1e-3), `no contact at the deepest corner: ${JSON.stringify(contacts.map((c) => c.rA))}`);
+  solver.destroy();
+});
+
 gpuTest('a tetrahedron falls onto a face and stays; a sphere rests on a hull slab', async (device) => {
   const ref = scene();
   const tetra = convexHull([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1])!;
@@ -157,3 +180,4 @@ gpuTest('without hulls, a hull collides as its bounding box', async (device) => 
   assert.ok(tetra.size.some((s) => Math.abs(pos(b, 1)[2] - s / 2) < 0.02), `at ${pos(b, 1)[2]}`);
   solver.destroy();
 });
+
