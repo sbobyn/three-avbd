@@ -1,5 +1,10 @@
 # three-avbd
 
+**Live demo: [three-avbd.vercel.app](https://three-avbd.vercel.app)** (Chrome, Edge or another WebGPU browser) ·
+[2D demo](https://three-avbd.vercel.app/2d.html) · [Results vs the paper](https://three-avbd.vercel.app/results.html)
+
+![Trailer: a 110,000-brick ring smashed, cannonballs, rope, chain mail, springs, ragdolls on cloth, friction, a flag in the wind, and 100,000 box columns, all recorded live in Chrome](docs/media/trailer.gif)
+
 Augmented Vertex Block Descent ([Giles, Diaz, Yuksel — SIGGRAPH 2025](https://graphics.cs.utah.edu/research/projects/avbd/))
 in TypeScript, Three.js and raw WGSL WebGPU compute. The goal is maximum performance on
 slightly older hardware (Apple M1, GTX 1080-class laptops).
