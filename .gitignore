@@ -5,3 +5,6 @@ dist/
 .DS_Store
 # Upstream C++ demos, fetched by `pnpm fetch-reference` for side-by-side porting
 reference/
+# Trailer rig recordings and output (tools/trailer)
+tools/trailer/clips/
+tools/trailer/*.mp4
