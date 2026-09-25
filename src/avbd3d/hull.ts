@@ -190,13 +190,9 @@ export function convexHull(points: ArrayLike<number>): HullShape | null {
     const start = next.keys().next().value!;
     const loop = [start];
     for (let v = next.get(start)!; v !== start && loop.length <= next.size; v = next.get(v)!) loop.push(v);
-    // Drop vertices where the boundary runs straight on (they are no corner of the polygon)
-    const corners = loop.filter((v, k) => {
-      const a = p[loop[(k + loop.length - 1) % loop.length]];
-      const b = p[loop[(k + 1) % loop.length]];
-      return len(cross(sub(p[v], a), sub(b, p[v]))) > tol * Math.max(len(sub(b, a)), tol);
-    });
-    polys.push({ n: [n[0] / l, n[1] / l, n[2] / l], verts: corners.length >= 3 ? corners : loop });
+    // Vertices where the boundary runs straight on stay: a neighbouring face may have a corner
+    // there, and the two faces' edges must match (the edge list pairs them)
+    polys.push({ n: [n[0] / l, n[1] / l, n[2] / l], verts: loop });
   }
 
   // Keep the vertices the faces use

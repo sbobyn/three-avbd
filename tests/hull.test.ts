@@ -95,6 +95,7 @@ test('points on a few planes (a fracture piece: many on each cut and face) make 
   const h = convexHull(points)!;
   assert.equal(h.vertices.length / 3 - h.edges.length + h.faces.length, 2);
   assert.equal(h.faces.length, 7);        // three cube faces, three more, and the cut
+  for (const [a, b, f, g] of h.edges) assert.ok(f !== g && h.faces[f].verts.includes(a) && h.faces[g].verts.includes(b));
   // The unit cube minus the corner x + y + z > 1.6: with a = 1 - x (…), the simplex a + b + c < 1.4
   // less the three bits of it beyond a face (a > 1): 1.4³/6 - 3 · 0.4³/6
   close(h.volume, 1 - (1.4 ** 3 - 3 * 0.4 ** 3) / 6, 1e-4);
