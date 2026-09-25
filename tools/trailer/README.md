@@ -35,5 +35,5 @@ battery-powered machine records slow motion.
 python3 tools/trailer/build.py --machine "Apple M1 Pro"
 ```
 
-Writes `tools/trailer/avbd-trailer.mp4` (1080p60, about 28 s). It warns about any shot below
+Writes `tools/trailer/avbd-trailer.mp4` (1080p60, about 26 s). It warns about any shot below
 60 fps rather than caption it as real time; `--machine` names the machine in the corner tag.

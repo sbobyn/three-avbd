@@ -3,11 +3,12 @@
 # them. Needs ffmpeg with libfreetype. See README.md.
 #
 #   python3 tools/trailer/build.py [--machine "Apple M1 Pro"] [--out trailer.mp4]
+#
+# Cut for a phone's feed: a plain-language hook first, big type, and no more than a couple of
+# seconds without something breaking.
 import argparse, json, os, re, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CLIPS = os.path.join(HERE, 'clips')
-TXT = os.path.join(CLIPS, 'captions')
 FONT = '/System/Library/Fonts/HelveticaNeue.ttc'
 INK = '0x1f2328'
 MUTED = '0x5b6168'
@@ -16,7 +17,10 @@ CARD = '0xfffdf9@0.86'
 args = argparse.ArgumentParser()
 args.add_argument('--machine', help='named in the corner tag, e.g. "Apple M1 Pro"')
 args.add_argument('--out', default=os.path.join(HERE, 'avbd-trailer.mp4'))
+args.add_argument('--clips', default=os.path.join(HERE, 'clips'), help='where the recordings and stats.json are')
 args = args.parse_args()
+CLIPS = args.clips
+TXT = os.path.join(CLIPS, 'captions')
 
 stats = json.load(open(os.path.join(CLIPS, 'stats.json')))
 shots = stats['shots']
@@ -36,20 +40,23 @@ def thousands(name):
     return f"{round(shots[name]['bodies'], -3):,}"
 
 
-# (clip, in, duration, [(caption, sub, from, to)])
+# (clip, in, duration, [(caption, sub, from, to)]), in cut order: the smashes first, then the
+# small scenes with a breaking wall among them, and the 100k grab and reveal to close (X loops
+# it back to the opening smash)
 SHOTS = [
-    ('ring', 0.3, 3.6, [(f"{thousands('ring')} rigid bodies", step('ring'), 2.0, 3.6)]),
+    ('ring', 0.3, 3.6, [(f"{thousands('ring')} rigid bodies", step('ring'), 2.2, 3.6)]),
     ('walls', 0.3, 3.4, [('Cannonballs', 'size and mass set live', 0.0, 3.4)]),
-    ('breakable', 0.5, 1.7, [('Breakable welds', '600 bricks', 0.0, 1.7)]),
-    ('rope', 1.5, 2.2, [('Rope', 'grab anything', 0.0, 2.2)]),
+    ('rope', 1.5, 2.0, [('Rope', 'grab and whip it', 0.0, 2.0)]),
     ('chain', 0.2, 1.5, [('Chain mail', '1,600 interlocked rings', 0.0, 1.5)]),
-    ('springs', 1.3, 2.0, [('Springs', '1,000 : 1 stiffness ratio', 0.0, 2.0)]),
+    ('breakable', 0.5, 1.7, [('Breakable welds', '600 bricks', 0.0, 1.7)]),
+    ('springs', 1.3, 1.8, [('Springs', '1,000 : 1 stiffness', 0.0, 1.8)]),
     ('ragdolls', 0.6, 1.7, [('Ragdolls on cloth', '24,000 bodies', 0.0, 1.7)]),
-    ('static', 3.4, 1.6, [('Static friction', 'μ 0.25 to 0.5', 0.0, 1.6)]),
-    ('dynamic', 0.1, 1.7, [('Dynamic friction', 'μ 0 to 5', 0.0, 1.7)]),
-    ('flag', 0.5, 2.8, [('Wind', 'steered live', 0.0, 2.8)]),
+    ('static', 3.8, 1.2, [('Static friction', '', 0.0, 1.2)]),
+    ('dynamic', 0.2, 1.2, [('Dynamic friction', '', 0.0, 1.2)]),
+    ('flag', 0.3, 2.1, [('Wind', 'steered live', 0.0, 2.1)]),
     ('columns', 0.05, 5.8, [('Grab anything', '', 0.0, 1.6), (f"{thousands('columns')} bodies", step('columns'), 1.7, 5.8)]),
 ]
+HOOK = (f"{thousands('ring')} bricks. Real time. In your browser.", 'Augmented Vertex Block Descent (SIGGRAPH 2025) on WebGPU')
 TAG = 'Recorded live in Chrome' + (f'  ·  {args.machine}' if args.machine else '')
 
 # A shot under 60 fps ran its simulation slower than real time: say so before captioning it
@@ -73,8 +80,9 @@ def fade(t0, t1):
 
 
 def draw(name, s, x, y, size, t0, t1, color=INK):
+    pad = round(size * 0.42)
     opts = [f"fontfile='{FONT}'", f"textfile='{text(name, s)}'", f'fontsize={size}', f'fontcolor={color}', f'x={x}', f'y={y}', f"alpha='{fade(t0, t1)}'"]
-    opts += ['box=1', f'boxcolor={CARD}', 'boxborderw=18|26']
+    opts += ['box=1', f'boxcolor={CARD}', f'boxborderw={pad}|{round(pad * 1.4)}']
     return 'drawtext=' + ':'.join(opts)
 
 
@@ -86,12 +94,13 @@ for i, (clip, start, dur, caps) in enumerate(SHOTS):
         # The last caption holds to the final frame
         if i == len(SHOTS) - 1 and j == len(caps) - 1:
             t1 = dur + 1
-        f.append(draw(f'{clip}{j}', f'{cap}  ·  {sub}' if sub else cap, 90, 'h-150', 40, t0, t1))
+        f.append(draw(f'{clip}{j}', f'{cap}  ·  {sub}' if sub else cap, 96, 'h-180', 56, t0, t1))
     if clip == 'ring':
-        # Opening title over the smash
-        f.append(draw('title', 'Augmented Vertex Block Descent', 90, 90, 64, -1, 2.1))
-        f.append(draw('title2', 'real time, in the browser, on WebGPU', 90, 196, 36, -1, 2.1, color=MUTED))
-    f.append(draw(f'{clip}live', TAG, 'w-tw-72', 64, 26, -1, dur + 1, color=MUTED))
+        # The hook, on screen from the first frame
+        f.append(draw('title', HOOK[0], 96, 96, 76, -1, 2.1))
+        f.append(draw('title2', HOOK[1], 96, 222, 38, -1, 2.1, color=MUTED))
+    # The tag waits for the hook to clear the top of the frame
+    f.append(draw(f'{clip}live', TAG, 'w-tw-84', 72, 34, 2.1 if clip == 'ring' else -1, dur + 1, color=MUTED))
     chains.append(','.join(f) + f'[v{i}]')
     labels.append(f'[v{i}]')
 

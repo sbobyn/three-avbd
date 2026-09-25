@@ -67,12 +67,14 @@ S.breakable = async () => {
 };
 
 S.rope = async () => {
-  const a = { target: [1.5, 0, 1.5], dist: 28, az: 94, el: 0.08 };
+  // The whole rope in frame with room above its block: it hangs 20 m
+  const a = { target: [1.5, 0, 2.4], dist: 31, az: 94, el: 0.08 };
   await start('Rope', a);
+  await T.warmGrab(lowest());
   let grabbed;
   const stats = await T.record('rope', 5200, async () => {
     state.paused = false;
-    const drift = T.tween(a, { target: [0.5, 0, 2], dist: 25, az: 80, el: 0.06 }, 5200, T.sine);
+    const drift = T.tween(a, { target: [0.5, 0, 2.2], dist: 28, az: 80, el: 0.06 }, 5200, T.sine);
     await T.sleep(1700);
     grabbed = await T.grabBody(lowest() - 3, 420, -120, 650, 450);
     await T.sleep(150);
@@ -94,6 +96,7 @@ S.chain = async () => {
 S.springs = async () => {
   const a = { target: [0, 0, 4], dist: 25, az: 90, el: 0.14 };
   await start('Spring Ratio', a);
+  await T.warmGrab(lowest());
   T.ui = ['.avbd-label'];
   let grabbed;
   const stats = await T.record('springs', 4200, async () => {
@@ -155,6 +158,10 @@ S.columns = async () => {
   T.view(a);
   T.setBall(1.8, 4000, 70);
   await T.sleep(600);
+  // Paused so the warm-up grab leaves the columns standing
+  state.paused = true;
+  await T.warmGrab(lowest());
+  state.paused = false;
   return T.record('columns', 7600, async () => {
     await T.grab([0, -75, 5], -380, 60, 750, 450);
     await T.sleep(250);

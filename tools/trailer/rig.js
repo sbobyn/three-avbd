@@ -121,6 +121,17 @@ T.grabBody = async (body, dx, dy, ms = 700, glideMs = 450) => {
   await T.glide(cursor.x + dx, cursor.y + dy, ms);
   return grabbed;
 };
+/**
+ * Grab and let go of `body` off camera (before a take): the first grab after a page load
+ * compiles the drag line's shader, a visible stall mid-take.
+ */
+T.warmGrab = async (body) => {
+  const [x, y] = T.screen(sim().position(body));
+  pointer(canvas, 'pointerdown', x, y, true);
+  for (let i = 0; i < 4; i++) await raf();
+  pointer(canvas, 'pointerup', x, y, false);
+  await raf();
+};
 const center = (el) => {
   const r = el.getBoundingClientRect();
   return [r.left + r.width / 2, r.top + r.height / 2];
@@ -223,17 +234,18 @@ const drawCursor = () => {
   if (alpha <= 0) return;
   ctx.globalAlpha = alpha;
   const since = performance.now() - cursor.pulse;
-  if (since < 450) {
+  // A click: a ring that grows and fades (sized to read in a phone's feed)
+  if (since < 500) {
     ctx.beginPath();
-    ctx.arc(cursor.x, cursor.y, 10 + (since / 450) * 26, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(184, 80, 63, ${0.35 * (1 - since / 450)})`;
+    ctx.arc(cursor.x, cursor.y, 16 + (since / 500) * 44, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(184, 80, 63, ${0.45 * (1 - since / 500)})`;
     ctx.fill();
   }
   ctx.save();
   ctx.translate(cursor.x, cursor.y);
-  ctx.scale(cursor.down ? 1.3 : 1.4, cursor.down ? 1.3 : 1.4);
+  ctx.scale(cursor.down ? 2.5 : 2.8, cursor.down ? 2.5 : 2.8);
   ctx.shadowColor = 'rgba(0,0,0,0.3)';
-  ctx.shadowBlur = 4;
+  ctx.shadowBlur = 3;
   ctx.shadowOffsetY = 1;
   ctx.fillStyle = '#fff';
   ctx.fill(arrow);
