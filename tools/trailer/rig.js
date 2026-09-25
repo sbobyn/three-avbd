@@ -67,16 +67,28 @@ T.screen = (p) => {
 const cursor = (T.cursor = { x: W * 0.62, y: H * 0.6, shown: false, down: false, pulse: 0, fadeAt: null });
 const pointer = (target, type, x, y, down) =>
   target.dispatchEvent(new PointerEvent(type, { pointerId: 1, pointerType: 'mouse', clientX: x, clientY: y, button: 0, buttons: down ? 1 : 0, bubbles: true }));
-/** Glide the cursor to (x, y). */
+/**
+ * The pointer is over the canvas, as a real mouse's would be: the app then reads body poses
+ * back (picking tests them; without, it picks against stale poses and misses) and the body
+ * under it glows.
+ */
+let entered = false;
+const enter = () => {
+  if (entered) return;
+  entered = true;
+  canvas.dispatchEvent(new PointerEvent('pointerenter', { pointerId: 1, pointerType: 'mouse', clientX: cursor.x, clientY: cursor.y }));
+};
+/** Glide the cursor to (x, y), hovering (or dragging, while pressed). */
 T.glide = async (x, y, ms = 450) => {
   cursor.shown = true;
+  enter();
   if (!cursor.down) cursor.fadeAt = null;
   const [x0, y0] = [cursor.x, cursor.y], t0 = performance.now();
   for (;;) {
     const u = Math.min((performance.now() - t0) / ms, 1), k = T.smooth(u);
     cursor.x = lerp(x0, x, k);
     cursor.y = lerp(y0, y, k);
-    if (cursor.down) pointer(cursor.target ?? canvas, 'pointermove', cursor.x, cursor.y, true);
+    pointer(cursor.target ?? canvas, 'pointermove', cursor.x, cursor.y, cursor.down);
     if (u >= 1) return;
     await raf();
   }
@@ -88,18 +100,26 @@ T.press = (target = canvas) => {
   pointer(target, 'pointerdown', cursor.x, cursor.y, true);
 };
 T.lift = () => {
+  if (!cursor.down) return;
   pointer(cursor.target ?? canvas, 'pointerup', cursor.x, cursor.y, false);
   cursor.down = false;
   cursor.target = null;
   // Let go: the cursor fades away shortly after
   cursor.fadeAt = performance.now() + 350;
 };
-/** Grab whatever is under world point p and drag it by (dx, dy) pixels. */
+/**
+ * Grab whatever is under world point p and drag it by (dx, dy) pixels. A miss lets go at once
+ * (dragging empty canvas would orbit the camera) and returns -1.
+ */
 T.grab = async (p, dx, dy, ms = 800, glideMs = 350) => {
   const [x, y] = T.screen(p);
   await T.glide(x, y, glideMs);
   T.press(canvas);
   const body = sim().dragBody;
+  if (body < 0) {
+    T.lift();
+    return -1;
+  }
   await T.glide(x + dx, y + dy, ms);
   return body;
 };
@@ -118,6 +138,10 @@ T.grabBody = async (body, dx, dy, ms = 700, glideMs = 450) => {
   }
   T.press(canvas);
   const grabbed = sim().dragBody;
+  if (grabbed < 0) {
+    T.lift();
+    return -1;
+  }
   await T.glide(cursor.x + dx, cursor.y + dy, ms);
   return grabbed;
 };

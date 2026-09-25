@@ -196,8 +196,9 @@ T.runAll = async (options = {}) => {
 
 /**
  * Starry Night, for its own clip: the whole pour in real time from the scene's own framing, a
- * locked-off camera (a moving one would only distract from the picture forming), then a slow
- * push in on the finished painting to show it's made of spheres.
+ * locked-off camera (a moving one would only distract from the picture forming), then a push
+ * in on the finished painting and two spheres grabbed out of it: one stirred through the pile
+ * and flung out of the top, one thrown up and away.
  */
 S.starry = async () => {
   state.paused = true;
@@ -206,10 +207,33 @@ S.starry = async () => {
   const view = T.current();
   const a = { ...view, target: [view.target[0], view.target[1], view.target[2] - 2], el: 0.16 };
   T.view(a);
-  const close = { target: [a.target[0] + 3, a.target[1], a.target[2] + 6], dist: a.dist * 0.42, az: a.az, el: 0.1 };
-  return T.record('starry', 31000, async () => {
+  const close = { target: [2, 0, 19], dist: view.dist * 0.3, az: a.az, el: 0.08 };
+  let grabs = [];
+  const stats = await T.record('starry', 36500, async () => {
     state.paused = false;
-    await T.sleep(26500);
-    await T.tween(a, close, 4000);
+    await T.sleep(26000);
+    await T.tween(a, close, 3200);
+    await T.sleep(250);
+    // Stir one through the swirl, then fling it up out of the frame
+    const first = await T.grab([0, 0, 18.5], 0, 0, 1, 500);
+    const [x, y] = [T.cursor.x, T.cursor.y];
+    if (first >= 0) {
+      await T.glide(x + 170, y + 80, 420);
+      await T.glide(x + 60, y + 210, 380);
+      await T.glide(x - 140, y + 90, 380);
+      await T.glide(x - 60, y - 520, 240);
+      T.lift();
+    }
+    await T.sleep(450);
+    // Throw another up and away
+    const second = await T.grab([5, 0, 21.5], 0, 0, 1, 450);
+    const [x2, y2] = [T.cursor.x, T.cursor.y];
+    if (second >= 0) {
+      await T.glide(x2 - 60, y2 + 70, 300);
+      await T.glide(x2 + 420, y2 - 380, 230);
+      T.lift();
+    }
+    grabs = [first, second];
   });
+  return { ...stats, grabs };
 };
