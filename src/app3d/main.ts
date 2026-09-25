@@ -145,6 +145,7 @@ async function buildSim(stillWanted: () => boolean): Promise<Sim3D | null> {
     if (sceneByName3D(state.scene).gpuOnly) state.scene = DEFAULT_SCENE;
   }
   const expected = sizeOf(state.scene) || 2000;
+  renderer.setDecor([]);
   await progress.stage('build', `Building ${expected.toLocaleString('en')} bodies…`, device ? 0.1 : 0.85, expected);
   if (!stillWanted()) return null;
   if (!device) {
@@ -154,31 +155,39 @@ async function buildSim(stillWanted: () => boolean): Promise<Sim3D | null> {
   }
   // A picture scene runs once off screen first, to colour its bodies (painting.ts)
   const picture = sceneByName3D(state.scene).picture;
-  let paint: Uint32Array | null = null;
+  let composed: Composed | null = null;
   if (picture) {
     const key = JSON.stringify([state.scene, sceneOptions(), params]);
-    paint = pictures.get(key) ?? (await composePicture(device, picture, stillWanted));
-    if (!paint || !stillWanted()) return null;
-    pictures.set(key, paint);
+    composed = pictures.get(key) ?? (await composePicture(device, picture, stillWanted));
+    if (!composed || !stillWanted()) return null;
+    pictures.set(key, composed);
   }
   const ref = buildScene3D(state.scene, sceneOptions());
   await progress.stage('solver', `Setting up the GPU solver for ${ref.bodies.length.toLocaleString('en')} bodies…`, 0.9, ref.bodies.length);
   if (!stillWanted()) return null;
   freeSim();
   const next = createGpuSim3D(device, state.scene, params, (n) => renderer.attachGpuBodies(n), sceneOptions(), ref);
-  if (paint) next.setPaint(paint);
+  if (picture && composed) {
+    next.setPaint(composed.paint);
+    renderer.setDecor(picture.frame(sceneOptions(), composed.top));
+  }
   return next;
 }
 
-/** Picture colours by scene, options and parameters: a replay skips the off-screen run. */
-const pictures = new Map<string, Uint32Array>();
+/** A picture scene's first run: its bodies' colours, and how high the finished pile stands. */
+interface Composed {
+  paint: Uint32Array;
+  top: number;
+}
+/** Composed pictures by scene, options and parameters: a replay skips the off-screen run. */
+const pictures = new Map<string, Composed>();
 
 /**
  * A picture scene's first run: step it off screen as far as its picture takes (a chunk at a
  * time, so the page and the bar stay live), then colour each emitted body from the image at
  * the spot it came to rest. The scene is deterministic, so the run shown next ends the same.
  */
-async function composePicture(device: GPUDevice, picture: Picture3D, stillWanted: () => boolean): Promise<Uint32Array | null> {
+async function composePicture(device: GPUDevice, picture: Picture3D, stillWanted: () => boolean): Promise<Composed | null> {
   const options = sceneOptions();
   const image = loadPixels(picture.url);
   const off = createGpuSim3D(device, state.scene, params, undefined, options);
@@ -220,7 +229,7 @@ async function composePicture(device: GPUDevice, picture: Picture3D, stillWanted
       }
       paint[k] = (Math.round(r / count) << 16) | (Math.round(g / count) << 8) | Math.round(b / count);
     }
-    return paint;
+    return { paint, top: picture.top(options, x, z) };
   } finally {
     off.destroy();
   }

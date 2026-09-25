@@ -581,6 +581,19 @@ export interface Picture3D {
   url: string;
   steps(options: SceneOptions): number;
   coords(options: SceneOptions, x: ArrayLike<number>, z: ArrayLike<number>): Float32Array;
+  /** How high the finished pile stands, from the same final positions. */
+  top(options: SceneOptions, x: ArrayLike<number>, z: ArrayLike<number>): number;
+  /** What's drawn around the finished picture (a frame sized to the pile), not simulated. */
+  frame(options: SceneOptions, top: number): Decor3D[];
+}
+
+/** A box drawn but not simulated (Picture3D.frame): size and centre in metres. */
+export interface Decor3D {
+  size: [number, number, number];
+  center: [number, number, number];
+  color: number;
+  /** Polished metal (the colour is its reflectance). */
+  metal?: boolean;
 }
 
 /** The viewer's GPU showcase scenes, after the paper's figures, plus scale tests. */

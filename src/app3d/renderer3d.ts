@@ -7,6 +7,7 @@ import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { float, instancedBufferAttribute, mrt, normalize, normalView, output, pass, positionGeometry, positionLocal, reflector, renderOutput, vec3, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
+import type { Decor3D } from '../avbd3d/bench-scenes.ts';
 import type { Sim3D } from '../avbd3d/sim.ts';
 import { coilGeometry, coilMaterial } from './coils.ts';
 import { GpuBodies3D, Shape } from './gpu-bodies3d.ts';
@@ -145,6 +146,8 @@ export class Renderer3D {
   /** The body whose top face is the floor, if any (the mirror's plane follows it), and the sim
    * it was found in. */
   private floorBody = -1;
+  /** Boxes drawn but not simulated (setDecor). */
+  private readonly decor = new THREE.Group();
   private floorSim: Sim3D | null = null;
   private readonly floorMaterials: { mirror: THREE.Material; plain: THREE.Material };
 
@@ -191,6 +194,7 @@ export class Renderer3D {
 
     this.scene.add(this.coils.mesh);
     this.scene.add(this.mirror.target);
+    this.scene.add(this.decor);
 
     this.lines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicNodeMaterial({ vertexColors: true, depthTest: false }));
     this.lines.frustumCulled = false;
@@ -239,6 +243,23 @@ export class Renderer3D {
     this.gpuBodiesShown = -1;
     this.scene.add(this.gpuBodies.group);
     return this.gpuBodies.gpuBuffer(this.renderer);
+  }
+
+  /** Draw `boxes` (not simulated: a picture's frame), replacing the last ones. */
+  setDecor(boxes: Decor3D[]): void {
+    for (const mesh of this.decor.children as THREE.Mesh[]) {
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    }
+    this.decor.clear();
+    for (const box of boxes) {
+      const material = new THREE.MeshStandardNodeMaterial({ color: box.color, metalness: box.metal ? 1 : 0, roughness: box.metal ? 0.3 : 0.85 });
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(...box.size), material);
+      mesh.position.set(...box.center);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.decor.add(mesh);
+    }
   }
 
   detachGpuBodies(): void {

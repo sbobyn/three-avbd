@@ -10,7 +10,7 @@ Object.assign(globalThis, globals);
 const { GpuSolver3D, gpuParams3D } = await import('../src/avbd3d/gpu/solver.ts');
 const { BODY_FLOATS } = await import('../src/avbd3d/gpu/layout.ts');
 const { Solver } = await import('../src/avbd3d/ref/solver.ts');
-const { buildPainting, paintingEmitter, paintingLayout, pictureCoords, PAINTING_DT } = await import('../src/avbd3d/painting.ts');
+const { buildPainting, paintingEmitter, paintingLayout, pictureCoords, pileTop, PAINTING_DT } = await import('../src/avbd3d/painting.ts');
 
 const [imagePath, iwArg, ihArg, bodiesArg = '20000', outPath = 'painting.rgb', twice] = process.argv.slice(2);
 const [iw, ih] = [Number(iwArg), Number(ihArg)];
@@ -94,6 +94,7 @@ for (let k = 0; k < layout.bodies; k++) {
   zf[k] = bodies[(first + k) * BODY_FLOATS + 2];
 }
 const uv = pictureCoords(layout, xs, zf);
+console.log(`pile top (frame height) ${pileTop(layout, xs, zf).toFixed(2)} m, planned ${layout.height.toFixed(2)} m`);
 const px = 640;
 const py = Math.round((px * fill) / w);
 const out = Buffer.alloc(px * py * 3, 20);
