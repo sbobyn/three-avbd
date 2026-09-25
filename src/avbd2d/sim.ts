@@ -7,6 +7,7 @@ import { Joint, Spring } from './ref/forces.ts';
 import { Manifold } from './ref/manifold.ts';
 import { countForces, kineticEnergy, maxJointError } from './ref/metrics.ts';
 import { benchScenes, type SceneDef } from './bench-scenes.ts';
+import { customScene2D } from './custom.ts';
 import { scenes } from './ref/scenes.ts';
 import { Solver, type SolverParams } from './ref/solver.ts';
 import { CS, INFO_STRIDE, type JointHandle, RA, RB, SoaSolver2D, type SoaOptions, STIFF, T_CONTACT, T_JOINT, T_SPRING } from './soa/solver.ts';
@@ -238,7 +239,7 @@ export const BACKENDS: Record<Backend2D, string> = {
 export type CpuBackend2D = Exclude<Backend2D, 'gpu'>;
 
 /** Demo scenes followed by the scalable benchmark scenes. */
-export const allScenes2D: SceneDef[] = [...scenes, ...benchScenes];
+export const allScenes2D: SceneDef[] = [...scenes, ...benchScenes, customScene2D];
 
 export function sceneByName(name: string): SceneDef {
   const scene = allScenes2D.find((s) => s.name === name);

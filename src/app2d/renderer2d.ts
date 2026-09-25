@@ -1,20 +1,30 @@
-// Three.js (WebGPU) debug renderer for the 2D solvers: instanced boxes with a constant 1px
-// outline, joint/spring lines and contact points. Everything is rebuilt from solver state each
-// frame, which is fine for the CPU backends (thousands of bodies at most).
+// Three.js (WebGPU) renderer for the 2D solvers, in the 3D viewer's look (../app3d/look.ts):
+// instanced boxes, each in its own pastel with a constant 1px outline a shade darker, a warm
+// taupe for static bodies, joint/spring lines and contact points. Everything is rebuilt from
+// solver state each frame, which is fine for the CPU backends (thousands of bodies at most).
 
 import * as THREE from 'three/webgpu';
 import type { Sim2D } from '../avbd2d/sim.ts';
+import { BLOCK_PALETTE, LOOK } from '../app3d/look.ts';
 import { GpuBodies } from './gpu-bodies.ts';
 
-const COLORS = {
-  background: 0xf4f4f1,
-  outline: 0x1d1d1f,
-  dynamic: 0x9aa3ad,
-  static: 0x5d6671,
-  selected: 0xe0a33a,
-  joint: 0xc0392b,
+export const COLORS = {
+  background: LOOK.skyHorizon,
+  static: 0xc4b8a4,
+  selected: LOOK.selected,
+  joint: 0xb8503f,
   contact: 0xd6336c,
+  /** Outlines: the fill's colour, this much darker. */
+  outlineShade: 0.62,
 };
+
+/** Integer hash (lowbias32) for picking a body's palette colour. */
+function hashIndex(i: number): number {
+  let x = i >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x7feb352d);
+  x = Math.imul(x ^ (x >>> 15), 0x846ca68b);
+  return (x ^ (x >>> 16)) >>> 0;
+}
 
 export interface Camera2D {
   x: number;
@@ -80,7 +90,7 @@ export class Renderer2D {
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.scene.background = new THREE.Color(COLORS.background);
 
-    this.outlines = new InstancedQuads(this.scene, 0, COLORS.outline);
+    this.outlines = new InstancedQuads(this.scene, 0);
     this.fills = new InstancedQuads(this.scene, 1);
     this.contacts = new InstancedQuads(this.scene, 3, COLORS.contact);
 
@@ -174,14 +184,16 @@ export class Renderer2D {
       const fh = Math.max(h - 2 * px, 0);
       m.set(c * fw, -s * fh, 0, x, s * fw, c * fh, 0, y, 0, 0, 1, 0, 0, 0, 0, 1);
       fill.setMatrixAt(i, m);
-      const hex = i === this.selected ? COLORS.selected : sim.isDynamic(i) ? COLORS.dynamic : COLORS.static;
+      const hex = i === this.selected ? COLORS.selected : sim.isDynamic(i) ? BLOCK_PALETTE[hashIndex(i) % BLOCK_PALETTE.length] : COLORS.static;
       fill.setColorAt(i, this.color.setHex(hex));
+      outline.setColorAt(i, this.color.multiplyScalar(COLORS.outlineShade));
     }
     outline.count = n;
     fill.count = n;
     outline.instanceMatrix.needsUpdate = true;
     fill.instanceMatrix.needsUpdate = true;
     if (fill.instanceColor) fill.instanceColor.needsUpdate = true;
+    if (outline.instanceColor) outline.instanceColor.needsUpdate = true;
   }
 
   private readonly lines2d: number[] = [];

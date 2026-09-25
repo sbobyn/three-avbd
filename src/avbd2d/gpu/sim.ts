@@ -54,15 +54,27 @@ export class GpuSim implements Sim2D {
     if (this.steps % READBACK_EVERY === 0) this.refresh();
   }
 
+  /**
+   * What the periodic readback copies besides the counters (which the solver's adapt needs):
+   * poses (picking) and stats (kinetic energy, joint error: the detailed HUD). Poses are the
+   * whole body buffer (25 MB at 262k bodies), so the app asks only when it needs them.
+   */
+  needPoses = true;
+  needStats = true;
+
   /** Kick off a readback of poses and stats unless one is already in flight. */
   private refresh(): void {
     if (this.reading) return;
     this.reading = true;
-    Promise.all([this.solver.readBodies(), this.solver.readStats(), this.solver.readCounters()])
-      .then(([bodies, stats, counters]) => {
-        this.poses = bodies;
+    const poses = this.needPoses || this.needStats || this.poses.length === 0;
+    Promise.all([poses ? this.solver.readBodies() : null, this.solver.readCounters()])
+      .then(async ([bodies, counters]) => {
+        if (bodies) this.poses = bodies;
+        const stats = this.needStats && bodies ? await this.solver.readStats(bodies) : this.cachedStats;
         this.cachedStats = {
-          ...stats,
+          kineticEnergy: stats.kineticEnergy,
+          maxJointError: stats.maxJointError,
+          joints: stats.joints,
           contacts: counters.contacts,
           colors: counters.colors,
           colorConflicts: counters.clashes,
@@ -71,7 +83,19 @@ export class GpuSim implements Sim2D {
         // Grow the colour cap / contact storage if the GPU is getting close to the limits
         this.solver.adapt(counters);
       })
+      .catch((e) => {
+        // A readback still in flight when the scene is torn down is expected to fail
+        if (!this.destroyed) throw e;
+      })
       .finally(() => (this.reading = false));
+  }
+
+  private destroyed = false;
+
+  /** Free the solver's GPU buffers (the scene is being replaced). */
+  destroy(): void {
+    this.destroyed = true;
+    this.solver.destroy();
   }
 
   pose(i: number): [number, number, number] {

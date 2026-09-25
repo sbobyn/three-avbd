@@ -5,13 +5,18 @@ import { DEFAULT_SCENE } from '../avbd2d/ref/scenes.ts';
 import { createGpuSim, GpuSim } from '../avbd2d/gpu/sim.ts';
 import { PHASES } from '../avbd2d/gpu/solver.ts';
 import { defaultParams, parallelParams } from '../avbd2d/ref/solver.ts';
-import { Controls, ICONS } from '../ui/controls.ts';
+import { Controls, ICONS, openRepo } from '../ui/controls.ts';
 import { otherDemoUrl, sceneMenu } from '../ui/scene-menu.ts';
+import { titleCard } from '../ui/title-card.ts';
+import { customPanel } from '../ui/custom-panel.ts';
+import { ScenePanel } from '../ui/scene-panel.ts';
+import { CUSTOM_2D, CUSTOM_MAX_2D, custom2D } from '../avbd2d/custom.ts';
 import { allScenes2D, type Backend2D, BACKENDS, createSim, type Sim2D, sceneByName } from '../avbd2d/sim.ts';
 import { type Camera2D, Renderer2D } from './renderer2d.ts';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const hud = document.querySelector<HTMLDivElement>('#hud')!;
+titleCard('avbd2d-card-collapsed');
 
 if (!('gpu' in navigator)) {
   hud.textContent = 'WebGPU is not available in this browser; rendering falls back to WebGL2.';
@@ -37,7 +42,7 @@ const state = {
   boxHeight: 1,
   boxVelocityX: 0,
   boxVelocityY: 0,
-  showContacts: true,
+  showContacts: false,
   showJoints: true,
   details: false,
 };
@@ -80,14 +85,34 @@ function buildSim(): Sim2D {
   return createSim(state.backend, state.scene, params);
 }
 
-let sim: Sim2D = buildSim();
+/** Built by the first loadScene() at the bottom. */
+let sim!: Sim2D;
+
+/** The Custom scene's panel (kind and size, built on demand). */
+const panel = new ScenePanel();
+const showPanel = () =>
+  panel.show(
+    state.scene === 'Custom'
+      ? customPanel('Custom scene', CUSTOM_2D.map((k) => k.name), CUSTOM_MAX_2D, {
+          current: () => ({ ...custom2D }),
+          build: (kind, bodies) => {
+            Object.assign(custom2D, { kind, bodies });
+            loadScene();
+          },
+          bodyCount: () => sim.bodyCount,
+        })
+      : null,
+  );
 
 function loadScene(resetCamera = true): void {
-  sim.endDrag();
+  sim?.endDrag();
+  if (sim instanceof GpuSim) sim.destroy();
   sim = buildSim();
   ui.setScene(state.scene);
   ui.refresh();
-  if (resetCamera) Object.assign(camera, sceneCameras[state.scene] ?? { x: 0, y: 5, zoom: 25 });
+  showPanel();
+  const custom = state.scene === 'Custom' ? CUSTOM_2D[custom2D.kind].camera(custom2D.bodies, canvas.clientWidth) : undefined;
+  if (resetCamera) Object.assign(camera, custom ?? sceneCameras[state.scene] ?? { x: 0, y: 5, zoom: 25 });
   url.searchParams.set('scene', state.scene);
   url.searchParams.set('backend', state.backend);
   history.replaceState(null, '', url);
@@ -110,6 +135,7 @@ const ui = new Controls({
   buttons: [
     { label: 'Play / pause (P)', icon: () => (state.paused ? ICONS.play : ICONS.pause), onClick: () => (state.paused = !state.paused) },
     { label: 'Restart the scene (R)', icon: ICONS.restart, onClick: () => loadScene(false) },
+    { label: 'Source on GitHub', icon: ICONS.github, onClick: openRepo },
   ],
   settings: [
     {
@@ -164,9 +190,40 @@ const worldPoint = (e: PointerEvent | WheelEvent): [number, number] => {
 };
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+/** The pointer is over the canvas; a touch screen has been used (no hover: poses on hand). */
+let pointerInside = false;
+let touched = matchMedia('(hover: none)').matches;
+canvas.addEventListener('pointerenter', () => (pointerInside = true));
+canvas.addEventListener('pointerleave', () => (pointerInside = false));
+canvas.addEventListener('pointerdown', (e) => e.pointerType !== 'mouse' && (touched = true), { capture: true });
+/** Frames still to render after the last input while paused. */
+let restless = 3;
+for (const type of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'resize'] as const) window.addEventListener(type, () => (restless = 3), { passive: true });
+// Touch: one finger drags a body or pans; two pinch-zoom about their midpoint and pan with it
+const touches = new Map<number, { x: number; y: number }>();
+let pinch: { distance: number; x: number; y: number } | null = null;
+const pinchOf = () => {
+  const [a, b] = [...touches.values()];
+  return { distance: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+};
+
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   const mouse = worldPoint(e);
+  if (e.pointerType === 'touch') {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) {
+      sim.endDrag();
+      panning = null;
+      pinch = pinchOf();
+      return;
+    }
+    if (touches.size > 2) return;
+    const hit = sim.pick(mouse[0], mouse[1]);
+    if (hit) sim.startDrag(hit.body, hit.local, mouse);
+    else panning = { x: e.clientX, y: e.clientY };
+    return;
+  }
   if (e.button === 1 || (e.button === 0 && (spaceDown || e.shiftKey))) {
     panning = { x: e.clientX, y: e.clientY };
   } else if (e.button === 0) {
@@ -177,6 +234,20 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 });
 canvas.addEventListener('pointermove', (e) => {
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch && touches.size >= 2) {
+    // The world point under the fingers' old midpoint ends up under the new one
+    const next = pinchOf();
+    const rect = canvas.getBoundingClientRect();
+    const [w, h] = [canvas.clientWidth, canvas.clientHeight];
+    const held = renderer.toWorld(camera, pinch.x - rect.left, pinch.y - rect.top, w, h);
+    camera.zoom = Math.min(Math.max((camera.zoom * next.distance) / Math.max(pinch.distance, 1), 0.5), 5000);
+    const now = renderer.toWorld(camera, next.x - rect.left, next.y - rect.top, w, h);
+    camera.x += held[0] - now[0];
+    camera.y += held[1] - now[1];
+    pinch = next;
+    return;
+  }
   const mouse = worldPoint(e);
   if (panning) {
     camera.x -= (e.clientX - panning.x) / camera.zoom;
@@ -185,7 +256,10 @@ canvas.addEventListener('pointermove', (e) => {
   }
   sim.moveDrag(mouse[0], mouse[1]);
 });
-const endPointer = () => {
+const endPointer = (e: PointerEvent) => {
+  touches.delete(e.pointerId);
+  if (touches.size < 2) pinch = null;
+  if (touches.size > 0) return;
   panning = null;
   sim.endDrag();
 };
@@ -260,21 +334,32 @@ function frame(now: number): void {
 
   // Fixed-timestep stepping in real time; cap the catch-up so slow scenes degrade to slow
   // motion instead of a spiral of death.
+  // A step costing over half a timestep (a huge scene) gets one step a frame: slow motion at
+  // a steady frame rate, rather than catch-up steps stalling every frame
   if (!state.paused) {
     accumulator += elapsed;
+    const cost = sim instanceof GpuSim ? (sim.stats().gpuStepMs ?? 0) : stepMs;
+    const most = cost > (params.dt * 1000) / 2 ? 1 : 4;
     let steps = 0;
-    while (accumulator >= params.dt && steps < 4) {
+    while (accumulator >= params.dt && steps < most) {
       stepOnce();
       accumulator -= params.dt;
       steps++;
     }
-    if (steps === 4) accumulator = 0;
+    if (steps === most) accumulator = 0;
   }
 
   renderer.showContacts = state.showContacts;
   renderer.showJoints = state.showJoints;
   renderer.selected = sim.dragBody;
-  renderer.render(sim, camera, canvas.clientWidth, canvas.clientHeight);
+  // The GPU sim reads back only what's in use (the whole body buffer is megabytes)
+  if (sim instanceof GpuSim) {
+    sim.needStats = state.details;
+    sim.needPoses = pointerInside || touched || sim.dragBody >= 0;
+  }
+  // Paused and still (no input, keyboard pan idle), the frame wouldn't change: skip it
+  if (!state.paused || restless > 0 || keys.size > 0) renderer.render(sim, camera, canvas.clientWidth, canvas.clientHeight);
+  restless = Math.max(0, restless - 1);
 
   frames++;
   if (now - fpsTime > 500) {
@@ -288,6 +373,7 @@ function frame(now: number): void {
 
 function updateHud(): void {
   ui.refresh();
+  panel.refresh();
   const st = sim.stats();
   const profile = sim instanceof GpuSim ? sim.profile : null;
   const coloring = st.colors === undefined ? '' : ` · colours ${st.colors} (rounds ${st.colorRounds}, clashes ${st.colorConflicts})`;

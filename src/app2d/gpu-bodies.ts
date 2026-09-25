@@ -5,6 +5,7 @@
 import { color, cos, float, instanceIndex, max, positionLocal, select, sin, storage, uniform, vec3 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { BODY_FLOATS } from '../avbd2d/gpu/layout.ts';
+import { blockColor } from '../app3d/look.ts';
 
 const VEC4_PER_BODY = BODY_FLOATS / 4;
 
@@ -19,7 +20,8 @@ export class GpuBodies {
   readonly selected = uniform(0xffffffff, 'uint');
   private readonly geometry: THREE.InstancedBufferGeometry;
 
-  constructor(count: number, colors: { outline: number; dynamic: number; static: number; selected: number }) {
+  /** Colours: static bodies, the selected one, and the outlines' shade of their fill. */
+  constructor(count: number, colors: { static: number; selected: number; outlineShade: number }) {
     this.count = count;
     this.attribute = new THREE.StorageInstancedBufferAttribute(new Float32Array(Math.max(count, 1) * BODY_FLOATS), 4);
 
@@ -42,17 +44,19 @@ export class GpuBodies {
     this.geometry.setAttribute('position', plane.getAttribute('position'));
     this.geometry.instanceCount = count;
 
+    // Each body in its own pastel (as the 3D viewer's blocks), static ones taupe
+    const paint = select(
+      instanceIndex.equal(this.selected),
+      color(colors.selected),
+      select(shape.z.greaterThan(0), blockColor(instanceIndex), color(colors.static)),
+    ) as unknown as THREE.Node<'color'>;
     const outline = new THREE.MeshBasicNodeMaterial();
     outline.positionNode = place(float(0));
-    outline.colorNode = color(colors.outline);
+    outline.colorNode = paint.mul(colors.outlineShade);
 
     const fill = new THREE.MeshBasicNodeMaterial();
     fill.positionNode = place(this.inset);
-    fill.colorNode = select(
-      instanceIndex.equal(this.selected),
-      color(colors.selected),
-      select(shape.z.greaterThan(0), color(colors.dynamic), color(colors.static)),
-    );
+    fill.colorNode = paint;
 
     const meshes = ([[outline, 0], [fill, 1]] as const).map(([material, z]) => {
       const mesh = new THREE.Mesh(this.geometry, material);

@@ -3,41 +3,58 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AVBD 2D</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>AVBD in 2D</title>
+    <meta name="description" content="The 2D scenes of Augmented Vertex Block Descent (SIGGRAPH 2025): the authors' demo ported to TypeScript, on the CPU or entirely on the GPU in your browser." />
+    <link rel="stylesheet" href="/src/ui/page.css" />
     <style>
-      html,
-      body {
-        margin: 0;
-        height: 100%;
-        overflow: hidden;
-        background: #f4f4f1;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      }
-      #view {
-        display: block;
-        width: 100vw;
-        height: 100vh;
-        touch-action: none;
-      }
       #hud {
-        position: fixed;
-        left: 12px;
-        bottom: 12px;
-        padding: 8px 10px;
-        font-size: 12px;
-        line-height: 1.5;
-        white-space: pre-wrap;
+        left: 16px;
+        bottom: 16px;
         max-width: calc(100vw - 48px);
-        color: #1d1d1f;
-        background: rgb(255 255 255 / 0.8);
-        border-radius: 6px;
+        padding: 6px 10px;
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: pre-wrap;
+        color: var(--muted);
         pointer-events: none;
+      }
+      #hud:empty {
+        display: none;
+      }
+      @media (max-width: 760px) {
+        #hud {
+          display: none;
+        }
       }
     </style>
   </head>
   <body>
     <canvas id="view"></canvas>
-    <div id="hud"></div>
+    <div id="card" class="panel">
+      <div id="card-head">
+        <h1>AVBD in 2D</h1>
+        <button id="card-toggle" title="Hide">–</button>
+      </div>
+      <div class="body">
+        <p>
+          The 2D scenes of <em>Augmented Vertex Block Descent</em> (Giles, Diaz &amp; Yuksel, SIGGRAPH 2025): the
+          authors' demo ported to TypeScript, on the CPU reference or entirely on your GPU.
+        </p>
+        <p class="pointer-only">Drag bodies to pull them · right-click drops a box · wheel zooms, space or shift + drag pans</p>
+        <p class="touch-only">Drag bodies to pull them · pinch to zoom</p>
+        <div class="links">
+          <a href="/">3D demo</a>
+          <a href="https://doi.org/10.1145/3731195" target="_blank" rel="noopener">Paper</a>
+          <a href="results.html">Results vs the paper</a>
+        </div>
+        <p class="credits">
+          Ported from the authors'
+          <a href="https://github.com/savant117/avbd-demo2d" target="_blank" rel="noopener">avbd-demo2d</a> (MIT).
+          Rendering with three.js. <a href="THIRD_PARTY_NOTICES.md">Notices</a>
+        </p>
+      </div>
+    </div>
+    <div id="hud" class="panel"></div>
     <script type="module" src="/src/app2d/main.ts"></script>
   </body>
 </html>

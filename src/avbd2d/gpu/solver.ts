@@ -771,8 +771,9 @@ export class GpuSolver2D {
   }
 
   /** Kinetic energy, hard-joint error and live joint count, from a readback (async, slow). */
-  async readStats(): Promise<{ kineticEnergy: number; maxJointError: number; joints: number }> {
-    const [bodies, joints] = await Promise.all([this.readBodies(), this.readJoints()]);
+  /** Kinetic energy and joint stats, from `poses` (a readBodies result) if given. */
+  async readStats(poses?: Float32Array): Promise<{ kineticEnergy: number; maxJointError: number; joints: number }> {
+    const [bodies, joints] = await Promise.all([poses ?? this.readBodies(), this.readJoints()]);
     let kineticEnergy = 0;
     for (let i = 0; i < this.bodyCount; i++) {
       const o = i * BODY_FLOATS;
