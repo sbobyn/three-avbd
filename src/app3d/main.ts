@@ -4,8 +4,8 @@
 
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { buildScene3D, createGpuSim3D, GpuSim3D } from '../avbd3d/gpu/sim.ts';
-import { BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
+import { buildScene3D, createGpuSim3D, GpuSim3D, NO_PAINT } from '../avbd3d/gpu/sim.ts';
+import { B_POS, B_SIZE, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
 import { gpuParams3D, PHASES } from '../avbd3d/gpu/solver.ts';
 import { DEFAULT_SCENE } from '../avbd3d/ref/scenes.ts';
 import { allScenes3D, along, createSim3D, type Sim3D, sceneByName3D } from '../avbd3d/sim.ts';
@@ -17,7 +17,7 @@ import { titleCard } from '../ui/title-card.ts';
 import { otherDemoUrl, sceneMenu } from '../ui/scene-menu.ts';
 import { ScenePanel } from '../ui/scene-panel.ts';
 import { WindPanel } from '../ui/wind-panel.ts';
-import type { Picture3D, SceneOptions } from '../avbd3d/bench-scenes.ts';
+import type { CameraView, Picture3D, SceneOptions } from '../avbd3d/bench-scenes.ts';
 import { type ExtrasContext, kilograms, panelFor } from './scene-extras.ts';
 import { Renderer3D } from './renderer3d.ts';
 
@@ -107,9 +107,19 @@ const controls = new OrbitControls(camera); // connected below, after our pointe
 controls.mouseButtons.MIDDLE = null; // middle click shoots a box, as in the demo
 controls.enableDamping = true;
 controls.dampingFactor = 0.15;
+controls.addEventListener('start', () => (flight = null)); // a drag takes the camera back
 
 function resetCamera(): void {
-  const view = resolve(sceneByName3D(state.scene).camera);
+  flight = null;
+  const { target, position, distance } = cameraPose(resolve(sceneByName3D(state.scene).camera));
+  controls.target.copy(target);
+  renderer.setViewScale(distance);
+  camera.position.copy(position);
+  controls.update();
+}
+
+/** Where `view` puts the camera, and what it looks at. */
+function cameraPose(view: CameraView | undefined): { target: THREE.Vector3; position: THREE.Vector3; distance: number } {
   let distance = view?.distance ?? 50;
   if (view?.fit) {
     const tan = Math.tan((camera.fov * Math.PI) / 360);
@@ -117,15 +127,41 @@ function resetCamera(): void {
   }
   const azimuth = ((view?.azimuth ?? 90) * Math.PI) / 180;
   const elevation = view?.elevation ?? 0.35;
-  const [tx, ty, tz] = view?.target ?? [0, 0, 5];
+  const target = new THREE.Vector3(...(view?.target ?? [0, 0, 5]));
+  const offset = new THREE.Vector3(Math.cos(elevation) * Math.cos(azimuth), Math.cos(elevation) * Math.sin(azimuth), Math.sin(elevation));
+  return { target, position: target.clone().addScaledVector(offset, distance), distance };
+}
+
+/** A camera move under way (flyTo): from and to as target, distance, azimuth, elevation. */
+let flight: { from: number[]; to: number[]; start: number; seconds: number } | null = null;
+
+/** The camera's orbit about its target: [tx, ty, tz, log distance, azimuth, elevation]. */
+function orbitOf(target: THREE.Vector3, position: THREE.Vector3): number[] {
+  const d = position.clone().sub(target);
+  const distance = d.length();
+  return [target.x, target.y, target.z, Math.log(distance), Math.atan2(d.y, d.x), Math.asin(d.z / distance)];
+}
+
+/** Glide the camera to `view` (a touch on the canvas stops it). */
+function flyTo(view: CameraView, seconds = 3): void {
+  const to = cameraPose(view);
+  const from = orbitOf(controls.target, camera.position);
+  const end = orbitOf(to.target, to.position);
+  // The short way round
+  end[4] = from[4] + ((((end[4] - from[4]) % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
+  flight = { from, to: end, start: performance.now(), seconds };
+}
+
+/** Move the camera along its flight, if it's on one. */
+function fly(now: number): void {
+  if (!flight) return;
+  const t = Math.min(1, (now - flight.start) / (1000 * flight.seconds));
+  const e = t * t * (3 - 2 * t);
+  const [tx, ty, tz, logD, azimuth, elevation] = flight.from.map((a, i) => a + (flight!.to[i] - a) * e);
+  const distance = Math.exp(logD);
   controls.target.set(tx, ty, tz);
-  renderer.setViewScale(distance);
-  camera.position.set(
-    tx + distance * Math.cos(elevation) * Math.cos(azimuth),
-    ty + distance * Math.cos(elevation) * Math.sin(azimuth),
-    tz + distance * Math.sin(elevation),
-  );
-  controls.update();
+  camera.position.set(tx + distance * Math.cos(elevation) * Math.cos(azimuth), ty + distance * Math.cos(elevation) * Math.sin(azimuth), tz + distance * Math.sin(elevation));
+  if (t >= 1) flight = null;
 }
 
 /**
@@ -168,15 +204,16 @@ async function buildSim(stillWanted: () => boolean): Promise<Sim3D | null> {
   freeSim();
   const next = createGpuSim3D(device, state.scene, params, (n) => renderer.attachGpuBodies(n), sceneOptions(), ref);
   if (picture && composed) {
-    next.setPaint(composed.paint);
+    next.setPaint(composed.paint, composed.from);
     renderer.setDecor(picture.frame(sceneOptions()));
   }
   return next;
 }
 
-/** A picture scene's first run: its bodies' colours. */
+/** A picture scene's first run: its bodies' colours, from body `from` on. */
 interface Composed {
   paint: Uint32Array;
+  from: number;
 }
 /** Composed pictures by scene, options and parameters: a replay skips the off-screen run. */
 const pictures = new Map<string, Composed>();
@@ -200,23 +237,29 @@ async function composePicture(device: GPUDevice, picture: Picture3D, stillWanted
       }
       await device.queue.onSubmittedWorkDone();
       if (!stillWanted()) return null;
-      progress.set(0.1 + 0.75 * (s / total), `Working out where every sphere lands… ${Math.round((100 * s) / total)}%`);
+      progress.set(0.1 + 0.75 * (s / total), `Working out where everything lands… ${Math.round((100 * s) / total)}%`);
     }
     const bodies = await off.solver.readBodies();
-    const n = off.bodyCount - off.firstEmitted;
-    const x = new Float32Array(n);
-    const z = new Float32Array(n);
-    for (let k = 0; k < n; k++) {
-      x[k] = bodies[(off.firstEmitted + k) * BODY_FLOATS];
-      z[k] = bodies[(off.firstEmitted + k) * BODY_FLOATS + 2];
-    }
-    const uv = picture.coords(options, x, z);
+    // The bodies taking part: the emitted ones, or every dynamic body the scene is built with
+    // (static ones, and what's emitted, such as a wrecking ball, keep their look)
+    const emitted = picture.bodies === 'emitted';
+    const from = emitted ? off.firstEmitted : 0;
+    const index: number[] = [];
+    for (let i = from; i < (emitted ? off.bodyCount : off.firstEmitted); i++) if (emitted || bodies[i * BODY_FLOATS + B_SIZE + 3] > 0) index.push(i);
+    const p = new Float32Array(3 * index.length);
+    index.forEach((i, k) => p.set(bodies.subarray(i * BODY_FLOATS + B_POS, i * BODY_FLOATS + B_POS + 3), 3 * k));
+    const uv = picture.coords(options, p);
     const { data, width, height } = await image;
-    // Each sphere covers a few of the image's pixels: average a 3 x 3 patch
-    const paint = new Uint32Array(n);
-    for (let k = 0; k < n; k++) {
-      const cx = Math.round(uv[2 * k] * (width - 1));
-      const cy = Math.round(uv[2 * k + 1] * (height - 1));
+    // Each body covers a few of the image's pixels: average a 3 x 3 patch
+    const paint = new Uint32Array(off.bodyCount - from).fill(NO_PAINT);
+    for (let k = 0; k < index.length; k++) {
+      const [u, v] = [uv[2 * k], uv[2 * k + 1]];
+      if (picture.surround && (u < 0 || u > 1 || v < 0 || v > 1)) {
+        paint[index[k] - from] = picture.surround(options, u, v);
+        continue;
+      }
+      const cx = Math.round(Math.min(1, Math.max(0, u)) * (width - 1));
+      const cy = Math.round(Math.min(1, Math.max(0, v)) * (height - 1));
       let [r, g, b, count] = [0, 0, 0, 0];
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
@@ -226,9 +269,9 @@ async function composePicture(device: GPUDevice, picture: Picture3D, stillWanted
           [r, g, b, count] = [r + data[o], g + data[o + 1], b + data[o + 2], count + 1];
         }
       }
-      paint[k] = (Math.round(r / count) << 16) | (Math.round(g / count) << 8) | Math.round(b / count);
+      paint[index[k] - from] = (Math.round(r / count) << 16) | (Math.round(g / count) << 8) | Math.round(b / count);
     }
-    return { paint };
+    return { paint, from };
   } finally {
     off.destroy();
   }
@@ -407,6 +450,7 @@ const extras: ExtrasContext = {
   },
   bodyCount: () => sim.bodyCount,
   budget: () => budget,
+  look: (view) => flyTo(view),
   stats: () => sim.stats(),
   ball: {
     radius: () => state.ballRadius,
@@ -602,6 +646,7 @@ let restless = 3;
 function frame(now: number): void {
   const elapsed = Math.min((now - last) / 1000, 0.25);
   last = now;
+  fly(now);
   const orbiting = controls.update();
   // Fog, shadow range and far plane follow the zoom
   const distance = camera.position.distanceTo(controls.target);

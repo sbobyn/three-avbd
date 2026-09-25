@@ -14,6 +14,7 @@ import { BODY_FLOATS } from '../src/avbd3d/gpu/layout.ts';
 import { createGpuSim3D, GpuSim3D } from '../src/avbd3d/gpu/sim.ts';
 import { GpuSolver3D, gpuParams3D } from '../src/avbd3d/gpu/solver.ts';
 import { starryNight } from '../src/avbd3d/painting.ts';
+import { monaLisaTower, towerLayout } from '../src/avbd3d/tower.ts';
 import { Rigid } from '../src/avbd3d/ref/body.ts';
 import { collide } from '../src/avbd3d/ref/collide.ts';
 import { IgnoreCollision } from '../src/avbd3d/ref/forces.ts';
@@ -455,5 +456,32 @@ gpuTest('a picture scene runs identically twice (painting.ts)', async (device) =
   assert.equal(a.counters.overflow, 0, 'fixed storage never overflowed');
   let differ = 0;
   for (let i = 0; i < a.bodies.length; i++) if (a.bodies[i] !== b.bodies[i]) differ++;
+  assert.equal(differ, 0, `${differ} words differ between the runs`);
+});
+
+// The tower's picture needs the same of a collapse: a smaller tower coming down under its own
+// weight repeats to the bit, well into the fall, within its fixed storage. 20k bricks: a much
+// shorter tower mostly holds itself up.
+gpuTest('a collapsing tower runs identically twice (tower.ts)', async (device) => {
+  const options = { bricks: 20_000 };
+  const layout = towerLayout(options.bricks);
+  const run = async () => {
+    const sim = createGpuSim3D(device, monaLisaTower.name, { ...gpuParams3D(), ...(monaLisaTower.params as object) }, undefined, options);
+    for (let s = 0; s < 360; s++) sim.step();
+    const bodies = await sim.solver.readBodies();
+    const counters = await sim.solver.readCounters();
+    sim.destroy();
+    return { bodies, counters, count: sim.bodyCount };
+  };
+  const a = await run();
+  const b = await run();
+  assert.equal(a.count, b.count);
+  assert.equal(a.counters.overflow, 0, 'fixed storage never overflowed');
+  let top = 0;
+  for (let i = 1; i < a.count; i++) top = Math.max(top, a.bodies[i * BODY_FLOATS + 2]);
+  assert.ok(top < 0.75 * 0.5 * layout.courses, `the tower is falling (highest brick ${top.toFixed(1)} m of ${0.5 * layout.courses} m)`);
+  const [x, y] = [new Uint32Array(a.bodies.buffer), new Uint32Array(b.bodies.buffer)];
+  let differ = 0;
+  for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) differ++;
   assert.equal(differ, 0, `${differ} words differ between the runs`);
 });

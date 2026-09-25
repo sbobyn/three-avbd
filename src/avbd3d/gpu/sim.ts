@@ -35,6 +35,9 @@ export interface GpuLooks3D {
   labels: LabelView3D[];
 }
 
+/** No paint for this body (GpuSim3D.setPaint). */
+export const NO_PAINT = 0xffffffff;
+
 export class GpuSim3D implements Sim3D {
   readonly label = 'WebGPU';
   readonly solver: GpuSolver3D;
@@ -54,8 +57,9 @@ export class GpuSim3D implements Sim3D {
   private readonly emitter: Emitter3D | null;
   /** Never adapt the solver's storage (its scene must run the same every time). */
   private readonly deterministic: boolean;
-  /** Paint for the emitted bodies, in the order they're added (a picture's colours). */
+  /** Paint for bodies `paintFrom` on, in index order (a picture's colours; NO_PAINT: none). */
   private paint: Uint32Array | null = null;
+  private paintFrom = 0;
   /** Index of the first emitted body. */
   readonly firstEmitted: number;
 
@@ -81,15 +85,21 @@ export class GpuSim3D implements Sim3D {
     return this.steps;
   }
 
-  /** Paint the emitted bodies (in the order they're added), those added already and to come. */
-  setPaint(colors: Uint32Array): void {
+  /**
+   * Paint bodies `from` on (by default the emitted ones, in the order they're added) with
+   * `colors`, those there already and to come; NO_PAINT leaves a body as it was.
+   */
+  setPaint(colors: Uint32Array, from = this.firstEmitted): void {
     this.paint = colors;
-    for (let i = this.firstEmitted; i < this.bodyCount; i++) this.looks.visuals[i] = this.paintOf(i);
+    this.paintFrom = from;
+    for (let i = from; i < Math.min(this.bodyCount, from + colors.length); i++) {
+      if (colors[i - from] !== NO_PAINT) this.looks.visuals[i] = { ...this.looks.visuals[i], color: colors[i - from] };
+    }
   }
 
   private paintOf(i: number): Visual | undefined {
-    const k = i - this.firstEmitted;
-    return this.paint && k < this.paint.length ? { color: this.paint[k] } : undefined;
+    const k = i - this.paintFrom;
+    return this.paint && k >= 0 && k < this.paint.length && this.paint[k] !== NO_PAINT ? { color: this.paint[k] } : undefined;
   }
 
   get params(): GpuParams3D {

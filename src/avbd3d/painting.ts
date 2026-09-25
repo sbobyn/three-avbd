@@ -224,8 +224,14 @@ export const starryNight: Scene3D = {
   capacity: (o) => ({ pairs: 16 * o.bodies, manifolds: 8 * o.bodies, contacts: 8 * o.bodies, colors: 10 }),
   picture: {
     url: '/paintings/starry-night.jpg',
+    bodies: 'emitted',
     steps: (o) => paintingLayout(o.bodies).steps,
-    coords: (o, x, z) => pictureCoords(paintingLayout(o.bodies), x, z),
+    coords: (o, p) => {
+      const n = p.length / 3;
+      const [x, z] = [new Float32Array(n), new Float32Array(n)];
+      for (let i = 0; i < n; i++) [x[i], z[i]] = [p[3 * i], p[3 * i + 2]];
+      return pictureCoords(paintingLayout(o.bodies), x, z);
+    },
     frame: (o) => paintingFrame(paintingLayout(o.bodies)),
   },
 };

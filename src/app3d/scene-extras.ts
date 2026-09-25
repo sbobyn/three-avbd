@@ -3,8 +3,9 @@
 // and a live number that shows it working, and the cannonball's size, mass and speed where
 // knocking things down is the point. Scenes without an entry get no panel.
 
-import type { SceneOptions } from '../avbd3d/bench-scenes.ts';
+import type { CameraView, SceneOptions } from '../avbd3d/bench-scenes.ts';
 import { CUSTOM_3D, CUSTOM_MAX_3D } from '../avbd3d/custom.ts';
+import { towerTopView, towerView } from '../avbd3d/tower.ts';
 import type { SimStats3D } from '../avbd3d/sim.ts';
 import { customPanel } from '../ui/custom-panel.ts';
 import type { DeviceBudget } from '../ui/device-budget.ts';
@@ -26,6 +27,8 @@ export interface ExtrasContext {
   bodyCount(): number;
   /** What this device can run (null without a GPU). */
   budget(): DeviceBudget | null;
+  /** Glide the camera to `view`. */
+  look(view: CameraView): void;
   /** The cannonball Space fires. */
   ball: {
     radius(): number;
@@ -124,6 +127,17 @@ const PANELS: Record<string, (ctx: ExtrasContext) => PanelSpec> = {
     ],
   }),
   'Ragdolls on Cloth (24k)': (ctx) => ({ title: 'Ragdolls', items: [speed(ctx), replay(ctx, 'Drop again')] }),
+  'Mona Lisa Tower (50k)': (ctx) => {
+    const bricks = ctx.option('bricks');
+    return {
+      title: 'Mona Lisa Tower',
+      items: [
+        speed(ctx),
+        { kind: 'action', label: 'Look from above', icon: PANEL_ICONS.above, run: () => ctx.look(towerTopView(bricks)) },
+        { kind: 'action', label: 'Knock it down again', icon: PANEL_ICONS.replay, secondary: true, run: () => (ctx.restart(), ctx.look(towerView(bricks))) },
+      ],
+    };
+  },
   'Starry Night (20k)': withCannonball((ctx) => ({ title: 'Starry Night', items: [speed(ctx), replay(ctx, 'Pour it again')] })),
   Custom: withCannonball((ctx) =>
     customPanel('Custom scene', CUSTOM_3D.map((k) => k.name), CUSTOM_MAX_3D, ctx.budget(), {

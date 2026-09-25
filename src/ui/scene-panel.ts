@@ -23,6 +23,7 @@ export interface PanelSpec {
 /** SVG markup (24 × 24, strokes) for actions. */
 export const PANEL_ICONS = {
   replay: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+  above: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
 };
 
 export class ScenePanel {

@@ -3,6 +3,7 @@
 
 import { type CameraView, gpuScenes3D, hangingRope, type Scene3D, type SceneOptions } from './bench-scenes.ts';
 import { starryNight } from './painting.ts';
+import { monaLisaTower } from './tower.ts';
 import { CUSTOM_3D } from './custom.ts';
 import { Rigid } from './ref/body.ts';
 import { Joint, Spring } from './ref/forces.ts';
@@ -259,6 +260,7 @@ export const allScenes3D: Scene3D[] = [
   }),
   ...gpuScenes3D,
   starryNight,
+  monaLisaTower,
   {
     // Any showcase scene at a chosen size (./custom.ts; the viewer's panel sets the options)
     name: 'Custom',

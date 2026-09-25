@@ -56,7 +56,7 @@ export function boxPile(solver: Solver, n: number, h: number): void {
 }
 
 /** A brick (1 × 0.5 × 0.5, as in the demo's pyramid) turned `angle` about z. */
-function brick(solver: Solver, x: number, y: number, z: number, angle = 0): Rigid {
+export function brick(solver: Solver, x: number, y: number, z: number, angle = 0): Rigid {
   const b = new Rigid(solver, [1, 0.5, 0.5], 1, 0.5, [x, y, z]);
   b.positionAng.set([0, 0, Math.sin(angle / 2), Math.cos(angle / 2)]);
   return b;
@@ -573,14 +573,21 @@ export interface Emitter3D {
 }
 
 /**
- * A picture a deterministic scene forms: run it `steps` steps off screen, find each emitted
- * body's place in the image (`coords`: u, v per body from its final x and z), colour it from
- * `url` there, and run it again for real.
+ * A picture a deterministic scene forms: run it `steps` steps off screen, find each body's
+ * place in the image (`coords`: u, v per body from its final position, x y z in `p`), colour
+ * it from `url` there, and run it again for real. `bodies`: which bodies take part (the
+ * emitted ones, or all the dynamic ones).
  */
 export interface Picture3D {
   url: string;
+  bodies: 'emitted' | 'dynamic';
   steps(options: SceneOptions): number;
-  coords(options: SceneOptions, x: ArrayLike<number>, z: ArrayLike<number>): Float32Array;
+  coords(options: SceneOptions, p: Float32Array): Float32Array;
+  /**
+   * The colour (0xrrggbb) of a body whose (u, v) falls off the picture, outside 0..1; NO_PAINT
+   * keeps its own look. Without it, off-picture bodies take the picture's nearest edge.
+   */
+  surround?(options: SceneOptions, u: number, v: number): number;
   /** What's drawn around the picture (its frame), not simulated. */
   frame(options: SceneOptions): Decor3D[];
 }
