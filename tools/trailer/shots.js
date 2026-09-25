@@ -193,3 +193,23 @@ T.runAll = async (options = {}) => {
   const slow = Object.entries(shots).filter(([, s]) => s.fps < 58).map(([n, s]) => `${n} (${s.fps} fps)`);
   return { gpu: T.gpu, shots, slow: slow.length ? slow : 'none: every shot ran at 60 fps or better' };
 };
+
+/**
+ * Starry Night, for its own clip: the whole pour in real time from the scene's own framing, a
+ * locked-off camera (a moving one would only distract from the picture forming), then a slow
+ * push in on the finished painting to show it's made of spheres.
+ */
+S.starry = async () => {
+  state.paused = true;
+  await T.load('Starry Night (20k)');
+  // A little above level, so the floor in front shows the spheres that spill over the rim
+  const view = T.current();
+  const a = { ...view, target: [view.target[0], view.target[1], view.target[2] - 2], el: 0.16 };
+  T.view(a);
+  const close = { target: [a.target[0] + 3, a.target[1], a.target[2] + 6], dist: a.dist * 0.42, az: a.az, el: 0.1 };
+  return T.record('starry', 31000, async () => {
+    state.paused = false;
+    await T.sleep(26500);
+    await T.tween(a, close, 4000);
+  });
+};

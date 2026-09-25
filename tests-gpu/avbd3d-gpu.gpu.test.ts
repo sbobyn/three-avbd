@@ -446,12 +446,12 @@ gpuTest('a picture scene runs identically twice (painting.ts)', async (device) =
     const bodies = await sim.solver.readBodies();
     const counters = await sim.solver.readCounters();
     sim.destroy();
-    return { bodies: new Uint32Array(bodies.buffer), counters, count: sim.bodyCount };
+    return { bodies: new Uint32Array(bodies.buffer), counters, count: sim.bodyCount, emitted: sim.bodyCount - sim.firstEmitted };
   };
   const a = await run();
   const b = await run();
   assert.equal(a.count, b.count);
-  assert.equal(a.count - 7, 3000, 'every sphere poured');
+  assert.equal(a.emitted, 3000, 'every sphere poured');
   assert.equal(a.counters.overflow, 0, 'fixed storage never overflowed');
   let differ = 0;
   for (let i = 0; i < a.bodies.length; i++) if (a.bodies[i] !== b.bodies[i]) differ++;

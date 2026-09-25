@@ -25,6 +25,8 @@ export const PAINTING_DT = 1 / 120;
 const STEP_RADII = 0.8;
 /** Share of the picture the settled spheres cover (measured from the pile's top: 0.92). */
 const PACKING = 0.92;
+/** Spheres poured beyond what the frame holds: they spill over its top. */
+const SPILL = 0.07;
 /** Seconds the pour lasts. */
 const POUR_SECONDS = 20;
 /** Seconds after the pour for the last spheres to land and the pile to settle. */
@@ -37,7 +39,7 @@ const DROP_SPEED = 0.5;
 export interface PaintingLayout {
   bodies: number;
   radius: number;
-  /** Inner size of the box: the picture's width and the pile's expected height. */
+  /** Inside of the frame: the picture's width and height (the frame's rim). */
   width: number;
   height: number;
   /** Height the pour head drops the spheres from, above the frame's open top. */
@@ -55,7 +57,8 @@ export interface PaintingLayout {
 
 export function paintingLayout(bodies: number): PaintingLayout {
   const r = RADIUS;
-  const area = (bodies * Math.PI * r * r) / PACKING;
+  // The frame holds all but SPILL of them
+  const area = ((bodies / (1 + SPILL)) * Math.PI * r * r) / PACKING;
   const height = Math.sqrt(area / PAINTING_ASPECT);
   const width = PAINTING_ASPECT * height;
   const boxHeight = height * 1.3;
@@ -73,51 +76,46 @@ export function paintingLayout(bodies: number): PaintingLayout {
   return { bodies, radius: r, width, height, boxHeight, depth: 2 * r * 1.15, gravity, perRow, period, speed, sweepSteps, steps };
 }
 
-/** Thickness of the invisible walls that keep the spheres one deep and in the frame. */
-const WALL = 2;
 /** The gilded frame's bars: width and depth (from the glass out). */
 const BAR = 0.7;
 const FRAME_DEPTH = 0.5;
 const FRAME_COLOR = 0xc8a24c;
 const BACK_COLOR = 0x14161c;
+/** Thickness of the glass in front and the backing. */
+const GLASS = 0.1;
+const BACKING = 0.2;
 
 /**
- * The physics: invisible glass front and back one sphere apart, sides, a floor and a lid high
- * above the pour head, so the spheres drop in through the frame's open top and stay one deep.
- * What you see of the frame is drawn from paintingFrame once the pile's height is known: the
- * bodies can't be sized from it, since both runs must start from identical bodies.
+ * The physics, shaped exactly like the frame drawn by paintingFrame: bars below and beside
+ * the picture, a backing and a glass front one sphere apart, all ending at the rim. The frame
+ * holds a little less than is poured, so the last spheres heap up over the rim and spill off
+ * its front, back and sides onto the floor.
  */
 export function buildPainting(solver: Solver, layout: PaintingLayout): void {
   solver.clear();
-  const { width: w, boxHeight: h, depth: d } = layout;
-  const wall = (size: [number, number, number], at: [number, number, number]) => setVisual(new Rigid(solver, size, 0, 0.4, at), { shape: 'hidden' });
-  // The ground the frame stands on (the viewer's floor)
+  const { width: w, height: h, depth: d } = layout;
+  const body = (size: [number, number, number], at: [number, number, number]) => setVisual(new Rigid(solver, size, 0, 0.4, at), { shape: 'hidden' });
+  // The floor the frame stands on (the viewer's)
   new Rigid(solver, [Math.max(200, 4 * w), Math.max(200, 4 * w), 1], 0, 0.5, [0, 0, -0.5 - BAR]);
-  // Well past the pour head, with a lid: now and then a sphere is flung up out of the pile
-  const tall = h + 10;
-  wall([w + 2 * WALL, d + 2 * WALL, WALL], [0, 0, -WALL / 2]);
-  wall([w + 2 * WALL, d + 2 * WALL, WALL], [0, 0, tall + WALL / 2]);
-  wall([WALL, d + 2 * WALL, tall], [-(w + WALL) / 2, 0, tall / 2]);
-  wall([WALL, d + 2 * WALL, tall], [(w + WALL) / 2, 0, tall / 2]);
-  wall([w, WALL, tall], [0, (d + WALL) / 2, tall / 2]);
-  wall([w, WALL, tall], [0, -(d + WALL) / 2, tall / 2]);
+  for (const box of paintingFrame(layout)) body(box.size, box.center);
+  body([w, GLASS, h], [0, -(d + GLASS) / 2, h / 2]);
 }
 
-/** The frame around a pile `top` high: gilded bars below and beside it (open at the top), and a dark back. */
-export function paintingFrame(layout: PaintingLayout, top: number): Decor3D[] {
-  const { width: w, depth: d } = layout;
+/** The frame: gilded bars below and beside the picture (open at the top), and a dark backing. */
+export function paintingFrame(layout: PaintingLayout): Decor3D[] {
+  const { width: w, height: h, depth: d } = layout;
   const depth = d + 2 * FRAME_DEPTH;
-  const side = (x: number): Decor3D => ({ size: [BAR, depth, top + BAR], center: [x, 0, (top - BAR) / 2], color: FRAME_COLOR, metal: true });
+  const side = (x: number): Decor3D => ({ size: [BAR, depth, h + BAR], center: [x, 0, (h - BAR) / 2], color: FRAME_COLOR, metal: true });
   return [
     { size: [w + 2 * BAR, depth, BAR], center: [0, 0, -BAR / 2], color: FRAME_COLOR, metal: true },
     side(-(w + BAR) / 2),
     side((w + BAR) / 2),
-    { size: [w, 0.2, top], center: [0, d / 2 + 0.1, top / 2], color: BACK_COLOR },
+    { size: [w, BACKING, h], center: [0, (d + BACKING) / 2, h / 2], color: BACK_COLOR },
   ];
 }
 
 /**
- * The pour head: before every `period`-th step, a row of spheres just under the lid, dropping.
+ * The pour head: before every `period`-th step, a row of spheres high above the frame, dropping.
  * The head sweeps left and right along the box so the pile rises level. A function of the step
  * number alone, so every run pours identically.
  */
@@ -136,7 +134,13 @@ export function paintingEmitter(layout: PaintingLayout): Emitter3D {
       // Triangle wave: left to right and back once per sweep
       const t = (step % sweepSteps) / sweepSteps;
       const x = -reach + 2 * reach * (t < 0.5 ? 2 * t : 2 - 2 * t);
-      for (let k = 0; k < n; k++) sphere(solver, r, 1, 0.4, [x - half + k * spacing, 0, z], [0, 0, -speed]);
+      // A hair off the glass's centre plane (from a hash of the sphere's number): a heap
+      // standing in a perfect plane would never topple off the rim
+      const first = (step / period) * perRow;
+      for (let k = 0; k < n; k++) {
+        const jitter = ((Math.imul(first + k + 1, 2654435761) >>> 0) / 2 ** 32 - 0.5) * 0.02 * r;
+        sphere(solver, r, 1, 0.4, [x - half + k * spacing, jitter, z], [0, 0, -speed]);
+      }
     },
   };
 }
@@ -145,7 +149,8 @@ export function paintingEmitter(layout: PaintingLayout): Emitter3D {
  * Where in the picture (u, v in 0..1, v down) each body at final position (x[i], z[i]) sits.
  * The pile's top isn't quite level, so each column of it is stretched to the picture's top
  * edge: v runs from the floor to that column's own surface (smoothed across neighbours), and
- * no strip of the picture is lost above a dip, nor any sphere left without a colour.
+ * no strip of the picture is lost above a dip, nor any sphere left without a colour. Spheres
+ * that spilled out of the frame take its top edge: the sky, overflowing.
  */
 export function pictureCoords(layout: PaintingLayout, x: ArrayLike<number>, z: ArrayLike<number>): Float32Array {
   const { width: w } = layout;
@@ -155,6 +160,11 @@ export function pictureCoords(layout: PaintingLayout, x: ArrayLike<number>, z: A
   const uv = new Float32Array(2 * n);
   for (let i = 0; i < n; i++) {
     const u = (x[i] + w / 2) / w;
+    if (!inFrame(layout, x[i], z[i])) {
+      uv[2 * i] = Math.min(1, Math.max(0, u));
+      uv[2 * i + 1] = 0;
+      continue;
+    }
     // Between bin centres, the surface is interpolated
     const f = Math.min(bins - 1, Math.max(0, u * bins - 0.5));
     const b = Math.floor(f);
@@ -165,11 +175,8 @@ export function pictureCoords(layout: PaintingLayout, x: ArrayLike<number>, z: A
   return uv;
 }
 
-/** Where the frame's sides end: the pile's surface, on average along its width. */
-export function pileTop(layout: PaintingLayout, x: ArrayLike<number>, z: ArrayLike<number>): number {
-  const surface = pileSurface(layout, x, z);
-  return surface.reduce((a, b) => a + b, 0) / surface.length;
-}
+/** A sphere at rest inside the frame (not spilled onto the floor or heaped over the rim). */
+const inFrame = (layout: PaintingLayout, x: number, z: number) => z > 0 && z < layout.height + layout.radius && Math.abs(x) < layout.width / 2;
 
 /** The pile's surface height in columns about four spheres wide, smoothed across neighbours. */
 function pileSurface(layout: PaintingLayout, x: ArrayLike<number>, z: ArrayLike<number>): number[] {
@@ -179,7 +186,7 @@ function pileSurface(layout: PaintingLayout, x: ArrayLike<number>, z: ArrayLike<
   const binOf = (xi: number) => Math.min(bins - 1, Math.max(0, Math.floor(((xi + w / 2) / w) * bins)));
   // Each column's surface: its 98th-percentile height (ignores a few spheres resting on top)
   const heights: number[][] = Array.from({ length: bins }, () => []);
-  for (let i = 0; i < n; i++) heights[binOf(x[i])].push(z[i]);
+  for (let i = 0; i < n; i++) if (inFrame(layout, x[i], z[i])) heights[binOf(x[i])].push(z[i]);
   const surface = heights.map((hs) => {
     if (!hs.length) return 0;
     hs.sort((a, b) => a - b);
@@ -209,7 +216,7 @@ export const starryNight: Scene3D = {
   camera: (o) => {
     // Straight on: the frame and the drop above it
     const { boxHeight, width } = paintingLayout(o.bodies);
-    const [w, h] = [width + 2 * BAR, boxHeight + BAR];
+    const [w, h] = [width + 2 * BAR + 4, boxHeight + BAR];
     return { distance: (0.54 * h) / Math.tan((22.5 * Math.PI) / 180), fit: [w, h], target: [0, 0, (boxHeight - BAR) / 2], azimuth: -90, elevation: 0.04 };
   },
   emitter: (o) => paintingEmitter(paintingLayout(o.bodies)),
@@ -219,7 +226,6 @@ export const starryNight: Scene3D = {
     url: '/paintings/starry-night.jpg',
     steps: (o) => paintingLayout(o.bodies).steps,
     coords: (o, x, z) => pictureCoords(paintingLayout(o.bodies), x, z),
-    top: (o, x, z) => pileTop(paintingLayout(o.bodies), x, z),
-    frame: (o, top) => paintingFrame(paintingLayout(o.bodies), top),
+    frame: (o) => paintingFrame(paintingLayout(o.bodies)),
   },
 };

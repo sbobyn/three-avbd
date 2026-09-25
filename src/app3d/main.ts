@@ -169,15 +169,14 @@ async function buildSim(stillWanted: () => boolean): Promise<Sim3D | null> {
   const next = createGpuSim3D(device, state.scene, params, (n) => renderer.attachGpuBodies(n), sceneOptions(), ref);
   if (picture && composed) {
     next.setPaint(composed.paint);
-    renderer.setDecor(picture.frame(sceneOptions(), composed.top));
+    renderer.setDecor(picture.frame(sceneOptions()));
   }
   return next;
 }
 
-/** A picture scene's first run: its bodies' colours, and how high the finished pile stands. */
+/** A picture scene's first run: its bodies' colours. */
 interface Composed {
   paint: Uint32Array;
-  top: number;
 }
 /** Composed pictures by scene, options and parameters: a replay skips the off-screen run. */
 const pictures = new Map<string, Composed>();
@@ -229,7 +228,7 @@ async function composePicture(device: GPUDevice, picture: Picture3D, stillWanted
       }
       paint[k] = (Math.round(r / count) << 16) | (Math.round(g / count) << 8) | Math.round(b / count);
     }
-    return { paint, top: picture.top(options, x, z) };
+    return { paint };
   } finally {
     off.destroy();
   }

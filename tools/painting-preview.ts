@@ -10,7 +10,7 @@ Object.assign(globalThis, globals);
 const { GpuSolver3D, gpuParams3D } = await import('../src/avbd3d/gpu/solver.ts');
 const { BODY_FLOATS } = await import('../src/avbd3d/gpu/layout.ts');
 const { Solver } = await import('../src/avbd3d/ref/solver.ts');
-const { buildPainting, paintingEmitter, paintingLayout, pictureCoords, pileTop, PAINTING_DT } = await import('../src/avbd3d/painting.ts');
+const { buildPainting, paintingEmitter, paintingLayout, pictureCoords, PAINTING_DT } = await import('../src/avbd3d/painting.ts');
 
 const [imagePath, iwArg, ihArg, bodiesArg = '20000', outPath = 'painting.rgb', twice] = process.argv.slice(2);
 const [iw, ih] = [Number(iwArg), Number(ihArg)];
@@ -71,7 +71,7 @@ for (let i = first; i < first + layout.bodies; i++) {
   const o = i * BODY_FLOATS;
   const [x, y, z] = [bodies[o], bodies[o + 1], bodies[o + 2]];
   maxY = Math.max(maxY, Math.abs(y));
-  if (Math.abs(x) > w / 2 + r || Math.abs(y) > d / 2 + r || z < -r || z > bh + r || !Number.isFinite(x + y + z)) escaped++;
+  if (Math.abs(x) > 3 * w || z < -5 || !Number.isFinite(x + y + z)) escaped++;
   zs.push(z);
 }
 zs.sort((a, b) => a - b);
@@ -94,7 +94,9 @@ for (let k = 0; k < layout.bodies; k++) {
   zf[k] = bodies[(first + k) * BODY_FLOATS + 2];
 }
 const uv = pictureCoords(layout, xs, zf);
-console.log(`pile top (frame height) ${pileTop(layout, xs, zf).toFixed(2)} m, planned ${layout.height.toFixed(2)} m`);
+let spilled = 0;
+for (let k = 0; k < layout.bodies; k++) if (zf[k] < 0 || Math.abs(xs[k]) > w / 2) spilled++;
+console.log(`spilled out of the frame: ${spilled} of ${layout.bodies} (frame ${w.toFixed(2)} x ${layout.height.toFixed(2)} m)`);
 const px = 640;
 const py = Math.round((px * fill) / w);
 const out = Buffer.alloc(px * py * 3, 20);

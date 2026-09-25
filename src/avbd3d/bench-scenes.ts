@@ -581,10 +581,8 @@ export interface Picture3D {
   url: string;
   steps(options: SceneOptions): number;
   coords(options: SceneOptions, x: ArrayLike<number>, z: ArrayLike<number>): Float32Array;
-  /** How high the finished pile stands, from the same final positions. */
-  top(options: SceneOptions, x: ArrayLike<number>, z: ArrayLike<number>): number;
-  /** What's drawn around the finished picture (a frame sized to the pile), not simulated. */
-  frame(options: SceneOptions, top: number): Decor3D[];
+  /** What's drawn around the picture (its frame), not simulated. */
+  frame(options: SceneOptions): Decor3D[];
 }
 
 /** A box drawn but not simulated (Picture3D.frame): size and centre in metres. */
