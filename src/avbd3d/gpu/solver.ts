@@ -135,6 +135,13 @@ export interface GpuSolverOptions {
    * settled pile (docs/FINDINGS.md). Default true; `gpuIndex` maps reference indices.
    */
   spatialSort?: boolean;
+  /**
+   * Least contact storage and colours to allocate. A run is deterministic (the same bits every
+   * time on a device) only if it never overflows: which records an overflow drops depends on
+   * thread timing. A deterministic run sizes these for its worst case and never calls adapt,
+   * whose growth follows readbacks that land at different steps from run to run.
+   */
+  capacity?: { contacts?: number; pairs?: number; manifolds?: number; colors?: number };
   /** A/B timing of kernel variants: replacement WGSL for a module. */
   shaders?: { contacts?: string; solve?: string };
 }
@@ -468,15 +475,16 @@ export class GpuSolver3D {
     ref.bodies.forEach((b, i) => {
       if (b.mass > 0) maxDegree = Math.max(maxDegree, degree[i]);
     });
-    this.colorCap = Math.min(MAX_COLORS, Math.max(MIN_START_COLORS, maxDegree + 1 + COLOR_SPARE));
+    this.colorCap = Math.min(MAX_COLORS, Math.max(MIN_START_COLORS, maxDegree + 1 + COLOR_SPARE, options.capacity?.colors ?? 0));
     // Pair entries are 8 bytes, so they stay roomy. Manifolds (32 bytes) and contacts (64) are
     // double-buffered and hold most of the solver's memory: the touching pairs with headroom,
     // and the most points those pairs can have. Floors for scenes that start apart (a falling
     // pile): a manifold and four contacts per body.
+    const least = options.capacity ?? {};
     this.allocateContacts(
-      Math.max(8192, 4 * cap, MAX_MANIFOLD_POINTS * touching),
-      Math.max(4096, 4 * cap, 2 * pairs),
-      Math.max(4096, cap, START_HEADROOM * touching),
+      Math.max(8192, 4 * cap, MAX_MANIFOLD_POINTS * touching, least.contacts ?? 0),
+      Math.max(4096, 4 * cap, 2 * pairs, least.pairs ?? 0),
+      Math.max(4096, cap, START_HEADROOM * touching, least.manifolds ?? 0),
     );
     this.writeBodies(0, order.map((r) => ref.bodies[r]));
   }
@@ -524,7 +532,7 @@ export class GpuSolver3D {
     make(refsWGSL, [L.refs], ['updateRefs']);
     make(shaders.contacts ?? contactsWGSL, [L.contacts], ['hashInsert', 'narrowphase']);
     make(makeTopologyWGSL(PRELUDE_3D, TOPOLOGY_ACCESSORS_3D), [L.topo], [
-      'degreeJoints', 'degreeContacts', 'fillJoints', 'fillContacts',
+      'degreeJoints', 'degreeContacts', 'fillJoints', 'fillContacts', 'sortAdjacency',
       'colorCompact', 'colorMark', 'colorRoundAB', 'colorRoundBA', 'colorCount', 'colorStarts', 'colorScatter',
     ]);
     make(shaders.solve ?? solveWGSL, [L.solve, L.pass], ['warmStartJoints', 'warmStartBodies', 'primal', 'dual', 'updateVelocities']);
@@ -970,6 +978,7 @@ export class GpuSolver3D {
     this.adjScan!.encode(pass);
     run('fillJoints', G.topo[cur], groups(J));
     runIndirect('fillContacts', G.topo[cur], IA_CONTACTS);
+    run('sortAdjacency', G.topo[cur], groups(N));
 
     // Colouring
     beginPhase();

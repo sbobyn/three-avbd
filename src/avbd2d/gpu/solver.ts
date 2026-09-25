@@ -220,7 +220,7 @@ export class GpuSolver2D {
     make(broadphaseWGSL, [L.broad], ['beginFrame', 'gridCount', 'gridScatter', 'findPairs']);
     make(contactsWGSL, [L.contacts], ['hashInsert', 'narrowphase']);
     make(topologyWGSL, [L.topo], [
-      'degreeJoints', 'degreeContacts', 'fillJoints', 'fillContacts',
+      'degreeJoints', 'degreeContacts', 'fillJoints', 'fillContacts', 'sortAdjacency',
       'colorCompact', 'colorMark', 'colorRoundAB', 'colorRoundBA', 'colorCount', 'colorStarts', 'colorScatter',
     ]);
     make(solveWGSL, [L.solve, L.pass], ['warmStartJoints', 'warmStartBodies', 'primal', 'primalScan', 'dual', 'refreshStick', 'updateVelocities']);
@@ -620,6 +620,7 @@ export class GpuSolver2D {
     this.adjScan!.encode(pass);
     run('fillJoints', G.topo[cur], groups(J));
     runIndirect('fillContacts', G.topo[cur], IA_CONTACTS);
+    run('sortAdjacency', G.topo[cur], groups(N));
 
     // Colouring
     beginPhase();

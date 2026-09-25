@@ -1,5 +1,6 @@
 // Per-step topology on the GPU: per-body constraint adjacency (degree count with atomics,
-// prefix scan, atomic scatter) and incremental Jones-Plassmann colouring, a port of
+// prefix scan, atomic scatter, then each body's list sorted into a fixed order so the solve
+// sums its constraints the same way every run) and incremental Jones-Plassmann colouring, a port of
 // ../soa/coloring.ts with the same hashed priorities, so it reproduces the CPU colouring.
 //
 // Constraint ids: joints (incl. springs, motors) are 0 .. jointCount-1, contacts follow.
@@ -19,6 +20,11 @@ fn topoCount() -> u32 {
   return min(atomicLoad(&counters[C_CONTACTS]), params.contactCapacity);
 }
 
+/** Tells apart a body pair's contacts (up to two per pair in 2D): the contact's feature key. */
+fn topoSecondary(i: u32) -> u32 {
+  return contacts[i].ids.z;
+}
+
 fn dynamicBody(i: i32) -> bool {
   return i >= 0 && bodies[i].shape.z > 0.0;
 }
@@ -33,8 +39,8 @@ fn jointActive(j: u32) -> bool {
 /**
  * Adjacency and colouring kernels over a prelude defining Params, Body and Joint, plus
  * accessors defining TopoItem (the per-step constraint record after the joints: a contact in
- * 2D, a contact pair in 3D; ids.xy = bodies), topoCount(), dynamicBody(i32) and
- * jointActive(u32).
+ * 2D, a contact pair in 3D; ids.xy = bodies), topoCount(), topoSecondary(u32) (what tells
+ * one pair's records apart), dynamicBody(i32) and jointActive(u32).
  */
 export const makeTopologyWGSL = (prelude: string, accessors: string): string => /* wgsl */ `
 ${prelude}
@@ -98,6 +104,50 @@ fn fillJoints(@builtin(global_invocation_id) gid: vec3u) {
 fn fillContacts(@builtin(global_invocation_id) gid: vec3u) {
   if (gid.x >= topoCount()) { return; }
   fillEndpoints(params.jointCount + gid.x);
+}
+
+/**
+ * Where constraint \`id\` goes in body b's list, independent of run-to-run order: joints first
+ * by id, then contacts by the other body and topoSecondary. (Contact ids are the order the
+ * narrowphase appended them in, which atomics make vary from run to run.)
+ */
+fn adjKey(b: u32, id: u32) -> vec2u {
+  if (id < params.jointCount) { return vec2u(0u, id); }
+  let e = endpoints(id);
+  let other = select(e.x, e.y, e.x == i32(b));
+  return vec2u(u32(other + 2), topoSecondary(id - params.jointCount));
+}
+
+fn keyLess(a: vec2u, b: vec2u) -> bool {
+  return a.x < b.x || (a.x == b.x && a.y < b.y);
+}
+
+/**
+ * Sort each body's list (insertion sort: a body has a few dozen constraints at most). The
+ * atomic fill leaves them in a different order each run, and the primal solve sums them in
+ * list order: floating point then rounds differently, and a chaotic pile of bodies amplifies
+ * that into a different outcome. Sorted, the same scene steps to the same bits every time.
+ */
+@compute @workgroup_size(64)
+fn sortAdjacency(@builtin(global_invocation_id) gid: vec3u) {
+  let b = gid.x;
+  if (b >= params.bodyCount) { return; }
+  let lo = atomicLoad(&adj[b]);
+  let hi = atomicLoad(&adj[b + 1u]);
+  let list = params.adjListOffset;
+  for (var i = lo + 1u; i < hi; i++) {
+    let id = atomicLoad(&adj[list + i]);
+    let key = adjKey(b, id);
+    var j = i;
+    loop {
+      if (j <= lo) { break; }
+      let prev = atomicLoad(&adj[list + j - 1u]);
+      if (!keyLess(key, adjKey(b, prev))) { break; }
+      atomicStore(&adj[list + j], prev);
+      j--;
+    }
+    atomicStore(&adj[list + j], id);
+  }
 }
 
 // --- Colouring ----------------------------------------------------------------------------

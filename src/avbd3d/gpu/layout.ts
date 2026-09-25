@@ -240,6 +240,11 @@ fn orthonormal(n: vec3f) -> mat3x3f {
 export const TOPOLOGY_ACCESSORS_3D = /* wgsl */ `
 alias TopoItem = Manifold;
 
+/** A body pair has one manifold, so the other body alone orders a body's contacts. */
+fn topoSecondary(i: u32) -> u32 {
+  return 0u;
+}
+
 fn topoCount() -> u32 {
   return min(atomicLoad(&counters[C_MANIFOLDS]), params.manifoldCapacity);
 }

@@ -2,6 +2,34 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-25 — Stage 8o: deterministic GPU steps (same device)
+
+Measured with `tools/determinism.ts`: build a scene twice, step both, and compare the body
+buffers bit for bit every 20 steps.
+
+| scene | before | after |
+|---|---|---|
+| Box Pile (4k), 600 steps | differ by step 30; at step 70, 73% of bodies, up to 22 cm | identical |
+| Brick Ring (28k), 600 steps | not measured | identical |
+| Ragdolls on Cloth (24k), 600 steps | not measured | identical |
+
+Two sources. First, each body's constraint list was filled with atomics, in a different
+order every run. The primal solve sums its constraints in list order, so the rounding
+differed, and a chaotic pile amplifies that. A `sortAdjacency` pass (shared 2D/3D topology)
+now puts each list in a fixed order: joints by id, then contacts by the other body and a
+secondary key. It costs about 1% (110k ring, raw solver: 15.6 vs 15.5 ms per step).
+
+Second, capacity overflow. With the sort but the default capacities, the pile still split at
+step 80, exactly when manifold storage overflowed: which records an overflow drops depends on
+thread timing. The solver's new `capacity` option sizes contact storage and colours up front.
+A deterministic run uses it and never calls `adapt`, whose growth follows readbacks that land
+on different steps each run.
+
+A control run with the roomy capacities but no sort split by step 40, so both fixes are
+needed. The Jones-Plassmann colouring was already deterministic: it runs Jacobi rounds with
+hashed priorities. The 2D solver has the sort but no `capacity` option yet, and hasn't been
+measured.
+
 ## 2026-09-24 — Stage 8n: heavy bodies sank through the floor; contacts start at m/dt²
 
 The viewer's cannonball panel goes up to 10 t. From 500 kg up, a ball dropped at 45 m/s on
