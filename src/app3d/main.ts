@@ -33,7 +33,14 @@ const adapter = 'gpu' in navigator ? await navigator.gpu.requestAdapter({ powerP
 if (!adapter) document.querySelector<HTMLElement>('#no-webgpu')!.hidden = false;
 const renderer = new Renderer3D(
   canvas,
-  adapter ? { maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize, maxBufferSize: adapter.limits.maxBufferSize } : undefined,
+  // …and its storage buffers per stage: hull contacts bind a ninth (GpuSolver3D.hulls)
+  adapter
+    ? {
+        maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+        maxBufferSize: adapter.limits.maxBufferSize,
+        maxStorageBuffersPerShaderStage: adapter.limits.maxStorageBuffersPerShaderStage,
+      }
+    : undefined,
 );
 await renderer.init();
 

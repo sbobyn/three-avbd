@@ -16,8 +16,13 @@ export const { device, skip } = await (async (): Promise<{ device: GPUDevice | n
     const adapter = await gpu.requestAdapter();
     if (!adapter) return { device: null, skip: 'no WebGPU adapter available' };
     const requiredFeatures = (['timestamp-query'] as GPUFeatureName[]).filter((f) => adapter.features.has(f));
-    // The solver's big scenes need more than the 128 MB default per storage binding
-    const requiredLimits = { maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize, maxBufferSize: adapter.limits.maxBufferSize };
+    // The solver's big scenes need more than the 128 MB default per storage binding; hull
+    // contacts a ninth storage buffer per stage (GpuSolver3D.hulls)
+    const requiredLimits = {
+      maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+      maxBufferSize: adapter.limits.maxBufferSize,
+      maxStorageBuffersPerShaderStage: adapter.limits.maxStorageBuffersPerShaderStage,
+    };
     const device = await adapter.requestDevice({ requiredFeatures, requiredLimits });
     // The binding's async runner can outlive these wrappers; keep them reachable
     (globalThis as { __dawn?: unknown }).__dawn = [gpu, adapter, device];
