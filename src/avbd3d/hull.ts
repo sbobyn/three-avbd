@@ -46,7 +46,50 @@ interface Tri {
  * The convex hull of xyz points and its mass properties, or null when the points span no volume
  * (fewer than four, or all on a plane or line).
  */
+/**
+ * Most vertices a hull keeps (bigger ones are simplified: see \`convexHull\`). The GPU narrowphase
+ * costs faces × vertices and edges × edges per touching pair, in one thread, and its contact feature
+ * keys hold face and point indices in 8 bits; 32 vertices means at most 60 faces and 90 edges (a
+ * fracture piece has 10-30 vertices).
+ */
+export const MAX_HULL_VERTICES = 32;
+
+/**
+ * The convex hull of xyz points and its mass properties, or null when the points span no volume
+ * (fewer than four, or all on a plane or line). A hull of more than MAX_HULL_VERTICES vertices is
+ * replaced by the hull of that many of them, spread out (farthest-point sampling): slightly smaller,
+ * much cheaper to collide.
+ */
 export function convexHull(points: ArrayLike<number>): HullShape | null {
+  const full = buildHull(points);
+  if (!full || full.vertices.length / 3 <= MAX_HULL_VERTICES) return full;
+  return buildHull(spreadVertices(full, MAX_HULL_VERTICES));
+}
+
+/** \`count\` of a hull's vertices, spread out, in the input points' frame. */
+function spreadVertices(h: HullShape, count: number): number[] {
+  const [x, y, z, w] = h.rotation;
+  const back = (v: V3): V3 => {
+    const t: V3 = [2 * (y * v[2] - z * v[1]), 2 * (z * v[0] - x * v[2]), 2 * (x * v[1] - y * v[0])];
+    return [v[0] + w * t[0] + (y * t[2] - z * t[1]) + h.center[0], v[1] + w * t[1] + (z * t[0] - x * t[2]) + h.center[1], v[2] + w * t[2] + (x * t[1] - y * t[0]) + h.center[2]];
+  };
+  const verts: V3[] = [];
+  for (let i = 0; i < h.vertices.length; i += 3) verts.push(back([h.vertices[i], h.vertices[i + 1], h.vertices[i + 2]]));
+  // Farthest-point sampling from the vertex farthest from the centre of mass
+  let first = 0;
+  verts.forEach((v, i) => { if (len(sub(v, h.center)) > len(sub(verts[first], h.center))) first = i; });
+  const chosen = [first];
+  const dist = verts.map((v) => len(sub(v, verts[first])));
+  while (chosen.length < count) {
+    let far = 0;
+    dist.forEach((d, i) => { if (d > dist[far]) far = i; });
+    chosen.push(far);
+    verts.forEach((v, i) => { dist[i] = Math.min(dist[i], len(sub(v, verts[far]))); });
+  }
+  return chosen.flatMap((i) => verts[i]);
+}
+
+function buildHull(points: ArrayLike<number>): HullShape | null {
   // Unique points (split vertices repeat positions exactly)
   let scale = 0;
   for (let i = 0; i < points.length; i++) scale = Math.max(scale, Math.abs(points[i]));
@@ -144,7 +187,7 @@ export function convexHull(points: ArrayLike<number>): HullShape | null {
     for (const [a, b] of horizon) tris.push(make(a, b, i));
   }
 
-  return hullFromTriangles(p.flat(), tris.flatMap((t) => t.v));
+  return mergeTriangles(p.flat(), tris.flatMap((t) => t.v));
 }
 
 /**
@@ -154,6 +197,12 @@ export function convexHull(points: ArrayLike<number>): HullShape | null {
  * (every edge on exactly two faces) or enclose no volume.
  */
 export function hullFromTriangles(positions: ArrayLike<number>, indices: ArrayLike<number>): HullShape | null {
+  const h = mergeTriangles(positions, indices);
+  // Too many vertices for the GPU: simplify as convexHull does
+  return h && h.vertices.length / 3 > MAX_HULL_VERTICES ? buildHull(spreadVertices(h, MAX_HULL_VERTICES)) : h;
+}
+
+function mergeTriangles(positions: ArrayLike<number>, indices: ArrayLike<number>): HullShape | null {
   const p: V3[] = [];
   for (let i = 0; i + 2 < positions.length; i += 3) p.push([positions[i], positions[i + 1], positions[i + 2]]);
   let scale = 0;

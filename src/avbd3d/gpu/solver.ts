@@ -480,7 +480,8 @@ export class GpuSolver3D {
     this.colorBuffer = device.createBuffer({ label: 'colours', size: (3 * cap + 65 + MAX_COLORS * this.colorGroups + 1) * 4, usage: storageUsage() });
     this.paramsBuffer = device.createBuffer({ label: 'params 3d', size: PARAM_WORDS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.refBuffer = device.createBuffer({ label: 'reference poses', size: cap * 32, usage: storageUsage() });
-    this.hulls = options.hulls ?? device.limits.maxStorageBuffersPerShaderStage >= 9;
+    // Only where the device can bind them, whatever the option says (else layouts are invalid)
+    this.hulls = (options.hulls ?? true) && device.limits.maxStorageBuffersPerShaderStage >= 9;
     this.hullBuffer = device.createBuffer({ label: 'hulls', size: this.hullCapacity * 16, usage: storageUsage() });
     device.queue.writeBuffer(this.colorBuffer, 0, new Uint32Array(cap).fill(NO_COLOR));
 
