@@ -11,6 +11,16 @@ const spheres = new WeakSet<Rigid>();
 
 export const isSphere = (body: Rigid): boolean => spheres.has(body);
 
+const sails = new WeakSet<Rigid>();
+
+/** Mark a (thin) box as a sail: the GPU solver's wind pushes on its local z faces. */
+export function sail(body: Rigid): Rigid {
+  sails.add(body);
+  return body;
+}
+
+export const isSail = (body: Rigid): boolean => sails.has(body);
+
 /** A solid sphere of radius r. */
 export function sphere(solver: Solver, r: number, density: number, friction: number, position: ArrayLike<number>, velocity: ArrayLike<number> = [0, 0, 0]): Rigid {
   const body = new Rigid(solver, [2 * r, 2 * r, 2 * r], density, friction, position, velocity);

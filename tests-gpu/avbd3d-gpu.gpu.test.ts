@@ -45,6 +45,8 @@ gpuTest('seeded single step matches the CPU reference: contacts and poses', asyn
       gpu.params.matchNearest = false;
       gpu.params.faceBias = false;
       gpu.params.reuseContacts = false;
+      gpu.params.startAtRest = false;
+      gpu.params.massPenalty = false;
       gpu.seedFrom(ref);
       gpu.fixedColors = gpu.sequentialColors();
       gpu.step();

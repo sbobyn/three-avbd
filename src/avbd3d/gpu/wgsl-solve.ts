@@ -225,6 +225,37 @@ fn warmStartJoints(@builtin(global_invocation_id) gid: vec3u) {
   joints[j] = k;
 }
 
+/**
+ * The wind on a sail (a thin plate): pressure drag ½ρC_d A (n·u)|n·u| along its normal n, u
+ * the wind relative to the plate, plus skin friction along the plate (6% of that
+ * coefficient), which streams a flag out downwind. The wind gusts in time and across space,
+ * sideways too (a few travelling sines), so a flag lying along it still catches it and
+ * ripples. The pressure is linearised implicitly in the plate's normal speed (divided by
+ * 1 + dt ∂a/∂v): a light plate in real air is stiff, and explicit drag would blow up.
+ */
+fn windAccel(i: u32, x: vec3f, rot: vec4f, v: vec3f) -> vec3f {
+  let t = f32(params.step) * params.dt;
+  let w = params.wind.xyz;
+  let speed = length(w);
+  // Gusts travel downwind: phases in the wind's frame (a downwind, c across)
+  let d = select(vec3f(1.0, 0.0, 0.0), w / speed, speed > 1e-6);
+  let side = vec3f(-d.y, d.x, 0.0);
+  let a = dot(x, d);
+  let c = dot(x, side);
+  let along = 0.5 * sin(1.1 * t - 0.35 * a + 0.2 * c) + 0.3 * sin(2.9 * t - 0.8 * a + 0.6 * x.z)
+    + 0.2 * sin(6.1 * t - 1.7 * a + 1.3 * x.z + 0.9 * c);
+  let across = 0.6 * sin(1.7 * t - 0.6 * a + 0.4 * x.z) + 0.4 * sin(4.3 * t - 1.3 * a - 0.7 * x.z);
+  let lift = sin(2.3 * t - 0.9 * a + 1.1 * c);
+  let g = params.gust.x;
+  let u = w * (1.0 + g * along) + (side * (0.25 * across) + vec3f(0.0, 0.0, 0.1 * lift)) * (g * speed) - v;
+  let n = qrotate(rot, vec3f(0.0, 0.0, 1.0));
+  let size = bodies[i].size;
+  let k = params.wind.w * size.x * size.y / size.w; // ½ρC_d A / m
+  let un = dot(u, n);
+  let ut = u - n * un;
+  return n * (k * un * abs(un) / (1.0 + 2.0 * params.dt * k * abs(un))) + ut * (0.06 * k * length(ut));
+}
+
 @compute @workgroup_size(64)
 fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
@@ -238,19 +269,25 @@ fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
   let g = params.gravity;
   let dynamic = bodies[i].size.w > 0.0;
 
-  // Inertial target (Eq. 2)
+  // Inertial target (Eq. 2), with the wind's push on sails as a second external force
   var inertialPos = pos.xyz + vel.xyz * dt;
   if (dynamic) { inertialPos.z += g * (dt * dt); }
+  if (dynamic && bodies[i].angVel.w == SHAPE_SAIL) { inertialPos += windAccel(i, pos.xyz, rot, vel.xyz) * (dt * dt); }
   bodies[i].inertialPos = vec4f(inertialPos, bodies[i].inertialPos.w);
   bodies[i].inertialRot = qadd(rot, angVel * dt);
 
-  // Adaptive warm start (original VBD paper); vel.w holds last step's vel.z
+  // Adaptive warm start (original VBD paper); vel.w holds last step's vel.z. With
+  // FLAG_START_AT_REST a body slower than REST_SPEED starts from x- instead: at few
+  // iterations a resting stack never corrects the extrapolated guess, which pumps tall walls
+  // until they buckle (docs/FINDINGS.md, Stage 8m)
   var w = 0.0;
   if (abs(g) > 0.0) { w = clamp((vel.z - vel.w) / dt * sign(g) / abs(g), 0.0, 1.0); }
+  let slow = length(vel.xyz) + length(angVel) * bodies[i].moment.w < REST_SPEED;
+  let atRest = (params.flags & FLAG_START_AT_REST) != 0u && slow;
 
   bodies[i].initialPos = pos;
   bodies[i].initialRot = rot;
-  if (dynamic) {
+  if (dynamic && !atRest) {
     bodies[i].pos = vec4f(pos.xyz + vel.xyz * dt + vec3f(0.0, 0.0, g * (w * dt * dt)), pos.w);
     bodies[i].rot = qadd(rot, angVel * dt);
   }

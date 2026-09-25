@@ -607,6 +607,21 @@ fn collide(A: Box, B: Box, sat: ptr<function, Sat>) -> Found {
  * points keep their warm-start data; C(x-) is recomputed from the current poses. Returns
  * false when the pair must go through the narrowphase.
  */
+/**
+ * A contact's least normal penalty with FLAG_MASS_PENALTY: the lighter dynamic body's mass over
+ * dt², its inertia term in the primal Hessian. From the demo's PENALTY_MIN the ramp (β|C| an
+ * iteration) takes many steps to catch up with a heavy body, which sinks through the floor
+ * meanwhile; at m/dt² a contact removes about half its error an iteration from the start,
+ * whatever the mass. Not in the paper; for unit-scale bodies it is ~10³, below where their
+ * penalties settle anyway. Friction rows keep the demo's ramp (Coulomb stopping distances).
+ */
+fn contactPenaltyMin(a: u32, b: u32) -> f32 {
+  if ((params.flags & FLAG_MASS_PENALTY) == 0u) { return PENALTY_MIN; }
+  let mA = select(bodies[a].size.w, 3.4e38, bodies[a].size.w <= 0.0);
+  let mB = select(bodies[b].size.w, 3.4e38, bodies[b].size.w <= 0.0);
+  return clamp(min(mA, mB) / (params.dt * params.dt), PENALTY_MIN, PENALTY_MAX);
+}
+
 fn reuseContacts(a: u32, b: u32) -> bool {
   let pm = hashFind(a, b);
   if (pm < 0) { return false; }
@@ -643,6 +658,7 @@ fn reuseContacts(a: u32, b: u32) -> bool {
     k.c0z = dot(basis[2], d);
     k.lam = k.lam * params.alpha * params.gamma;
     k.pen = clamp(k.pen * params.gamma, vec3f(PENALTY_MIN), vec3f(PENALTY_MAX));
+    k.pen.x = max(k.pen.x, contactPenaltyMin(a, b));
     contacts[base + i] = k;
   }
   return true;
@@ -710,6 +726,7 @@ fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
   }
   let matchNearest = (params.flags & FLAG_MATCH_NEAREST) != 0u;
   let minSide = min(min(min(A.h.x, A.h.y), A.h.z), min(min(B.h.x, B.h.y), B.h.z)) * 2.0;
+  let penaltyMin = contactPenaltyMin(a, b);
 
   for (var i = 0u; i < count; i++) {
     var rA = qrotate(qconj(qA), found.xA[i] - A.c);
@@ -754,6 +771,7 @@ fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
     // Warm start the dual variables and penalty parameters (Eq. 19)
     lam = lam * params.alpha * params.gamma;
     pen = clamp(pen * params.gamma, vec3f(PENALTY_MIN), vec3f(PENALTY_MAX));
+    pen.x = max(pen.x, penaltyMin);
 
     contacts[base + i] = Contact(rA, found.feature[i] | stick, rB, c0.x, pen, c0.y, lam, c0.z);
   }

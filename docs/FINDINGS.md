@@ -2,6 +2,109 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-24 — Stage 8n: heavy bodies sank through the floor; contacts start at m/dt²
+
+The viewer's cannonball panel goes up to 10 t. From 500 kg up, a ball dropped at 45 m/s on
+the floor went straight through the 1 m ground slab (GPU, default parameters):
+
+| ball (r 0.7 m) | lowest centre, demo penalty | with `massPenalty` |
+|---|---|---|
+| 43 kg | 0.72 m | 0.77 m |
+| 500 kg | −17 m (still falling) | 0.77 m |
+| 10 t | −59 m (still falling) | 0.77 m |
+
+A new contact starts at PENALTY_MIN = 1 and ramps by β|C| (1e4 × |C|) an iteration, while a
+body's own term in the primal Hessian is m/dt² (3.6e7 for 10 t). The contact can't push back
+until many steps later, and once the centre passes the slab's mid-plane the normal flips.
+
+`massPenalty` (GPU only, on by default; FLAG_MASS_PENALTY) starts a contact's normal penalty
+at no less than the lighter dynamic body's m/dt². That removes about half the error per
+iteration from the first one, whatever the mass. For unit boxes and bricks this is ~10³,
+below where their penalties settle, and friction rows keep the demo's ramp.
+
+- The GPU tests pass with it on: stack, pyramid, and Coulomb friction.
+- The parity test turns it off, as it does the other GPU-only rules. The CPU reference stays
+  a faithful port and doesn't have it.
+- Brick Walls (27k): 1.1–1.3 ms/step with it on, 1.2–1.4 off.
+
+The ~0.45 m dip at 0.77 for every mass is separate. A 45 m/s body travels 0.75 m in a step
+before any contact exists (there are no speculative contacts), and α = 0.99 keeps most of
+that penetration, so the ball climbs back out over a few seconds.
+
+## 2026-09-24 — Stage 8m: tall brick walls at 4 iterations; slow bodies start at rest
+
+Follow-up to 8l's creeping walls. Headless probes: walls built into a reference `Solver` and
+run on it or on `GpuSolver3D`, adapting every 30 steps; a brick counts as fallen once it has
+moved > 0.5 m sideways or turned > 0.15 rad, and a wall "falls" when more than 1% have.
+
+### It is AVBD at 4 iterations, not the GPU port
+- A 40-course ring one brick deep at radius 5 (1,200 bricks): the CPU reference falls at
+  11 s, the GPU at ~18 s. A 40-course straight wall 8 bricks long falls at 4-6 s on both.
+- One 40-course ring at radius 40 (9,840 bricks; the 110k ring's rings are 2 cm apart, so its
+  inner ring is this wall) fails on the GPU like the 110k ring, at 6 s, in under 1 s of wall
+  time per 20 s simulated. It was the test bed for everything below.
+- The mode is buckling, not sliding: the lower wall tilts in, the upper wall out (top course
+  4 mrad at 3 s, 40 mrad at 5 s). At 4 iterations only 7% of contacts are sticking and 10%
+  carry no normal force (median 0.4 N); at 10 iterations all stick and the load is even
+  (median 3.9 N). Penalties are not the difference: median normal penalty 1.7e3 at 4
+  iterations, 1.15e3 at 10.
+
+### The 1 cm per course is the collision margin
+The demo's normal row is n·(xA − xB) + `COLLISION_MARGIN` (1 cm, in the reference and on the
+GPU), so a resting contact sits 1 cm deep. The 40-course ring's top course at 3 s is 33 cm
+down with the margin and 8-9 cm down with 1 mm or none; with stiff normals (below) it is
+exactly 40 × 1 cm. It has nothing to do with the collapse: with no margin the wall still
+falls at 6 s. Also tried on the radius-40 ring, fall time against 6 s:
+- alpha 0.9 / 0.95 / 0.999: 8 / 12 / 5 s. gamma 0.99 / 0.9999: 7 / 6 s. betaAng 1e4: 6 s.
+- betaLin 1e3 / 1e5: 6 / 6 s; 1e6 stands, but blows bricks out of the wall at ~4 s.
+- λ warm start without alpha (λ·γ): 5 s; λ·0.95: 9 s. STICK_THRESH ×10 or ×100: 6 s.
+- Colouring order: the reference's sequential Gauss-Seidel (newest first, so the top course
+  first) does worse than the GPU's colours, not better.
+- A floor on the normal penalty: 3e4 and 1e5 stand 40 s, 1e4 falls at 7 s, 3e5 and more blow
+  the wall apart in the first second. Too narrow a window to use.
+- Bricks built pre-sunk by the margin: still 6 s. A 3 s settle at 40 iterations, then 4:
+  25 s. Neither is a fix.
+
+### The cause: the adaptive warm start
+Each step's iterations start from x- + v·dt + w·g·dt², where w is the downward part of last
+step's acceleration over g (VBD's adaptive initialisation, as in the demo). Four iterations
+don't correct that guess in a resting stack. The unconverged part of the old velocity carries
+over to the new one, and w turns jitter into a push down into the supports. The wall swells
+(its top 5-7 cm above where it started by 4-5 s), then buckles. Radius-40 ring, 4 iterations:
+
+| First guess | 40-course ring (9.8k) | 110k ring |
+|---|---|---|
+| demo: x- + v·dt + w·g·dt² | falls at 6 s | falls at 7 s |
+| w = 1 | falls at 4 s | — |
+| w = 0 | stands 40 s, drift 0.23 m | falls at 14 s |
+| x- (no extrapolation) | stands 40 s, drift 2 cm | stands 40 s, drift 6 cm |
+
+The CPU reference agrees (a patched copy, the 1,200-brick ring): w = 0 falls at 12 s (from
+11), starting from x- at 27 s. Starting every body from x- damps real motion, though: in the
+GPU tests a sliding box went 2.26 m where Coulomb says 3.16, and the 50000:1 pendulum's joints
+stretched 0.29 (limit 0.15).
+
+### Fix: slow bodies start at rest (GPU `startAtRest`, on by default)
+A body whose fastest point is slower than 0.1 m/s (|v| + |ω|·r, `REST_SPEED`; g·dt is
+0.17 m/s) starts its iterations from x-; faster bodies keep the demo's guess, so sliding,
+swinging and flying bodies are untouched and every GPU test passes. A cutoff of 0.01 or 0.03 m/s
+falls at 6 s; 0.1 and 0.3 stand 60 s. The reference is unchanged; the parity tests turn the
+option off. The viewer has a toggle for it, and the 28k ring is back at the paper's 4 iterations.
+At 4 iterations with the fix:
+- 110k ring unhit: stands 40 s (drift 5 cm). 28k ring unhit: stands 60 s (fell at 18 s).
+- 40-course ring at radius 40: stands 60 s (drift 3-4 cm), and 40 s at 3 iterations; at
+  radius 5, 40 s. The 40-course straight wall stands 30 s (fell at 6 s); only the top
+  course's end brick, which overhangs by half its length, drops, as it does at 10 iterations.
+- 28k ring smashed: 12.3-12.7k of the 28k bricks down by 5 s (12.2-13.1k without the fix).
+  Bricks that fall between 10 s and 40 s now come from the ball's exit breach, where
+  without the fix they came from all round the ring. The 4-iteration wall is still weaker
+  under impact: at 10 iterations the same smash brings down ~5.1k bricks, with or without the
+  fix, and nothing moves after 10 s.
+
+Timing: an interleaved A/B of two solvers (fix on / off) put every small scene within ±3%,
+but it ran on battery (the 110k ring at 17-23 ms against 9.3 ms on AC), so its numbers are
+not recorded here, and `docs/data/bench3d/m4-max.json` still holds the 8l run. Re-run on AC.
+
 ## 2026-09-24 — Stage 8l: the ring and gable smashes launched as in the paper's video
 
 Checked against frames of the project page's teaser video: in Fig. 1 the sphere rolls in from
@@ -22,18 +125,17 @@ Re-measured on the M4 Max (whole suite, on AC; unchanged scenes within 5% of bef
 
 The M1 Pro report predates this and needs a re-run.
 
-### Tall brick walls creep and fall at low iteration counts (not fixed)
+### Tall brick walls creep and fall at low iteration counts (fixed in 8m)
 Unhit, with the sphere parked away (headless, bricks moved > 0.5 m or turned > 0.15 rad):
 - 110k ring (40 courses): stands 5 s at 4 iterations, most of the upper wall down by 15 s;
   6 iterations last ~10 s, 8 ~15 s; 10 still standing at 20 s.
 - A 40-course ring at radius 40 fails like the 110k one; 20 courses at radius 80 stand 40 s
   at 6 iterations, so it is the wall's height, not f32 precision at 80 m from the origin.
 - Contact reuse on or off makes no difference.
-- 28k ring (20 courses): stands ~15 s at 4 iterations, 40 s+ at 6 (the viewer now uses 6).
+- 28k ring (20 courses): stands ~15 s at 4 iterations, 40 s+ at 6.
 - The top course sits 0.2 m (20 courses) to 0.4 m (40 courses) below its start at every
   iteration count: about 1 cm of steady penetration per course.
-The benchmark window ends ~3 s in, before any of this. Whether the paper's solver or the
-upstream demo does the same is untested.
+The benchmark window ends ~3 s in, before any of this. Cause and fix: Stage 8m.
 
 ## 2026-09-24 — Stage 8k: carrying pairs of still bodies in the broadphase (tried, reverted)
 

@@ -38,7 +38,7 @@ export const PAPER_SCENES = {
     iterations: 4,
     totalMs: 9.8,
     solveMs: 3.5,
-    note: 'Ours: a stepped ring wall of 110,332 bricks, 160 m across, hit from inside by one sphere.',
+    note: 'Ours: a stepped ring wall of 110,332 bricks, 160 m across, smashed by an 8 m sphere rolling in from outside.',
   },
   fig3: {
     figure: 'Fig. 3, Table 1',
@@ -55,7 +55,7 @@ export const PAPER_SCENES = {
     bodies: 35_000,
     iterations: 10,
     totalMs: 16,
-    note: 'Ours has no cloth: 600 jointed plates (34,097 bodies, 71,064 joints) fall onto a chain-mail net pinned at its edges.',
+    note: 'Ours has no cloth: 600 jointed plates (34,097 bodies, 71,064 joints) fall onto a net of 64 × 64 ball-jointed plates pinned at its edges.',
   },
 } satisfies Record<string, PaperScene>;
 

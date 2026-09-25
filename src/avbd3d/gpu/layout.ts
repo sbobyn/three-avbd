@@ -9,7 +9,8 @@ import { CORE_WGSL } from '../../avbd2d/gpu/layout.ts';
  * Floats per body, 10 vec4. Everything a contact reads comes first (one 64-byte span):
  * pos (xyz, friction), rot (quaternion), initialPos, initialRot; then size (xyz, mass),
  * moment (xyz, bounding radius), inertialPos, inertialRot, vel (xyz, previous vel.z),
- * angVel (xyz, shape: SHAPE_BOX / SHAPE_SPHERE). Rendering reads pos, rot, size and shape.
+ * angVel (xyz, shape: SHAPE_BOX / SHAPE_SPHERE / SHAPE_SAIL). Rendering reads pos, rot, size
+ * and shape.
  */
 export const BODY_FLOATS = 40;
 export const B_POS = 0;
@@ -57,9 +58,13 @@ export const STICK_BIT = 0x80000000;
 export const C_MANIFOLDS = 6;
 export const C_PREV_MANIFOLDS = 7;
 
-/** Shape codes in angVel.w (spheres: see ../shapes.ts; radius = size.x / 2). */
+/**
+ * Shape codes in angVel.w (spheres: see ../shapes.ts; radius = size.x / 2). A sail collides
+ * as a box and catches the wind on its local z faces.
+ */
 export const SHAPE_BOX = 0;
 export const SHAPE_SPHERE = 1;
+export const SHAPE_SAIL = 2;
 
 export const T_JOINT = 1;
 export const T_SPRING = 2;
@@ -69,6 +74,12 @@ export const FLAG_MATCH_NEAREST = 1;
 export const FLAG_FACE_BIAS = 2;
 /** Reuse a pair's contact points while neither body has moved (wgsl-collision.ts). */
 export const FLAG_REUSE_CONTACTS = 4;
+/** Slow bodies start each step's iterations from the step-start pose (wgsl-solve.ts). */
+export const FLAG_START_AT_REST = 8;
+/** A contact's normal penalty starts at the lighter body's m/dt² (wgsl-collision.ts contactPenaltyMin). */
+export const FLAG_MASS_PENALTY = 16;
+/** Speed (m/s) of a body's fastest point, |v| + |ω|·radius, below which FLAG_START_AT_REST applies. */
+export const REST_SPEED = 0.1;
 /**
  * A body counts as still while within this distance (m) and rotation (rad) of its reference
  * pose; its pairs then keep their contact points instead of re-running the narrowphase.
@@ -79,7 +90,7 @@ export const REUSE_ANG_TOL = 0.002;
 export const NEAREST_FRACTION = 0.05;
 
 /** Words in the Params uniform (see the struct in PRELUDE_3D). */
-export const PARAM_WORDS = 32;
+export const PARAM_WORDS = 40;
 
 export const PRELUDE_3D = /* wgsl */ `
 // Shared by every 3D module (avbd3d/gpu/layout.ts)
@@ -93,6 +104,7 @@ const COLLISION_MARGIN = 0.01;
 const STICK_THRESH = 0.00001;
 
 const SHAPE_SPHERE = ${SHAPE_SPHERE}.0;
+const SHAPE_SAIL = ${SHAPE_SAIL}.0;
 const STICK_BIT = ${STICK_BIT}u;
 const C_MANIFOLDS = ${C_MANIFOLDS}u;
 const C_PREV_MANIFOLDS = ${C_PREV_MANIFOLDS}u;
@@ -102,6 +114,9 @@ const SPHERE_FEATURE = 3u << 24u;
 const FLAG_MATCH_NEAREST = ${FLAG_MATCH_NEAREST}u;
 const FLAG_FACE_BIAS = ${FLAG_FACE_BIAS}u;
 const FLAG_REUSE_CONTACTS = ${FLAG_REUSE_CONTACTS}u;
+const FLAG_START_AT_REST = ${FLAG_START_AT_REST}u;
+const FLAG_MASS_PENALTY = ${FLAG_MASS_PENALTY}u;
+const REST_SPEED = ${REST_SPEED};
 const NEAREST_FRACTION = ${NEAREST_FRACTION};
 
 struct Body {
@@ -114,7 +129,7 @@ struct Body {
   inertialPos: vec4f,  // inertial target y, w: step it last moved from its reference pose (u32)
   inertialRot: vec4f,
   vel: vec4f,          // xyz, w: previous step's vel.z (adaptive warm start)
-  angVel: vec4f,       // xyz, w: shape (SHAPE_BOX, SHAPE_SPHERE)
+  angVel: vec4f,       // xyz, w: shape (SHAPE_BOX, SHAPE_SPHERE, SHAPE_SAIL)
 }
 
 struct Joint {
@@ -181,6 +196,8 @@ struct Params {
   manifoldCapacity: u32,
   step: u32,           // steps since the solver was created (from 1)
   primalLanes: u32,    // bytes 0-2: log2 of the colour sizes from which 1, 2, 4 lanes per body suffice
+  wind: vec4f,         // xyz: wind velocity (m/s), w: air pressure coefficient ½ρC_d
+  gust: vec4f,         // x: gust strength (fraction of the wind)
 }
 
 fn qmul(a: vec4f, b: vec4f) -> vec4f {

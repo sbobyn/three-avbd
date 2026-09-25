@@ -20,11 +20,11 @@ import { Manifold } from '../ref/manifold.ts';
 import { defaultParams, type Solver, type SolverParams } from '../ref/solver.ts';
 import {
   ARGS_ITEMS_3D, B_ANGVEL, B_INERTIAL_POS, B_INERTIAL_ROT, B_INITIAL_POS, B_INITIAL_ROT, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS,
-  C_MANIFOLDS, CONTACT_WORDS, FLAG_FACE_BIAS, FLAG_MATCH_NEAREST, FLAG_REUSE_CONTACTS, J_C0_ANG, J_C0_LIN, J_LAM_ANG, K_LAM, K_PEN, K_RA, K_RB, M_GEO, MANIFOLD_WORDS, STICK_BIT,
-  J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_SPHERE, T_JOINT, T_SPRING,
+  C_MANIFOLDS, CONTACT_WORDS, FLAG_FACE_BIAS, FLAG_MASS_PENALTY, FLAG_MATCH_NEAREST, FLAG_REUSE_CONTACTS, FLAG_START_AT_REST, J_C0_ANG, J_C0_LIN, J_LAM_ANG, K_LAM, K_PEN, K_RA, K_RB, M_GEO, MANIFOLD_WORDS, STICK_BIT,
+  J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_SAIL, SHAPE_SPHERE, T_JOINT, T_SPRING,
   TOPOLOGY_ACCESSORS_3D,
 } from './layout.ts';
-import { isSphere } from '../shapes.ts';
+import { isSail, isSphere } from '../shapes.ts';
 import { rotate, vec3 } from '../ref/math.ts';
 import { broadphaseWGSL, contactsWGSL, refsWGSL } from './wgsl-collision.ts';
 import { solveWGSL } from './wgsl-solve.ts';
@@ -88,9 +88,39 @@ export interface GpuParams3D extends SolverParams {
   faceBias: boolean;
   /** Keep contact points of pairs whose bodies have not moved (skips their narrowphase). */
   reuseContacts: boolean;
+  /**
+   * Bodies slower than REST_SPEED start each step's iterations from the step-start pose x-
+   * instead of the demo's guess x- + v·dt + w·g·dt² (VBD's adaptive warm start). At 4
+   * iterations that guess pumps tall brick walls until they buckle (docs/FINDINGS.md, Stage 8m).
+   */
+  startAtRest: boolean;
+  /**
+   * A contact's normal penalty starts at the lighter dynamic body's m/dt² rather than the
+   * demo's PENALTY_MIN, so a heavy body meets a stiff contact at once instead of sinking
+   * through the floor while the penalty ramps (wgsl-collision.ts contactPenaltyMin).
+   */
+  massPenalty: boolean;
+  /** Wind (m/s) blowing towards `windAngle` (rad from +x, about z), felt by sails only
+   * (../shapes.ts), with gusts of `windGust` of its speed. */
+  windSpeed: number;
+  windAngle: number;
+  windGust: number;
+  /** ½ρC_d of the air (kg/m³): 0.72 is air on a flat plate. */
+  windPressure: number;
 }
 
-export const gpuParams3D = (): GpuParams3D => ({ ...defaultParams(), matchNearest: true, faceBias: true, reuseContacts: true });
+export const gpuParams3D = (): GpuParams3D => ({
+  ...defaultParams(),
+  matchNearest: true,
+  faceBias: true,
+  reuseContacts: true,
+  startAtRest: true,
+  massPenalty: true,
+  windSpeed: 0,
+  windAngle: 0,
+  windGust: 0.4,
+  windPressure: 0.72,
+});
 
 export interface GpuSolverOptions {
   /** Pre-allocated body buffer (STORAGE | COPY_SRC | COPY_DST), e.g. one Three.js renders from. */
@@ -279,7 +309,7 @@ export class GpuSolver3D {
   readonly bodyCapacity: number;
   readonly bodies: BodyInfo[] = [];
   /** GPU slot of each of the reference's bodies (identity unless spatially sorted). */
-  private readonly refToGpu: Int32Array;
+  readonly refToGpu: Int32Array;
   jointCount = 0;
   private jointCapacity = 0;
   /** Per joint slot: type, bodyA (-1 = world), bodyB, 0. */
@@ -617,7 +647,7 @@ export class GpuSolver3D {
       f[o + B_VEL + 3] = b.prevVelocityLin[2];
       f.set(b.velocityAng, o + B_ANGVEL);
       const sphere = isSphere(b);
-      f[o + B_ANGVEL + 3] = sphere ? SHAPE_SPHERE : SHAPE_BOX;
+      f[o + B_ANGVEL + 3] = sphere ? SHAPE_SPHERE : isSail(b) ? SHAPE_SAIL : SHAPE_BOX;
       this.bodies[first + k] = { radius: b.radius, dynamic: b.mass > 0, sphere, size: [b.size[0], b.size[1], b.size[2]] };
     });
     this.device.queue.writeBuffer(this.bodyBuffer, first * BODY_FLOATS * 4, f, 0, bodies.length * BODY_FLOATS);
@@ -818,7 +848,7 @@ export class GpuSolver3D {
     f[3] = p.betaAng;
     f[4] = p.gamma;
     f[5] = p.alpha;
-    u[6] = (p.matchNearest ? FLAG_MATCH_NEAREST : 0) | (p.faceBias ? FLAG_FACE_BIAS : 0) | (p.reuseContacts ? FLAG_REUSE_CONTACTS : 0);
+    u[6] = (p.matchNearest ? FLAG_MATCH_NEAREST : 0) | (p.faceBias ? FLAG_FACE_BIAS : 0) | (p.reuseContacts ? FLAG_REUSE_CONTACTS : 0) | (p.startAtRest ? FLAG_START_AT_REST : 0) | (p.massPenalty ? FLAG_MASS_PENALTY : 0);
     u[7] = this.bodyCount;
     u[8] = this.jointCount;
     u[9] = this.colorCap;
@@ -845,6 +875,7 @@ export class GpuSolver3D {
     u[30] = this.stepCount;
     const log2 = (x: number) => Math.min(31, Math.max(0, Math.round(Math.log2(x))));
     u[31] = log2(this.primalLanes[0]) | (log2(this.primalLanes[1]) << 8) | (log2(this.primalLanes[2]) << 16);
+    f.set([p.windSpeed * Math.cos(p.windAngle), p.windSpeed * Math.sin(p.windAngle), 0, p.windPressure, p.windGust], 32);
     this.device.queue.writeBuffer(this.paramsBuffer, 0, buf);
   }
 
