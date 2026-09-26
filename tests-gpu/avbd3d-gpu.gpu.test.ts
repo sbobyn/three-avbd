@@ -10,7 +10,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BODY_FLOATS } from '../src/avbd3d/gpu/layout.ts';
+import { BODY_FLOATS, J_PEN_LIN } from '../src/avbd3d/gpu/layout.ts';
 import { createGpuSim3D, GpuSim3D } from '../src/avbd3d/gpu/sim.ts';
 import { GpuSolver3D, gpuParams3D } from '../src/avbd3d/gpu/solver.ts';
 import { starryNight } from '../src/avbd3d/painting.ts';
@@ -484,6 +484,79 @@ gpuTest('a collapsing tower runs identically twice (tower.ts)', async (device) =
   let differ = 0;
   for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) differ++;
   assert.equal(differ, 0, `${differ} words differ between the runs`);
+});
+
+// Runtime destruction: a fixed body turned loose mid-run (rewriteBodies) falls,
+// and joints appended to also break on linear force (appendJoints, not in the paper) part when
+// the pair lands, where torque-only joints (the paper's) hold a square landing.
+gpuTest('a fixed pair let loose falls, and linear-fracture joints part on landing', async (device) => {
+  const land = async (linear: boolean) => {
+    const ref = new Solver();
+    new Rigid(ref, [20, 20, 1], 0, 0.5, [0, 0, -0.5]);
+    new Rigid(ref, [1, 1, 1], 0, 0.5, [0, 0, 6]);
+    new Rigid(ref, [1, 1, 1], 0, 0.5, [0, 0, 7]);
+    const solver = new GpuSolver3D(device, ref);
+    const [a, b] = [solver.gpuIndex(1), solver.gpuIndex(2)];
+    for (let k = 0; k < 10; k++) solver.step();
+    const scratch = new Solver();
+    solver.rewriteBodies([a, b].sort((x, y) => x - y), [a, b].sort((x, y) => x - y).map((i) => new Rigid(scratch, [1, 1, 1], 1, 0.5, [0, 0, i === a ? 6 : 7])));
+    solver.appendJoints([{ a, b, rA: [0, 0, 0.5], rB: [0, 0, -0.5] }], 20, linear);
+    for (let k = 0; k < 90; k++) solver.step();
+    const [bodies, joints] = [await solver.readBodies(), await solver.readJoints()];
+    solver.destroy();
+    return { z: bodies[a * BODY_FLOATS + 2], stiffness: joints[J_PEN_LIN + 3] };
+  };
+  const linear = await land(true);
+  const angular = await land(false);
+  assert.ok(linear.z < 1, `the loosened box fell (z ${linear.z.toFixed(2)})`);
+  assert.equal(linear.stiffness, 0, 'the linear-fracture joint broke on landing');
+  assert.ok(angular.stiffness > 0, 'the torque-only joint held');
+});
+
+// Released joints (releaseJoints) stop acting and stop excluding their pair from collision, and
+// appendJoints fills the released slots before growing the joint count: a destruction demo's rubble
+// freezes joints all the time, and the count must not grow with every blast
+gpuTest('released joints let go, their pair collides again, and their slots are reused', async (device) => {
+  const ref = new Solver();
+  new Rigid(ref, [20, 20, 1], 0, 0.5, [0, 0, -0.5]);
+  // Two stacks: a box on a box. The lower boxes are fixed; each upper box hangs from a joint
+  // 0.5 above its rest (held in the air by the joint alone)
+  for (const x of [0, 5]) {
+    new Rigid(ref, [1, 1, 1], 0, 0.5, [x, 0, 0.5]);
+    new Rigid(ref, [1, 1, 1], 1, 0.5, [x, 0, 2]);
+  }
+  const solver = new GpuSolver3D(device, ref);
+  const [lowA, upA, lowB, upB] = [1, 2, 3, 4].map((i) => solver.gpuIndex(i));
+  const first = solver.appendJoints(
+    [
+      { a: lowA, b: upA, rA: [0, 0, 0.5], rB: [0, 0, -1] },
+      { a: lowB, b: upB, rA: [0, 0, 0.5], rB: [0, 0, -1] },
+    ],
+    1e9,
+  );
+  assert.deepEqual(first, [0, 1], 'fresh slots');
+  for (let k = 0; k < 30; k++) solver.step();
+  let bodies = await solver.readBodies();
+  assert.ok(bodies[upA * BODY_FLOATS + 2] > 1.8, `joint A holds its box up (z ${bodies[upA * BODY_FLOATS + 2].toFixed(2)})`);
+  // Release A's joint: its box drops onto the fixed box (a released pair collides), B's stays up
+  solver.releaseJoints([0, 0, 7]);
+  for (let k = 0; k < 90; k++) solver.step();
+  bodies = await solver.readBodies();
+  const zA = bodies[upA * BODY_FLOATS + 2];
+  const zB = bodies[upB * BODY_FLOATS + 2];
+  assert.ok(Math.abs(zA - 1.5) < 0.1, `the released box rests on the fixed one (z ${zA.toFixed(2)})`);
+  assert.ok(zB > 1.8, `the other joint still holds (z ${zB.toFixed(2)})`);
+  // A new joint takes the released slot; the count does not grow
+  const count = solver.jointCount;
+  const reused = solver.appendJoints([{ a: lowA, b: upA, rA: [0, 0, 0.5], rB: [0, 0, -0.5] }], 1e9);
+  assert.deepEqual(reused, [0], 'the released slot is reused');
+  assert.equal(solver.jointCount, count, 'the joint count did not grow');
+  const grown = solver.appendJoints([{ a: lowB, b: upB, rA: [0, 0, 0.5], rB: [0, 0, -1] }], 1e9);
+  assert.deepEqual(grown, [count], 'with no slot free, the count grows');
+  for (let k = 0; k < 30; k++) solver.step();
+  bodies = await solver.readBodies();
+  assert.ok(Math.abs(bodies[upA * BODY_FLOATS + 2] - 1.5) < 0.1, 'the reused joint holds the box where it lay');
+  solver.destroy();
 });
 
 // The colour cap never passes MAX_COLORS: the indirect arguments hold that many colours. A

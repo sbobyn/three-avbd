@@ -70,8 +70,11 @@ export const PASS_STRIDE = 256;
  * WGSL shared by the 2D and 3D pipelines: counters, indirect-argument slots, colouring and
  * hashing constants. Each dimension's prelude starts with it and adds its own structs.
  */
+/** Constraint slot types (the joint info's first word): none (released or unused), a joint, a spring. */
+export const T_NONE = 0;
+
 export const CORE_WGSL = /* wgsl */ `
-const T_NONE = 0;
+const T_NONE = ${T_NONE};
 
 const MAX_COLORS = ${MAX_COLORS}u;
 const NO_COLOR = ${NO_COLOR}u;
