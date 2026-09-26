@@ -1,7 +1,7 @@
 # three-avbd v0.1: library API (design for review)
 
-Status: v0.1 built (`src/lib`, stage 9 in `PLAN.md`), not yet published. Springs and the voxel
-city's rewrite on the package are still to come.
+Status: v0.1 built (`src/lib`, stage 9 in `PLAN.md`), not yet published. Springs are still to
+come.
 
 ## Goal
 
@@ -111,9 +111,10 @@ renderer.setAnimationLoop(() => {
   `advanced.ts`. These are facades over `avbd3d/gpu/solver.ts`; the solver itself doesn't move.
 - `app3d/gpu-bodies3d.ts` uses the same zero-copy technique as `BodyMesh` (with the demo's own
   looks). Moving it onto `BodyMesh` is for later; for now the placement code is duplicated.
-- The voxel city (the `three-voxel-destruction` repo) is rewritten on `three-avbd` and
-  `three-avbd/advanced`. It's the acceptance test for the API: anything it still needs from
-  internals marks a gap.
+- The voxel city moved to its own repo, `three-voxel-destruction`, and runs on
+  `three-avbd/advanced`. As the API's acceptance test it found one gap: the reference `Solver`,
+  `Rigid` and `sphere` a `GpuSolver3D` is seeded from, now exported there. It stays below the
+  `World` because it runs its own compute pass over the bodies.
 
 ## Tests and release
 
