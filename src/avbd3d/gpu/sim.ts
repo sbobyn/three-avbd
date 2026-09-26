@@ -10,7 +10,7 @@ import type { Emitter3D, SceneOptions } from '../bench-scenes.ts';
 import { CANNONBALL, DRAG_STIFFNESS, type LabelView3D, type PickResult3D, type RopeView3D, type Sim3D, type SimStats3D, type SpringView3D, sceneByName3D } from '../sim.ts';
 import { clothsOf, labelsOf, ropesOf, type Visual, visualOf } from '../visuals.ts';
 import { B_ANGVEL, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, JOINT_FLOATS, T_JOINT } from './layout.ts';
-import { type GpuParams3D, GpuSolver3D, type StepProfile } from './solver.ts';
+import { type GpuParams3D, GpuSolver3D, REF_UP, type StepProfile } from './solver.ts';
 
 /** Steps between asynchronous readbacks of body poses and stats. */
 const READBACK_EVERY = 10;
@@ -377,7 +377,8 @@ export function createGpuSim3D(
   // Room for the scene's emitted bodies and bodies shot at runtime
   const capacity = ref.bodies.length + (emitter?.bodies ?? 0) + 4096;
   const solver = new GpuSolver3D(device, ref, { bodyBuffer: allocateBodyBuffer?.(capacity), bodyCapacity: capacity, capacity: scene.capacity?.(opts) });
-  Object.assign(solver.params, params);
+  // The scenes are built by the reference, z-up, whatever the caller's defaults say
+  Object.assign(solver.params, params, { up: REF_UP });
   // The viewer's tags, moved into the solver's (spatially sorted) body order
   const gpu = solver.refToGpu;
   const index = new Map(ref.bodies.map((b, i) => [b, gpu[i]]));

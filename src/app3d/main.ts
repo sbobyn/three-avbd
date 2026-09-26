@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildScene3D, createGpuSim3D, GpuSim3D, NO_PAINT } from '../avbd3d/gpu/sim.ts';
 import { B_POS, B_SIZE, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
-import { gpuParams3D, PHASES } from '../avbd3d/gpu/solver.ts';
+import { gpuParams3D, PHASES, REF_UP } from '../avbd3d/gpu/solver.ts';
 import { DEFAULT_SCENE } from '../avbd3d/ref/scenes.ts';
 import { allScenes3D, along, createSim3D, type Sim3D, sceneByName3D } from '../avbd3d/sim.ts';
 import { CUSTOM_3D } from '../avbd3d/custom.ts';
@@ -102,6 +102,8 @@ const params = gpuParams3D();
 /** The solver's defaults for the backend, with the scene's own settings (the paper's iterations). */
 const defaults = () => ({
   ...gpuParams3D(),
+  // The scenes are the reference's, z-up
+  up: REF_UP,
   matchNearest: state.backend === 'gpu',
   faceBias: state.backend === 'gpu',
   ...resolve(sceneByName3D(state.scene).params),

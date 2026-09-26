@@ -1,0 +1,17 @@
+{
+  // The npm package (three-avbd): src/lib's two entry points and what they reach, emitted as
+  // ES modules with declarations into build/ (the site builds to dist/ with Vite)
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "src",
+    "outDir": "build",
+    "types": ["@webgpu/types"]
+  },
+  "include": [],
+  "files": ["src/lib/index.ts", "src/lib/advanced.ts"]
+}

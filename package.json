@@ -1,23 +1,59 @@
 {
   "name": "three-avbd",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "GPU rigid-body physics for Three.js (WebGPU): Augmented Vertex Block Descent, tens of thousands of boxes and spheres with breakable joints, drawn straight from the GPU.",
   "license": "MIT",
   "type": "module",
+  "keywords": [
+    "three",
+    "threejs",
+    "webgpu",
+    "physics",
+    "rigid-body",
+    "avbd",
+    "gpu"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbobyn/three-avbd.git"
+  },
+  "homepage": "https://github.com/sbobyn/three-avbd#readme",
+  "exports": {
+    ".": {
+      "types": "./build/lib/index.d.ts",
+      "import": "./build/lib/index.js"
+    },
+    "./advanced": {
+      "types": "./build/lib/advanced.d.ts",
+      "import": "./build/lib/advanced.js"
+    }
+  },
+  "files": [
+    "build",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "sideEffects": false,
+  "peerDependencies": {
+    "three": ">=0.186.0"
+  },
   "packageManager": "pnpm@10.18.0",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5317 --strictPort",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-transform-types --test tests/*.test.ts",
-    "check": "pnpm typecheck && pnpm test && pnpm test:gpu && pnpm build",
+    "check": "pnpm typecheck && pnpm test && pnpm test:gpu && pnpm build && pnpm build:lib",
     "bench2d": "node --experimental-transform-types --no-warnings scripts/bench2d.ts",
     "fetch-reference": "sh scripts/fetch-reference.sh",
     "test:gpu": "node --experimental-transform-types --test tests-gpu/*.gpu.test.ts",
     "bench2d:gpu": "node --experimental-transform-types --no-warnings scripts/bench2d-gpu.ts",
     "bench3d:gpu": "node --experimental-transform-types --no-warnings scripts/bench3d-gpu.ts",
     "sweep2d": "node --experimental-transform-types --no-warnings scripts/sweep2d.ts",
-    "scaling2d": "node --experimental-transform-types --no-warnings scripts/scaling2d.ts"
+    "scaling2d": "node --experimental-transform-types --no-warnings scripts/scaling2d.ts",
+    "build:lib": "rm -rf build && tsc -p tsconfig.lib.json",
+    "prepublishOnly": "pnpm check"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

@@ -18,7 +18,7 @@ import {
   ARGS_WORDS, argsWGSL, BIG, BODY_FLOATS, COLOR_WG, C_CLASHES, C_CONTACTS, C_NUM_COLORS, C_OVERFLOW, C_PAIRS, CONTACT_WORDS,
   COUNTER_WORDS, FLAG_MATCH_NEAREST, FLAG_POST_STABILIZE, FLAG_RESCALE, FLAG_VBD, IA_COLOR, IA_CONSTRAINTS, IA_CONTACTS, IA_PAIRS, IA_PREV, J_ANCHORS, J_C0,
   J_FMAX, J_FMIN, J_FRAC, J_LAM, J_PARAM, J_PEN, J_STIFF, JOINT_FLOATS, MAX_COLORS, NO_COLOR, PARAM_WORDS, PASS_STRIDE,
-  WORKGROUP_SIZE,
+  WORKGROUP_SIZE, type GpuCounters, PHASES, type StepProfile,
 } from './layout.ts';
 import { PrefixScan } from './scan.ts';
 import { broadphaseWGSL, contactsWGSL } from './wgsl-collision.ts';
@@ -44,20 +44,8 @@ export interface GpuSolverOptions {
   colorRounds?: number;
 }
 
-/** The step's phases, each encoded as its own compute pass (so each can be timestamped). */
-export const PHASES = ['collision', 'adjacency', 'coloring', 'solve'] as const;
-export type Phase = (typeof PHASES)[number];
-
-/** GPU milliseconds per phase, and from the first phase's start to the last one's end. */
-export type StepProfile = Record<Phase, number> & { total: number };
-
-export interface GpuCounters {
-  pairs: number;
-  contacts: number;
-  overflow: number;
-  clashes: number;
-  colors: number;
-}
+// Shared with the 3D solver (./layout.ts, so the 3D solver needn't load this one)
+export { PHASES, type Phase, type StepProfile, type GpuCounters } from './layout.ts';
 
 /** Evaluated lazily: under Node the WebGPU globals appear only once a device module loads. */
 const storageUsage = () => GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
@@ -751,7 +739,7 @@ export class GpuSolver2D {
       this.shrinkVotes = 0;
     } else if (used + 2 < this.colorCap) {
       if (++this.shrinkVotes >= 3) {
-        this.colorCap = Math.max(4, used + 2);
+        this.colorCap = Math.min(MAX_COLORS, Math.max(4, used + 2));
         this.shrinkVotes = 0;
       }
     } else {

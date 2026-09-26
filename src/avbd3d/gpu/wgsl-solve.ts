@@ -271,7 +271,7 @@ fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
 
   // Inertial target (Eq. 2), with the wind's push on sails as a second external force
   var inertialPos = pos.xyz + vel.xyz * dt;
-  if (dynamic) { inertialPos.z += g * (dt * dt); }
+  if (dynamic) { inertialPos += params.up.xyz * (g * (dt * dt)); }
   if (dynamic && bodies[i].angVel.w == SHAPE_SAIL) { inertialPos += windAccel(i, pos.xyz, rot, vel.xyz) * (dt * dt); }
   bodies[i].inertialPos = vec4f(inertialPos, bodies[i].inertialPos.w);
   bodies[i].inertialRot = qadd(rot, angVel * dt);
@@ -478,9 +478,12 @@ fn dualJoint(j: u32) {
     if (k.penAng.w >= HARD) { k.lamAng = vec4f(k.penAng.xyz * C + k.lamAng.xyz, k.lamAng.w); }
     k.penAng = vec4f(min(k.penAng.xyz + abs(C) * params.betaAng, vec3f(min(k.penAng.w, PENALTY_MAX))), k.penAng.w);
   }
-  // Fracture: the joint stops acting for good (the CPU deletes it)
+  // Fracture: the joint stops acting for good (the CPU deletes it). A negative threshold (not in
+  // the paper: GpuSolver3D.appendJoints) breaks on the linear force too, at the same limit
   let frac = k.lamLin.w;
-  if (frac < BIG && dot(k.lamAng.xyz, k.lamAng.xyz) > frac * frac) {
+  let limit = abs(frac);
+  let linear = frac < 0.0 && dot(k.lamLin.xyz, k.lamLin.xyz) > limit * limit;
+  if (limit < BIG && (dot(k.lamAng.xyz, k.lamAng.xyz) > limit * limit || linear)) {
     k.penLin = vec4f(0.0);
     k.penAng = vec4f(0.0);
     k.lamLin = vec4f(0.0, 0.0, 0.0, frac);

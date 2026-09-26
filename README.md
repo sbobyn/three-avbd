@@ -14,6 +14,53 @@ friction and joints, stepped entirely on the GPU and drawn straight from the sol
 Needs a browser with WebGPU: Chrome or Edge on any platform, Safari 26 on macOS and iOS,
 Firefox where it ships WebGPU. Nothing is baked: every scene is simulated live on your GPU.
 
+## Use it in your project
+
+```sh
+npm install three-avbd three
+```
+
+```ts
+import * as THREE from 'three/webgpu';
+import { World, BodyMesh } from 'three-avbd';
+
+const renderer = new THREE.WebGPURenderer();
+const world = await World.create({ renderer, maxBodies: 50_000 }); // y-up, gravity -9.81
+
+world.addBox({ size: [40, 1, 40], position: [0, -0.5, 0], fixed: true });
+const crate = world.addBox({ size: [1, 1, 1], position: [0, 5, 0] })!;
+const ball = world.addSphere({ radius: 0.5, position: [0, 7, 0], density: 3 })!;
+world.addJoint(crate, ball, { anchorA: [0, 0.5, 0], anchorB: [0, -0.5, 0], breakForce: 200 });
+
+// Every box, drawn straight from the solver's GPU buffer (a mesh per material or shape)
+scene.add(new BodyMesh(world, { bodies: 'box', material: new THREE.MeshStandardNodeMaterial() }));
+scene.add(new BodyMesh(world, { bodies: 'sphere' }));
+
+renderer.setAnimationLoop(() => {
+  world.update(clock.getDelta()); // fixed steps
+  renderer.render(scene, camera);
+});
+
+// Poses come back from the GPU on request (an async copy): after this, crate.position is current
+await world.read();
+```
+
+- **Bodies**: `addBox`, `addSphere` (position, rotation, velocity, density, friction, `fixed`);
+  `body.set({ position, velocity, ... })`, `body.setFixed()`, `body.remove()` (its slot is
+  reused). Adds, changes and removals go to the GPU together at the next step.
+- **Joints**: `addJoint(a, b, { anchorA, anchorB, breakForce, breakOnPull })`,
+  `joint.remove()`, and `world.onBreak(joint => ...)` at each readback.
+- **Drawing**: `BodyMesh` takes any node material, geometry (scaled to each body's size) and
+  a set of bodies (a shape, a list or a test), with `setColor(body, color)` per body.
+- **Reading back**: `await world.read()` (or `world.readbackEvery = n`) for positions,
+  rotations and velocities, and to learn which joints broke.
+- **Headless**: `World.create({ device })` runs without a renderer (Node with Dawn, workers).
+- **Advanced**: `three-avbd/advanced` exposes the solver underneath (`world.solver`) and the
+  layout of its body and joint buffers, for your own compute passes over the bodies.
+
+The design and what's planned: [docs/API.md](docs/API.md). A runnable example:
+[examples/basic.ts](examples/basic.ts) (`pnpm dev`, then `/examples/basic.html`).
+
 ## What's in the demo
 
 - **The paper's scenes.** Brick Ring (110,000 bricks, Fig. 1), Brick Walls (Fig. 3), Wall
@@ -94,6 +141,8 @@ page (they live in `docs/data/bench3d/`). Keep a browser benchmark's tab visible
 
 | Path | What |
 |---|---|
+| `src/lib/` | The npm package's public API: `World`, `Body`, `Joint`, `BodyMesh` (`three-avbd`), and `three-avbd/advanced` |
+| `examples/` | Small runnable examples of the package |
 | `src/avbd3d/gpu/` | 3D WebGPU solver: WGSL broadphase, OBB narrowphase, 6-DOF solve; shares the 2D colouring kernels |
 | `src/avbd3d/ref/` | 3D CPU reference: faithful port of `avbd-demo3d` (quaternions, 6x6 LDLᵀ, OBB SAT, cone friction) |
 | `src/avbd3d/sim.ts` | `Sim3D` interface the 3D app drives (CPU reference or WebGPU); scene registry |

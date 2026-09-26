@@ -9,3 +9,5 @@ reference/
 tools/trailer/clips/
 tools/trailer/*.mp4
 .vercel
+# The npm package (pnpm build:lib)
+build/

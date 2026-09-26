@@ -70,8 +70,11 @@ export const PASS_STRIDE = 256;
  * WGSL shared by the 2D and 3D pipelines: counters, indirect-argument slots, colouring and
  * hashing constants. Each dimension's prelude starts with it and adds its own structs.
  */
+/** Constraint slot types (the joint info's first word): none (released or unused), a joint, a spring. */
+export const T_NONE = 0;
+
 export const CORE_WGSL = /* wgsl */ `
-const T_NONE = 0;
+const T_NONE = ${T_NONE};
 
 const MAX_COLORS = ${MAX_COLORS}u;
 const NO_COLOR = ${NO_COLOR}u;
@@ -279,3 +282,18 @@ fn argsColors(@builtin(local_invocation_id) lid: vec3u) {
 `;
 
 export const argsWGSL = makeArgsWGSL(PRELUDE);
+
+/** The step's phases, each encoded as its own compute pass (so each can be timestamped). */
+export const PHASES = ['collision', 'adjacency', 'coloring', 'solve'] as const;
+export type Phase = (typeof PHASES)[number];
+
+/** GPU milliseconds per phase, and from the first phase's start to the last one's end. */
+export type StepProfile = Record<Phase, number> & { total: number };
+
+export interface GpuCounters {
+  pairs: number;
+  contacts: number;
+  overflow: number;
+  clashes: number;
+  colors: number;
+}
