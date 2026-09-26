@@ -1266,7 +1266,10 @@ export class GpuSolver3D {
       this.shrinkVotes = 0;
     } else if (used + COLOR_SPARE + 2 < this.colorCap || this.colorRounds > 4) {
       if (++this.shrinkVotes >= 3) {
-        this.colorCap = used + COLOR_SPARE;
+        // (Never past MAX_COLORS: the indirect arguments hold that many colours, and a cap
+        // past them read beyond the buffer, which invalidated every step after a dense pile's
+        // colouring clashed near the limit: the simulation froze)
+        this.colorCap = Math.min(MAX_COLORS, used + COLOR_SPARE);
         this.colorRounds = Math.max(4, this.colorRounds - 4);
         this.shrinkVotes = 0;
       }

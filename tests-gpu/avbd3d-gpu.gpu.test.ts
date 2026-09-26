@@ -485,3 +485,20 @@ gpuTest('a collapsing tower runs identically twice (tower.ts)', async (device) =
   for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) differ++;
   assert.equal(differ, 0, `${differ} words differ between the runs`);
 });
+
+// The colour cap never passes MAX_COLORS: the indirect arguments hold that many colours. A
+// dense pile whose colouring clashed near the limit once shrank the cap to colours in use plus
+// spares, past the buffer's end: every step's commands were invalid and the simulation froze.
+gpuTest('the colour cap stays within the indirect arguments when colouring near the limit', async (device) => {
+  const ref = new Solver();
+  scenePyramid(ref);
+  const solver = new GpuSolver3D(device, ref);
+  const busy = { pairs: 100, contacts: 400, manifolds: 100, overflow: 0 };
+  // Clashes double the colouring rounds, then quiet readbacks near the limit vote to shrink
+  solver.adapt({ ...busy, clashes: 3, colors: 62 });
+  for (let k = 0; k < 4; k++) solver.adapt({ ...busy, clashes: 0, colors: 62 });
+  assert.ok(solver.colorCap <= 64, `colour cap ${solver.colorCap}`);
+  solver.step();
+  await device.queue.onSubmittedWorkDone();
+  solver.destroy();
+});

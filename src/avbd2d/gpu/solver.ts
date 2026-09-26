@@ -751,7 +751,7 @@ export class GpuSolver2D {
       this.shrinkVotes = 0;
     } else if (used + 2 < this.colorCap) {
       if (++this.shrinkVotes >= 3) {
-        this.colorCap = Math.max(4, used + 2);
+        this.colorCap = Math.min(MAX_COLORS, Math.max(4, used + 2));
         this.shrinkVotes = 0;
       }
     } else {
