@@ -282,3 +282,18 @@ fn argsColors(@builtin(local_invocation_id) lid: vec3u) {
 `;
 
 export const argsWGSL = makeArgsWGSL(PRELUDE);
+
+/** The step's phases, each encoded as its own compute pass (so each can be timestamped). */
+export const PHASES = ['collision', 'adjacency', 'coloring', 'solve'] as const;
+export type Phase = (typeof PHASES)[number];
+
+/** GPU milliseconds per phase, and from the first phase's start to the last one's end. */
+export type StepProfile = Record<Phase, number> & { total: number };
+
+export interface GpuCounters {
+  pairs: number;
+  contacts: number;
+  overflow: number;
+  clashes: number;
+  colors: number;
+}

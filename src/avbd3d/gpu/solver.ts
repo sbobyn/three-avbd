@@ -12,7 +12,7 @@
 
 import { makeArgsWGSL, ARGS_WORDS, BIG, COLOR_WG, C_CLASHES, C_CONTACTS, C_NUM_COLORS, C_OVERFLOW, C_PAIRS, COUNTER_WORDS, IA_COLOR, IA_CONSTRAINTS, IA_CONTACTS, IA_PAIRS, IA_PREV, MAX_COLORS, NO_COLOR, PASS_STRIDE, T_NONE, WORKGROUP_SIZE } from '../../avbd2d/gpu/layout.ts';
 import { PrefixScan } from '../../avbd2d/gpu/scan.ts';
-import { type GpuCounters, PHASES, type StepProfile } from '../../avbd2d/gpu/solver.ts';
+import { type GpuCounters, PHASES, type StepProfile } from '../../avbd2d/gpu/layout.ts';
 import { makeTopologyWGSL } from '../../avbd2d/gpu/wgsl-topology.ts';
 import type { Rigid } from '../ref/body.ts';
 import { IgnoreCollision, Joint, Spring } from '../ref/forces.ts';
