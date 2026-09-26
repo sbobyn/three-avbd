@@ -16,8 +16,8 @@ published.
   uses `three/webgpu` and `three/tsl`). No other runtime dependencies.
 - **`three-avbd`**: the stable surface described below (`World`, body and joint handles,
   `BodyMesh`).
-- **`three-avbd/advanced`**: the escape hatch. It exports `GpuSolver3D`, the body and joint
-  buffer layout, and the device and buffers of a `World`, for people writing their own compute
+- **`three-avbd/advanced`**: the escape hatch. It exports `GpuSolver3D` (with the reference
+  `Solver`, `Rigid` and `sphere` it's seeded from), the body and joint buffer layout, and the device and buffers of a `World`, for people writing their own compute
   passes over the bodies (the voxel city's blast shader). No stability promise in 0.x.
 - Built by `tsc` from a new `src/lib/` into `dist/`. The package `files` list is `dist` only,
   so demos, benchmarks, fixtures and the reference ports stay out of the tarball.

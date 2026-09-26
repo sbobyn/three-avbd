@@ -3,6 +3,11 @@
 // promise while the package is 0.x.
 
 export { GpuSolver3D, gpuParams3D, REF_UP } from '../avbd3d/gpu/solver.ts';
+// What a GpuSolver3D is built from: a reference solver holding the starting bodies (z-up, as the
+// paper's demo: set params.up after for y), and its bodies (boxes; spheres through `sphere`)
+export { Solver } from '../avbd3d/ref/solver.ts';
+export { Rigid } from '../avbd3d/ref/body.ts';
+export { sphere } from '../avbd3d/shapes.ts';
 export type { GpuParams3D, GpuSolverOptions, GpuCounters3D, GpuContact } from '../avbd3d/gpu/solver.ts';
 export {
   BODY_FLOATS,
