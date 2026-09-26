@@ -92,7 +92,7 @@ export const REUSE_ANG_TOL = 0.002;
 export const NEAREST_FRACTION = 0.05;
 
 /** Words in the Params uniform (see the struct in PRELUDE_3D). */
-export const PARAM_WORDS = 40;
+export const PARAM_WORDS = 44;
 
 export const PRELUDE_3D = /* wgsl */ `
 // Shared by every 3D module (avbd3d/gpu/layout.ts)
@@ -168,7 +168,7 @@ struct Contact {
 
 struct Params {
   dt: f32,
-  gravity: f32,
+  gravity: f32,         // acceleration along up (m/s², negative: down)
   betaLin: f32,
   betaAng: f32,
   gamma: f32,
@@ -201,6 +201,7 @@ struct Params {
   primalLanes: u32,    // bytes 0-2: log2 of the colour sizes from which 1, 2, 4 lanes per body suffice
   wind: vec4f,         // xyz: wind velocity (m/s), w: air pressure coefficient ½ρC_d
   gust: vec4f,         // x: gust strength (fraction of the wind)
+  up: vec4f,           // xyz: which way is up (unit)
 }
 
 fn qmul(a: vec4f, b: vec4f) -> vec4f {

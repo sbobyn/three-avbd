@@ -271,7 +271,7 @@ fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
 
   // Inertial target (Eq. 2), with the wind's push on sails as a second external force
   var inertialPos = pos.xyz + vel.xyz * dt;
-  if (dynamic) { inertialPos.z += g * (dt * dt); }
+  if (dynamic) { inertialPos += params.up.xyz * (g * (dt * dt)); }
   if (dynamic && bodies[i].angVel.w == SHAPE_SAIL) { inertialPos += windAccel(i, pos.xyz, rot, vel.xyz) * (dt * dt); }
   bodies[i].inertialPos = vec4f(inertialPos, bodies[i].inertialPos.w);
   bodies[i].inertialRot = qadd(rot, angVel * dt);

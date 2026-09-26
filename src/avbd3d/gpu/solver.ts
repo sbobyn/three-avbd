@@ -107,7 +107,16 @@ export interface GpuParams3D extends SolverParams {
   windGust: number;
   /** ½ρC_d of the air (kg/m³): 0.72 is air on a flat plate. */
   windPressure: number;
+  /**
+   * Which way is up (a unit vector): gravity (`gravity`, negative) pulls the other way. y, as
+   * in Three.js; a solver seeded from the reference (../ref, z-up like the paper's demo) takes
+   * z, and its scenes are built that way.
+   */
+  up: [number, number, number];
 }
+
+/** The reference solver's up (z, like the paper's demo): scenes built from it are z-up. */
+export const REF_UP: [number, number, number] = [0, 0, 1];
 
 export const gpuParams3D = (): GpuParams3D => ({
   ...defaultParams(),
@@ -120,6 +129,7 @@ export const gpuParams3D = (): GpuParams3D => ({
   windAngle: 0,
   windGust: 0.4,
   windPressure: 0.72,
+  up: [0, 1, 0],
 });
 
 export interface GpuSolverOptions {
@@ -474,7 +484,7 @@ export class GpuSolver3D {
   constructor(device: GPUDevice, ref: Solver, options: GpuSolverOptions = {}) {
     this.device = device;
     const { dt, gravity, iterations, alpha, betaLin, betaAng, gamma } = ref;
-    Object.assign(this.params, { dt, gravity, iterations, alpha, betaLin, betaAng, gamma });
+    Object.assign(this.params, { dt, gravity, iterations, alpha, betaLin, betaAng, gamma, up: REF_UP });
     this.bodyCount = ref.bodies.length;
     this.colorRounds = options.colorRounds ?? 16;
 
@@ -1189,6 +1199,7 @@ export class GpuSolver3D {
     const log2 = (x: number) => Math.min(31, Math.max(0, Math.round(Math.log2(x))));
     u[31] = log2(this.primalLanes[0]) | (log2(this.primalLanes[1]) << 8) | (log2(this.primalLanes[2]) << 16);
     f.set([p.windSpeed * Math.cos(p.windAngle), p.windSpeed * Math.sin(p.windAngle), 0, p.windPressure, p.windGust], 32);
+    f.set([p.up[0], p.up[1], p.up[2], 0], 40);
     this.device.queue.writeBuffer(this.paramsBuffer, 0, buf);
   }
 

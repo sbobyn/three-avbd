@@ -575,3 +575,21 @@ gpuTest('the colour cap stays within the indirect arguments when colouring near 
   await device.queue.onSubmittedWorkDone();
   solver.destroy();
 });
+
+// Up is a parameter: y by default (Three.js), z when seeded from the reference (its scenes are
+// z-up). A free box in a y-up solver falls along -y only.
+gpuTest('gravity pulls against the up axis (y-up by default, z when seeded from the reference)', async (device) => {
+  const ref = new Solver();
+  new Rigid(ref, [1, 1, 1], 1, 0.5, [0, 5, 0]);
+  const solver = new GpuSolver3D(device, ref);
+  assert.deepEqual(gpuParams3D().up, [0, 1, 0], 'y-up by default');
+  assert.deepEqual(solver.params.up, [0, 0, 1], 'seeded from the reference: z-up');
+  solver.params.up = [0, 1, 0];
+  for (let k = 0; k < 30; k++) solver.step();
+  const bodies = await solver.readBodies();
+  const [x, y, z] = bodies.subarray(0, 3);
+  // Half a second of free fall at -10: 1.25 m
+  assert.ok(Math.abs(y - (5 - 1.25)) < 0.1, `y ${y}`);
+  assert.ok(Math.abs(x) < 1e-5 && Math.abs(z) < 1e-5, `x ${x}, z ${z}`);
+  solver.destroy();
+});
