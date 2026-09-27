@@ -416,7 +416,11 @@ fn accumulate(i: u32, lane: u32, lanes: u32) -> Acc {
 fn finishBody(i: u32, acc: Acc) {
   let pos = bodies[i].pos;
   let rot = bodies[i].rot;
-  // LDLᵀ solve of the 6x6 SPD system (maths.h solve), lower triangle only
+  // LDLᵀ solve of the 6x6 SPD system (maths.h solve), lower triangle only. Each pivot is floored
+  // at 1e-5 of its diagonal: in f32 a direction held only by a light body's inertia, under
+  // contacts near PENALTY_MAX (a sliver on its edge under a slab), cancels to noise and can come
+  // out negative, and the step then climbs until the body is Inf, then NaN. The floor stiffens
+  // just that direction, and only when it is that ill-conditioned (pivot.gpu.test.ts).
   let A11 = acc.lin[0][0];
   let A21 = acc.lin[0][1]; let A22 = acc.lin[1][1];
   let A31 = acc.lin[0][2]; let A32 = acc.lin[1][2]; let A33 = acc.lin[2][2];
@@ -430,21 +434,21 @@ fn finishBody(i: u32, acc: Acc) {
   let L41 = A41 / D1;
   let L51 = A51 / D1;
   let L61 = A61 / D1;
-  let D2 = A22 - L21 * L21 * D1;
+  let D2 = max(A22 - L21 * L21 * D1, A22 * PIVOT_FLOOR);
   let L32 = (A32 - L21 * L31 * D1) / D2;
   let L42 = (A42 - L21 * L41 * D1) / D2;
   let L52 = (A52 - L21 * L51 * D1) / D2;
   let L62 = (A62 - L21 * L61 * D1) / D2;
-  let D3 = A33 - (L31 * L31 * D1 + L32 * L32 * D2);
+  let D3 = max(A33 - (L31 * L31 * D1 + L32 * L32 * D2), A33 * PIVOT_FLOOR);
   let L43 = (A43 - L31 * L41 * D1 - L32 * L42 * D2) / D3;
   let L53 = (A53 - L31 * L51 * D1 - L32 * L52 * D2) / D3;
   let L63 = (A63 - L31 * L61 * D1 - L32 * L62 * D2) / D3;
-  let D4 = A44 - (L41 * L41 * D1 + L42 * L42 * D2 + L43 * L43 * D3);
+  let D4 = max(A44 - (L41 * L41 * D1 + L42 * L42 * D2 + L43 * L43 * D3), A44 * PIVOT_FLOOR);
   let L54 = (A54 - L41 * L51 * D1 - L42 * L52 * D2 - L43 * L53 * D3) / D4;
   let L64 = (A64 - L41 * L61 * D1 - L42 * L62 * D2 - L43 * L63 * D3) / D4;
-  let D5 = A55 - (L51 * L51 * D1 + L52 * L52 * D2 + L53 * L53 * D3 + L54 * L54 * D4);
+  let D5 = max(A55 - (L51 * L51 * D1 + L52 * L52 * D2 + L53 * L53 * D3 + L54 * L54 * D4), A55 * PIVOT_FLOOR);
   let L65 = (A65 - L51 * L61 * D1 - L52 * L62 * D2 - L53 * L63 * D3 - L54 * L64 * D4) / D5;
-  let D6 = A66 - (L61 * L61 * D1 + L62 * L62 * D2 + L63 * L63 * D3 + L64 * L64 * D4 + L65 * L65 * D5);
+  let D6 = max(A66 - (L61 * L61 * D1 + L62 * L62 * D2 + L63 * L63 * D3 + L64 * L64 * D4 + L65 * L65 * D5), A66 * PIVOT_FLOOR);
 
   let y1 = acc.rLin.x;
   let y2 = acc.rLin.y - L21 * y1;
