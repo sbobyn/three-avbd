@@ -428,6 +428,12 @@ export class GpuSolver3D {
   private tableBuffer!: GPUBuffer;
   private readonly gridBuffer: GPUBuffer;
   private staticBuffer: GPUBuffer | null = null;
+  /** Per body: collision groups and the groups it collides with (setFilters). */
+  private readonly filterBuffer: GPUBuffer;
+  /** The collision filters, for passes of your own (two u32 per body: groups, collides with). */
+  get filterStorage(): GPUBuffer {
+    return this.filterBuffer;
+  }
   private readonly counterBuffer: GPUBuffer;
   private readonly argsBuffer: GPUBuffer;
   private adjBuffer: GPUBuffer | null = null;
@@ -499,6 +505,9 @@ export class GpuSolver3D {
       : Math.max(options.bodyCapacity ?? this.bodyCount + 1024, this.bodyCount, 1);
     if (this.bodyCapacity < this.bodyCount) throw new Error('body buffer too small');
     this.bodyBuffer = options.bodyBuffer ?? device.createBuffer({ label: 'bodies 3d', size: bodyBufferSize(this.bodyCapacity), usage: storageUsage() });
+    // Every body in every group, colliding with every group, until told otherwise
+    this.filterBuffer = device.createBuffer({ label: 'collision filters', size: Math.max(this.bodyCapacity, 1) * 8, usage: storageUsage() });
+    device.queue.writeBuffer(this.filterBuffer, 0, new Uint32Array(Math.max(this.bodyCapacity, 1) * 2).fill(0xffffffff));
 
     const cap = this.bodyCapacity;
     this.tableSize = pow2AtLeast(2 * cap);
@@ -592,7 +601,7 @@ export class GpuSolver3D {
     const W: GPUBufferBindingType = 'storage';
     const U: GPUBufferBindingType = 'uniform';
     return {
-      broad: layout('broadphase 3d', [U, R, W, W, W, R, R]),
+      broad: layout('broadphase 3d', [U, R, W, W, W, R, R, R]),
       contacts: layout('contacts 3d', [U, R, R, W, R, W, R, W, W, ...(this.hulls ? [R] : [])]),
       topo: layout('topology 3d', [U, R, R, R, R, W, W, W]),
       solve: layout('solve 3d', [U, W, W, R, W, R, R, R, R]),
@@ -705,7 +714,7 @@ export class GpuSolver3D {
     const T = this.tableBuffer;
     const C = this.counterBuffer;
     this.groups = {
-      broad: group(this.layouts.broad, [P, this.bodyBuffer, this.gridBuffer, this.pairBuffer, C, this.staticBuffer, this.jointBuffer]),
+      broad: group(this.layouts.broad, [P, this.bodyBuffer, this.gridBuffer, this.pairBuffer, C, this.staticBuffer, this.jointBuffer, this.filterBuffer]),
       contacts: [
         group(this.layouts.contacts, [P, this.bodyBuffer, this.pairBuffer, c0, c1, m0, m1, T, C, ...(this.hulls ? [this.hullBuffer] : [])]),
         group(this.layouts.contacts, [P, this.bodyBuffer, this.pairBuffer, c1, c0, m1, m0, T, C, ...(this.hulls ? [this.hullBuffer] : [])]),
@@ -1171,6 +1180,22 @@ export class GpuSolver3D {
     }
   }
 
+  /**
+   * Collision groups: body `indices[k]` belongs to the groups set in `groups[k]` (a bitmask) and
+   * collides with the bodies of `collidesWith[k]`. A pair collides when each is in a group the
+   * other collides with. By default every body is in every group and collides with all.
+   */
+  setFilters(indices: ArrayLike<number>, groups: ArrayLike<number>, collidesWith: ArrayLike<number>): void {
+    for (let k = 0; k < indices.length; ) {
+      let e = k + 1;
+      while (e < indices.length && indices[e] === indices[e - 1] + 1) e++;
+      const f = new Uint32Array(2 * (e - k));
+      for (let i = k; i < e; i++) f.set([groups[i] >>> 0, collidesWith[i] >>> 0], 2 * (i - k));
+      this.device.queue.writeBuffer(this.filterBuffer, indices[k] * 8, f);
+      k = e;
+    }
+  }
+
   /** Move the world anchor of a world joint (the mouse drag). */
   setWorldAnchor(slot: number, p: ArrayLike<number>): void {
     this.device.queue.writeBuffer(this.jointBuffer, (slot * JOINT_FLOATS + J_RA) * 4, new Float32Array([p[0], p[1], p[2]]));
@@ -1531,7 +1556,7 @@ export class GpuSolver3D {
     if (this.ownsBodyBuffer) this.bodyBuffer.destroy();
     const buffers = [
       this.jointBuffer, this.infoBuffer, ...this.contactBuffers, ...this.manifoldBuffers, this.pairBuffer, this.tableBuffer, this.gridBuffer, this.staticBuffer,
-      this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.refBuffer, this.hullBuffer, this.passBuffer,
+      this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.refBuffer, this.hullBuffer, this.passBuffer, this.filterBuffer,
     ];
     for (const b of buffers) b?.destroy();
     // A timing read still mapping keeps its buffers until it settles: destroying a buffer mid-map

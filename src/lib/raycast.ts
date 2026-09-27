@@ -13,7 +13,7 @@ export const MAX_RAYS = 65535;
 
 const WGSL = /* wgsl */ `
 struct Ray { o: vec4f, d: vec4f }   // o.w: the most distance, d: unit direction
-struct Params { bodies: u32, rays: u32, ignored: u32, pad: u32, ignore: array<vec4u, ${MAX_IGNORED / 4}> }
+struct Params { bodies: u32, rays: u32, ignored: u32, mask: u32, ignore: array<vec4u, ${MAX_IGNORED / 4}> }
 struct Hit { t: f32, n: vec3f }
 
 @group(0) @binding(0) var<storage, read> bodies: array<vec4f>;
@@ -22,6 +22,7 @@ struct Hit { t: f32, n: vec3f }
 @group(0) @binding(3) var<storage, read_write> best: array<atomic<u32>>;   // per ray: distance bits, body
 @group(0) @binding(4) var<storage, read_write> hits: array<vec4f>;         // per ray: normal + distance, body bits
 @group(0) @binding(5) var<uniform> params: Params;
+@group(0) @binding(6) var<storage, read> filters: array<vec2u>;          // per body: groups, collides with
 
 const STRIDE = ${BODY_FLOATS / 4}u;
 const NONE = 0xffffffffu;
@@ -33,6 +34,7 @@ fn turn(q: vec4f, v: vec3f) -> vec3f {
 }
 
 fn ignored(b: u32) -> bool {
+  if ((filters[b].x & params.mask) == 0u) { return true; }
   for (var i = 0u; i < params.ignored; i++) {
     if (params.ignore[i / 4u][i % 4u] == b) { return true; }
   }
@@ -163,7 +165,7 @@ export class Raycaster {
     const storage = (type: GPUBufferBindingType) => ({ visibility: GPUShaderStage.COMPUTE, buffer: { type } });
     this.layout = device.createBindGroupLayout({
       label: 'raycast',
-      entries: [storage('read-only-storage'), storage('read-only-storage'), storage('read-only-storage'), storage('storage'), storage('storage'), { binding: 5, ...storage('uniform') }].map(
+      entries: [storage('read-only-storage'), storage('read-only-storage'), storage('read-only-storage'), storage('storage'), storage('storage'), storage('uniform'), storage('read-only-storage')].map(
         (e, binding) => ({ ...e, binding }),
       ),
     });
@@ -173,7 +175,7 @@ export class Raycaster {
   }
 
   /** The nearest hit of each ray among bodies 0 to `count`, skipping `ignore` (slots). */
-  async cast(bodies: GPUBuffer, hulls: GPUBuffer, count: number, rays: Ray[], ignore: number[] = []): Promise<(RawHit | null)[]> {
+  async cast(bodies: GPUBuffer, hulls: GPUBuffer, filters: GPUBuffer, count: number, rays: Ray[], ignore: number[] = [], mask = 0xffffffff): Promise<(RawHit | null)[]> {
     const n = rays.length;
     if (!n) return [];
     if (ignore.length > MAX_IGNORED) throw new Error(`raycast: at most ${MAX_IGNORED} bodies to ignore`);
@@ -188,7 +190,7 @@ export class Raycaster {
       rayData.set([r.origin[0], r.origin[1], r.origin[2], r.maxDistance ?? 3.0e38, dir[0], dir[1], dir[2], 0], k * 8);
     });
     const params = new Uint32Array(4 + MAX_IGNORED);
-    params.set([count, n, ignore.length, 0]);
+    params.set([count, n, ignore.length, mask >>> 0]);
     params.set(ignore, 4);
     const best = new Uint32Array(2 * n);
     for (let k = 0; k < n; k++) best.set([0x7f800000, 0xffffffff], 2 * k);
@@ -204,7 +206,7 @@ export class Raycaster {
     const read = d.createBuffer({ size: n * 32, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     const group = d.createBindGroup({
       layout: this.layout,
-      entries: [bodies, hulls, rayBuffer, bestBuffer, hitBuffer, paramBuffer].map((b, binding) => ({ binding, resource: { buffer: b } })),
+      entries: [bodies, hulls, rayBuffer, bestBuffer, hitBuffer, paramBuffer, filters].map((b, binding) => ({ binding, resource: { buffer: b } })),
     });
     const encoder = d.createCommandEncoder({ label: 'raycast' });
     const pass = encoder.beginComputePass({ label: 'raycast' });

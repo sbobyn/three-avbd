@@ -46,6 +46,13 @@ export interface BodyOptions extends BodyState {
   friction?: number;
   /** Never moves (the ground, walls): infinite mass. */
   fixed?: boolean;
+  /**
+   * Collision groups (bitmasks, 32 groups): the groups it's in, and the groups it collides with.
+   * Two bodies collide when each is in a group the other collides with. Default: in group 1,
+   * colliding with every group.
+   */
+  group?: number;
+  collidesWith?: number;
 }
 
 export interface BoxOptions extends BodyOptions {
@@ -84,6 +91,8 @@ export interface RaycastOptions {
   maxDistance?: number;
   /** Bodies it passes through (at most 16: the caster's own, say). */
   ignore?: Body[];
+  /** Only bodies in these collision groups (a bitmask). Default: all. */
+  collidesWith?: number;
 }
 
 export interface JointOptions {
@@ -153,6 +162,8 @@ export class Body {
   state: Required<BodyState>;
   /** @internal The world's write count when this body was last written. */
   written = 0;
+  private groups: number;
+  private mask: number;
   private isFixed: boolean;
   private isAlive = true;
 
@@ -166,6 +177,8 @@ export class Body {
     this.density = options.density ?? DEFAULTS.density;
     this.friction = options.friction ?? DEFAULTS.friction;
     this.isFixed = options.fixed ?? false;
+    this.groups = options.group ?? 1;
+    this.mask = options.collidesWith ?? 0xffffffff;
     this.state = {
       position: options.position ?? [0, 0, 0],
       rotation: options.rotation ?? [0, 0, 0, 1],
@@ -176,6 +189,20 @@ export class Body {
 
   get fixed(): boolean {
     return this.isFixed;
+  }
+  /** Its collision groups, and the groups it collides with (bitmasks). */
+  get group(): number {
+    return this.groups;
+  }
+  get collidesWith(): number {
+    return this.mask;
+  }
+
+  /** Put it in other collision groups (from the next step). */
+  setCollisionGroups(group: number, collidesWith: number = this.mask): void {
+    this.groups = group;
+    this.mask = collidesWith;
+    this.world.refilter(this);
   }
   get alive(): boolean {
     return this.isAlive;
@@ -334,6 +361,8 @@ export class World {
   private readonly joints = new Set<Joint>();
   private readonly scratch = new Solver();
   private readonly breakListeners = new Set<(joint: Joint) => void>();
+  /** Bodies whose collision groups go to the GPU at the next step (every new body, so a reused slot's are reset). */
+  private readonly refilters = new Set<Body>();
   /** Impulses for the next step, and forces for every step (per body, summed). */
   private readonly impulses = new Map<Body, Pushes>();
   private readonly forces = new Map<Body, Pushes>();
@@ -452,6 +481,7 @@ export class World {
     body.written = ++this.writes;
     if (index >= this.solver.bodyCount) this.appends.push(body);
     else this.rewrites.add(body);
+    this.refilters.add(body);
     this.liveVersion++;
     return body;
   }
@@ -581,6 +611,11 @@ export class World {
     return p;
   }
 
+  /** @internal Body.setCollisionGroups. */
+  refilter(body: Body): void {
+    if (body.alive) this.refilters.add(body);
+  }
+
   /** @internal Body.clearForces. */
   clearForces(body: Body): void {
     this.forces.delete(body);
@@ -619,6 +654,15 @@ export class World {
         list.map((b) => this.rigid(b)),
       );
       this.rewrites.clear();
+    }
+    if (this.refilters.size) {
+      const list = [...this.refilters].filter((b) => b.alive).sort((x, y) => x.index - y.index);
+      this.solver.setFilters(
+        list.map((b) => b.index),
+        list.map((b) => b.group),
+        list.map((b) => b.collidesWith),
+      );
+      this.refilters.clear();
     }
     if (this.pendingJoints.length) {
       // One upload per kind of joint and fracture
@@ -673,15 +717,17 @@ export class World {
   }
 
   /** Many rays at once (one GPU pass for all: up to 65,535). */
-  async raycasts(rays: Ray[], options: { ignore?: Body[] } = {}): Promise<(RayHit | null)[]> {
+  async raycasts(rays: Ray[], options: { ignore?: Body[]; collidesWith?: number } = {}): Promise<(RayHit | null)[]> {
     this.flush();
     this.raycaster ??= new Raycaster(this.device);
     const raw = await this.raycaster.cast(
       this.solver.bodyBuffer,
       this.solver.hullStorage,
+      this.solver.filterStorage,
       this.solver.bodyCount,
       rays,
       (options.ignore ?? []).map((b) => b.index),
+      options.collidesWith ?? 0xffffffff,
     );
     return raw.map((h) => (h ? { body: this.slots[h.index] ?? null, distance: h.distance, point: h.point, normal: h.normal } : null));
   }

@@ -59,6 +59,8 @@ ${PRELUDE_3D}
 // Static: large body indices[largeCount] | noCollide (hi, lo, joint) triples, sorted by (hi, lo)
 @group(0) @binding(5) var<storage, read> statics: array<u32>;
 @group(0) @binding(6) var<storage, read> joints: array<Joint>;
+// Per body: its collision groups and the groups it collides with (GpuSolver3D.setFilters)
+@group(0) @binding(7) var<storage, read> filters: array<vec2u>;
 
 @compute @workgroup_size(1)
 fn beginFrame() {
@@ -193,6 +195,10 @@ fn probeOf(i: u32) -> Probe {
 
 fn testPair(P: Probe, j: u32) {
   if (!P.dynamic && bodies[j].size.w <= 0.0) { return; }
+  // Each in a group the other collides with
+  let fi = filters[P.index];
+  let fj = filters[j];
+  if ((fi.x & fj.y) == 0u || (fj.x & fi.y) == 0u) { return; }
   let d = P.pos - bodies[j].pos.xyz;
   let r = P.radius + radius(j);
   if (dot(d, d) > r * r) { return; }

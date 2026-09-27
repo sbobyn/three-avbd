@@ -73,6 +73,11 @@ renderer.setAnimationLoop(() => {
   value as of the last readback), `body.setFixed(fixed)` (both through `rewriteBodies`), and
   `body.remove()` (its joints go, it's parked far off, and its slot is reused). All of these are
   batched into the next step.
+- Collision groups (0.2): `group` and `collidesWith` bitmasks (32 groups) on a body, or
+  `body.setCollisionGroups(group, collidesWith)` later; two bodies collide when each is in a group
+  the other collides with (default: group 1, colliding with all). The broadphase reads them from a
+  buffer of their own (`GpuSolver3D.setFilters`), not the body record, which has no spare word.
+  Raycasts take `collidesWith` too.
 - Pushing (0.2): `body.applyImpulse(J, point?)` and `applyAngularImpulse(L)` act at the next
   step; `applyForce(F, point?)` and `applyTorque(T)` act every step until `clearForces()`. A
   small compute pass over the body buffer (`src/lib/push.ts`) turns each body's pushes, summed on

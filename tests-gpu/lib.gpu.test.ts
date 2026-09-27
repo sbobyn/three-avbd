@@ -205,3 +205,31 @@ gpuTest('three-avbd: raycasts find the nearest body and its surface (box, sphere
   assert.ok(through && through.body === ground && close([through.distance], [5]), `ignoring the box, the ground: ${show(through)}`);
   world.destroy();
 });
+
+gpuTest('three-avbd: collision groups: a body only meets the groups it collides with (and so do rays)', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  world.addBox({ size: [10, 1, 10], position: [0, -0.5, 0], fixed: true });
+  const ghost = world.addBox({ size: [1, 1, 1], position: [3, 2, 0], collidesWith: 0 })!;
+  // a in group 2, resting on the ground; b above it colliding with everything but group 2
+  const a = world.addBox({ size: [1, 1, 1], position: [0, 0.5, 0], group: 2 })!;
+  const b = world.addBox({ size: [1, 1, 1], position: [0, 2.5, 0], collidesWith: ~2 })!;
+  steps(world, 120);
+  await world.read();
+  assert.ok(ghost.position[1] < -2, `the ghost fell through the ground: y ${ghost.position[1]}`);
+  assert.ok(Math.abs(a.position[1] - 0.5) < 0.02, `a rests on the ground: y ${a.position[1]}`);
+  assert.ok(Math.abs(b.position[1] - 0.5) < 0.02 && Math.abs(b.position[0]) < 0.02, `b fell through a onto the ground: ${b.position}`);
+  // Rays see only the groups asked for: the same spot, a different body
+  const [inGroup1, inGroup2] = await Promise.all([1, 2].map((collidesWith) => world.raycast([0, 5, 0], [0, -1, 0], { collidesWith })));
+  assert.equal(inGroup1?.body, b, 'group 1: b');
+  assert.equal(inGroup2?.body, a, 'group 2: a');
+  // Changed on the way down, it takes from the next step: falling through nothing, then onto the ground
+  // (From low: a fast landing sinks in, to come out over many steps: no continuous collision yet)
+  const late = world.addBox({ size: [1, 1, 1], position: [-3, 3, 0], collidesWith: 0 })!;
+  steps(world, 10);
+  late.setCollisionGroups(1, 0xffffffff);
+  steps(world, 120);
+  await world.read();
+  // (As the first test: a landing settles within 5 cm of resting height)
+  assert.ok(Math.abs(late.position[1] - 0.5) < 0.05, `it lands on the ground once it collides: y ${late.position[1]}`);
+  world.destroy();
+});
