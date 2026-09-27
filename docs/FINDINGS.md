@@ -2,7 +2,7 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
-## 2026-09-27 — The GPU tests' intermittent crash: a timing read destroyed mid-map
+## 2026-09-26 — The GPU tests' intermittent crash: a timing read destroyed mid-map
 
 The GPU suite used to die about one run in four (`pnpm test:gpu`: the process exits with no error,
 the file reported only as `'test failed'`), always at the same point in `avbd3d-gpu.gpu.test.ts`:
