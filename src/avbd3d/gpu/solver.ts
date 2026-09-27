@@ -371,6 +371,10 @@ export class GpuSolver3D {
    */
   readonly hulls: boolean;
   private hullBuffer: GPUBuffer;
+  /** The hull buffer (layout in ./wgsl-hull.ts), for passes of your own: it's replaced as it grows. */
+  get hullStorage(): GPUBuffer {
+    return this.hullBuffer;
+  }
   private hullCapacity = 4096;
   private hullTop = 0;
   private readonly hullSlots = new Map<HullShape, HullSlot>();
@@ -424,7 +428,21 @@ export class GpuSolver3D {
   private tableBuffer!: GPUBuffer;
   private readonly gridBuffer: GPUBuffer;
   private staticBuffer: GPUBuffer | null = null;
+  /** Per body: collision groups and the groups it collides with (setFilters). */
+  private readonly filterBuffer: GPUBuffer;
+  /** The collision filters, for passes of your own (two u32 per body: groups, collides with). */
+  get filterStorage(): GPUBuffer {
+    return this.filterBuffer;
+  }
   private readonly counterBuffer: GPUBuffer;
+  /**
+   * The pair records and contact points the last step wrote, and the counters (C_MANIFOLDS: how
+   * many pairs), for passes of your own between steps: replaced as they grow, and swapped each step.
+   */
+  get contactStorage(): { manifolds: GPUBuffer; contacts: GPUBuffer; counters: GPUBuffer } {
+    const last = 1 - this.parity;
+    return { manifolds: this.manifoldBuffers[last], contacts: this.contactBuffers[last], counters: this.counterBuffer };
+  }
   private readonly argsBuffer: GPUBuffer;
   private adjBuffer: GPUBuffer | null = null;
   private readonly colorBuffer: GPUBuffer;
@@ -480,6 +498,7 @@ export class GpuSolver3D {
   private readonly timing: { querySet: GPUQuerySet; resolve: GPUBuffer; read: GPUBuffer } | null;
   private timingCallback: ((profile: StepProfile) => void) | null = null;
   private timingBusy = false;
+  private destroyed = false;
 
   constructor(device: GPUDevice, ref: Solver, options: GpuSolverOptions = {}) {
     this.device = device;
@@ -494,6 +513,9 @@ export class GpuSolver3D {
       : Math.max(options.bodyCapacity ?? this.bodyCount + 1024, this.bodyCount, 1);
     if (this.bodyCapacity < this.bodyCount) throw new Error('body buffer too small');
     this.bodyBuffer = options.bodyBuffer ?? device.createBuffer({ label: 'bodies 3d', size: bodyBufferSize(this.bodyCapacity), usage: storageUsage() });
+    // Every body in every group, colliding with every group, until told otherwise
+    this.filterBuffer = device.createBuffer({ label: 'collision filters', size: Math.max(this.bodyCapacity, 1) * 8, usage: storageUsage() });
+    device.queue.writeBuffer(this.filterBuffer, 0, new Uint32Array(Math.max(this.bodyCapacity, 1) * 2).fill(0xffffffff));
 
     const cap = this.bodyCapacity;
     this.tableSize = pow2AtLeast(2 * cap);
@@ -587,7 +609,7 @@ export class GpuSolver3D {
     const W: GPUBufferBindingType = 'storage';
     const U: GPUBufferBindingType = 'uniform';
     return {
-      broad: layout('broadphase 3d', [U, R, W, W, W, R, R]),
+      broad: layout('broadphase 3d', [U, R, W, W, W, R, R, R]),
       contacts: layout('contacts 3d', [U, R, R, W, R, W, R, W, W, ...(this.hulls ? [R] : [])]),
       topo: layout('topology 3d', [U, R, R, R, R, W, W, W]),
       solve: layout('solve 3d', [U, W, W, R, W, R, R, R, R]),
@@ -700,7 +722,7 @@ export class GpuSolver3D {
     const T = this.tableBuffer;
     const C = this.counterBuffer;
     this.groups = {
-      broad: group(this.layouts.broad, [P, this.bodyBuffer, this.gridBuffer, this.pairBuffer, C, this.staticBuffer, this.jointBuffer]),
+      broad: group(this.layouts.broad, [P, this.bodyBuffer, this.gridBuffer, this.pairBuffer, C, this.staticBuffer, this.jointBuffer, this.filterBuffer]),
       contacts: [
         group(this.layouts.contacts, [P, this.bodyBuffer, this.pairBuffer, c0, c1, m0, m1, T, C, ...(this.hulls ? [this.hullBuffer] : [])]),
         group(this.layouts.contacts, [P, this.bodyBuffer, this.pairBuffer, c1, c0, m1, m0, T, C, ...(this.hulls ? [this.hullBuffer] : [])]),
@@ -795,7 +817,9 @@ export class GpuSolver3D {
       f.set(b.inertialLin, o + B_INERTIAL_POS);
       f.set(b.inertialAng, o + B_INERTIAL_ROT);
       f.set(b.velocityLin, o + B_VEL);
-      f[o + B_VEL + 3] = b.prevVelocityLin[2];
+      // Last step's velocity along up (the adaptive warm start's)
+      const up = this.params.up;
+      f[o + B_VEL + 3] = b.prevVelocityLin[0] * up[0] + b.prevVelocityLin[1] * up[1] + b.prevVelocityLin[2] * up[2];
       f.set(b.velocityAng, o + B_ANGVEL);
       const sphere = isSphere(b);
       const shape = this.hulls ? hullOf(b) : undefined;
@@ -1059,39 +1083,65 @@ export class GpuSolver3D {
 
   /**
    * Append joints between body pairs in one upload (appendJoint one at a time is a write per
-   * joint): each holds `rA` on its first body to `rB` on its second, rigidly, until the angular
-   * force it carries passes `fracture` (with `linear`, or the linear force: not in the paper,
-   * which breaks joints on torque alone). Returns the first slot.
+   * joint): each holds `rA` on its first body to `rB` on its second, rigidly (or with `angular`
+   * 0, as a ball joint: free to turn), until the angular force it carries passes `fracture`
+   * (with `linear`, or the linear force: not in the paper, which breaks joints on torque alone).
+   * Returns their slots.
    */
-  appendJoints(joints: { a: number; b: number; rA: ArrayLike<number>; rB: ArrayLike<number> }[], fracture: number, linear = false): number[] {
-    // Released slots first (lowest first, written in runs), the rest appended in one write
+  appendJoints(joints: { a: number; b: number; rA: ArrayLike<number>; rB: ArrayLike<number>; angular?: number }[], fracture: number, linear = false): number[] {
+    return this.appendConstraints(joints.length, (k, o) => {
+      const { a, b, rA, rB, angular } = joints[k];
+      o[J_PEN_LIN + 3] = BIG;
+      o[J_PEN_ANG + 3] = angular === undefined ? BIG : finite(angular);
+      o[J_LAM_LIN + 3] = linear ? -finite(fracture) : finite(fracture);
+      o.set([rA[0], rA[1], rA[2]], J_RA);
+      o.set([rB[0], rB[1], rB[2]], J_RB);
+      const [sa, sb] = [this.bodies[a].size, this.bodies[b].size];
+      o[J_LAM_ANG + 3] = (sa[0] + sb[0]) ** 2 + (sa[1] + sb[1]) ** 2 + (sa[2] + sb[2]) ** 2;
+      return [T_JOINT, a, b];
+    });
+  }
+
+  /**
+   * Append springs between body pairs in one upload: each pulls `rA` on its first body towards
+   * `rB` on its second with `stiffness` (N/m), about `rest` metres apart. Returns their slots.
+   */
+  appendSprings(springs: { a: number; b: number; rA: ArrayLike<number>; rB: ArrayLike<number>; stiffness: number; rest: number }[]): number[] {
+    return this.appendConstraints(springs.length, (k, o) => {
+      const { a, b, rA, rB, stiffness, rest } = springs[k];
+      o[J_PEN_LIN + 3] = finite(stiffness);
+      o.set([rA[0], rA[1], rA[2], rest], J_RA);
+      o.set([rB[0], rB[1], rB[2]], J_RB);
+      return [T_SPRING, a, b];
+    });
+  }
+
+  /**
+   * `n` constraints into slots (released ones first, lowest first, the rest appended), each
+   * record filled by `fill` (it returns the type and the two bodies), uploaded in a write per
+   * run of slots.
+   */
+  private appendConstraints(n: number, fill: (k: number, record: Float32Array) => [number, number, number]): number[] {
     const slots: number[] = [];
     if (this.freeSlots.length) {
       this.freeSlots.sort((x, y) => y - x);
-      while (slots.length < joints.length && this.freeSlots.length) slots.push(this.freeSlots.pop()!);
+      while (slots.length < n && this.freeSlots.length) slots.push(this.freeSlots.pop()!);
     }
-    const fresh = joints.length - slots.length;
+    const fresh = n - slots.length;
     let capacity = this.jointCapacity;
     while (this.jointCount + fresh > capacity) capacity *= 2;
     if (capacity > this.jointCapacity) this.allocateJoints(capacity);
     for (let k = 0; k < fresh; k++) slots.push(this.jointCount++);
-    const o = new Float32Array(joints.length * JOINT_FLOATS);
-    joints.forEach(({ a, b, rA, rB }, k) => {
-      const j = k * JOINT_FLOATS;
-      o[j + J_PEN_LIN + 3] = BIG;
-      o[j + J_PEN_ANG + 3] = BIG;
-      o[j + J_LAM_LIN + 3] = linear ? -finite(fracture) : finite(fracture);
-      o.set([rA[0], rA[1], rA[2]], j + J_RA);
-      o.set([rB[0], rB[1], rB[2]], j + J_RB);
-      const [sa, sb] = [this.bodies[a].size, this.bodies[b].size];
-      o[j + J_LAM_ANG + 3] = (sa[0] + sb[0]) ** 2 + (sa[1] + sb[1]) ** 2 + (sa[2] + sb[2]) ** 2;
-      this.info.set([T_JOINT, a, b, 0], slots[k] * 4);
+    const o = new Float32Array(n * JOINT_FLOATS);
+    for (let k = 0; k < n; k++) {
+      const [type, a, b] = fill(k, o.subarray(k * JOINT_FLOATS, (k + 1) * JOINT_FLOATS));
+      this.info.set([type, a, b, 0], slots[k] * 4);
       this.releasedSlots.delete(slots[k]);
       this.noCollide(a, b, slots[k]);
-    });
-    for (let k = 0; k < joints.length; ) {
+    }
+    for (let k = 0; k < n; ) {
       let e = k + 1;
-      while (e < joints.length && slots[e] === slots[e - 1] + 1) e++;
+      while (e < n && slots[e] === slots[e - 1] + 1) e++;
       this.device.queue.writeBuffer(this.jointBuffer, slots[k] * JOINT_FLOATS * 4, o, k * JOINT_FLOATS, (e - k) * JOINT_FLOATS);
       this.device.queue.writeBuffer(this.infoBuffer, slots[k] * 16, this.info, slots[k] * 4, (e - k) * 4);
       k = e;
@@ -1136,6 +1186,22 @@ export class GpuSolver3D {
       while (e < indices.length && indices[e] === indices[e - 1] + 1) e++;
       this.writeBodies(indices[k], bodies.slice(k, e));
       this.device.queue.writeBuffer(this.colorBuffer, indices[k] * 4, new Uint32Array(e - k).fill(NO_COLOR));
+      k = e;
+    }
+  }
+
+  /**
+   * Collision groups: body `indices[k]` belongs to the groups set in `groups[k]` (a bitmask) and
+   * collides with the bodies of `collidesWith[k]`. A pair collides when each is in a group the
+   * other collides with. By default every body is in every group and collides with all.
+   */
+  setFilters(indices: ArrayLike<number>, groups: ArrayLike<number>, collidesWith: ArrayLike<number>): void {
+    for (let k = 0; k < indices.length; ) {
+      let e = k + 1;
+      while (e < indices.length && indices[e] === indices[e - 1] + 1) e++;
+      const f = new Uint32Array(2 * (e - k));
+      for (let i = k; i < e; i++) f.set([groups[i] >>> 0, collidesWith[i] >>> 0], 2 * (i - k));
+      this.device.queue.writeBuffer(this.filterBuffer, indices[k] * 8, f);
       k = e;
     }
   }
@@ -1353,13 +1419,14 @@ export class GpuSolver3D {
         const t = new BigUint64Array(read.getMappedRange()).slice();
         read.unmap();
         this.timingBusy = false;
+        if (this.destroyed) return this.releaseTiming();
         const ms = (a: number, b: number) => Number(t[b] - t[a]) / 1e6;
         const profile = { total: ms(0, stamps - 1) } as StepProfile;
         PHASES.forEach((name, i) => (profile[name] = ms(2 * i, 2 * i + 1)));
         callback(profile);
       }, () => {
-        // Destroyed before the timing came back
         this.timingBusy = false;
+        if (this.destroyed) this.releaseTiming();
       });
     }
   }
@@ -1488,14 +1555,24 @@ export class GpuSolver3D {
     return out;
   }
 
+  /** The step timing's query set and buffers. */
+  private releaseTiming(): void {
+    this.timing?.resolve.destroy();
+    this.timing?.read.destroy();
+    this.timing?.querySet.destroy();
+  }
+
   destroy(): void {
     if (this.ownsBodyBuffer) this.bodyBuffer.destroy();
     const buffers = [
       this.jointBuffer, this.infoBuffer, ...this.contactBuffers, ...this.manifoldBuffers, this.pairBuffer, this.tableBuffer, this.gridBuffer, this.staticBuffer,
-      this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.refBuffer, this.hullBuffer, this.passBuffer, this.timing?.resolve, this.timing?.read,
+      this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.refBuffer, this.hullBuffer, this.passBuffer, this.filterBuffer,
     ];
     for (const b of buffers) b?.destroy();
-    this.timing?.querySet.destroy();
+    // A timing read still mapping keeps its buffers until it settles: destroying a buffer mid-map
+    // crashed Dawn under Node (the GPU tests' intermittent crash, docs/FINDINGS.md)
+    this.destroyed = true;
+    if (!this.timingBusy) this.releaseTiming();
     this.gridScan.destroy();
     this.colorHistScan.destroy();
     this.adjScan?.destroy();

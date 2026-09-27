@@ -2,6 +2,23 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-26 — The GPU tests' intermittent crash: a timing read destroyed mid-map
+
+The GPU suite used to die about one run in four (`pnpm test:gpu`: the process exits with no error,
+the file reported only as `'test failed'`), always at the same point in `avbd3d-gpu.gpu.test.ts`:
+as the friction test's solver was destroyed and the spring test began. It crashed as often before
+the 0.1 library work as after (3/15 vs 4/15 runs, the same file), and in one process
+(`--test-isolation=none`) as in its own, so it wasn't the runner.
+
+Cause: a step timed with timestamp queries (GpuSim3D profiles one step in 30) maps its timing
+read buffer asynchronously, and `destroy()` destroyed that buffer and the query set while the map
+was pending. The browser rejects the map; Dawn under Node crashed. Measured on the spring, joint
+and friction tests: 10/10 runs crashed with timestamp queries, 0/10 without them.
+
+Fix (both solvers): `destroy()` leaves a timing read that is still mapping alone, and the read
+destroys the timing buffers when it settles. After it: 0/10 on those tests, and the whole GPU
+suite passed 6/6 runs.
+
 ## 2026-09-25 — Convex hull shapes (GPU-only)
 
 Why: three-destruction (sbobyn/three-destruction, `three-destruction/avbd`) runs Voronoi fracture

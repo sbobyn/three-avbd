@@ -1,7 +1,6 @@
 # three-avbd v0.1: library API (design for review)
 
-Status: v0.1 built (`src/lib`, stage 9 in `PLAN.md`), not yet published. Springs are still to
-come.
+Status: v0.1 published (npm `three-avbd`); 0.2 in progress (see `PLAN.md` stage 10).
 
 ## Goal
 
@@ -61,6 +60,12 @@ renderer.setAnimationLoop(() => {
 
 - `addBox({ size, position, rotation?, velocity?, angularVelocity?, density?, friction?, fixed? })`
   and `addSphere({ radius, ... })` return a `Body` handle.
+- `addHull({ points | shape, ... })` (0.2): a convex hull of points (a mesh's vertices), or a
+  `shape` from `convexHull(points)` shared by many bodies (one GPU record per shape). `position`
+  and `rotation` place the points' own frame; the body sits at the centre of mass on its
+  principal axes. Hulls collide as hulls where the device allows a ninth storage buffer per stage
+  (`world.hullsEnabled`), else as their bounding box: `recommendedLimits()` gives the renderer the
+  limits to ask for. `BodyMesh` draws a shape's bodies with `bodies: shape` (`hullGeometry`).
 - A handle's `index` is its slot in the GPU buffer, for custom shaders. It's stable for the
   body's life (bodies are added at runtime, into a world that starts empty, so the solver's
   spatial reordering of an initial scene never applies).
@@ -68,16 +73,68 @@ renderer.setAnimationLoop(() => {
   value as of the last readback), `body.setFixed(fixed)` (both through `rewriteBodies`), and
   `body.remove()` (its joints go, it's parked far off, and its slot is reused). All of these are
   batched into the next step.
+- Kinematic bodies (0.2): `body.moveTo(position, rotation?)` on a fixed body slides it to the
+  pose over the next update's steps, pushing and carrying what it touches (platforms, doors,
+  hands); a fixed body given a velocity with `set` keeps moving (a conveyor). In the solver a
+  fixed body with a velocity is kinematic: it advances by it at the start of each step from its
+  starting pose, so contacts see it slide (teleported between steps, friction never saw it
+  move and nothing was carried).
+- Collision groups (0.2): `group` and `collidesWith` bitmasks (32 groups) on a body, or
+  `body.setCollisionGroups(group, collidesWith)` later; two bodies collide when each is in a group
+  the other collides with (default: group 1, colliding with all). The broadphase reads them from a
+  buffer of their own (`GpuSolver3D.setFilters`), not the body record, which has no spare word.
+  Raycasts take `collidesWith` too.
+- Pushing (0.2): `body.applyImpulse(J, point?)` and `applyAngularImpulse(L)` act at the next
+  step; `applyForce(F, point?)` and `applyTorque(T)` act every step until `clearForces()`. A
+  small compute pass over the body buffer (`src/lib/push.ts`) turns each body's pushes, summed on
+  the CPU, into Δv = J/m and Δω = I⁻¹ r × J with the mass, moments and pose the GPU holds, so a
+  point is exact even though the CPU's poses are a readback old. (The solver's implicit step
+  loses about 0.1% of a spin per step.)
 - Reading back: `await world.read()` refreshes a snapshot, after which `body.position`,
   `body.rotation` and `body.velocity` are plain arrays as of that readback. Readback is async
   and costs a buffer copy, so it's explicit. A `world.readbackEvery` option keeps a snapshot
   refreshed automatically for gameplay that needs recent poses.
+- Tracked readback (0.2): `world.read(bodies)` copies only those bodies' records (160 bytes
+  each; runs of neighbouring slots in one copy) into a small staging buffer, where a full read
+  is 16 MB at 100k bodies. The rest keep their last readback: each body remembers when it was
+  last read, not the world. `world.track(bodies)` (null: all) points `readbackEvery` at a subset,
+  the player and what's near it, say.
+
+### Queries (0.2)
+
+- `await world.raycast(origin, direction, { maxDistance?, ignore? })` gives the first body along
+  a ray and where: `{ body, distance, point, normal }`, or null. `world.raycasts(rays)` casts many
+  at once (up to 65,535). Against boxes, spheres and hulls (as they collide), where the GPU has
+  them after the steps taken so far; the answer comes back a frame or two later, like a readback.
+- On the GPU (`src/lib/raycast.ts`): every ray against every body, the nearest hit per ray by an
+  atomic minimum on the distance's bits, ties to the lowest body index, then the normal. Brute
+  force, so the cost grows with rays × bodies; a pass through the broadphase grid can come later.
+  `ignore` (up to 16 bodies) lets a ray start inside its caster.
+
+### Contact events (0.2)
+
+- `reportContacts: true` on a body (or `body.reportContacts = true` later) and
+  `world.onContact(cb)`: `{ type: 'begin' | 'end', a, b, point, normal, impulse, step }` when it
+  starts or stops touching another body. A begin says where (the contact points' average), the
+  normal (from b towards a) and how hard (the normal impulse of the step they met in: a landing's
+  is about m·v), for sounds, damage and triggers.
+- On the GPU (`src/lib/contacts.ts`), after each step while any body reports: the step's pairs
+  with a reporting body go into a hash set, and are checked against last step's set; only the
+  changes are written out. So a resting pile costs a small pass a step, not a readback, and no
+  begin or end is missed between readbacks. The events come back with the next readback
+  (`read()` or `readbackEvery`), in step order. `maxContactPairs` (default 8192) sizes the sets
+  and `maxContactEvents` (4096) the events kept between readbacks; `world.droppedContactEvents`
+  counts any lost.
 
 ### Joints
 
-- `addJoint(a, b, { anchorA?, anchorB?, breakForce?, breakOnPull? })` returns a `Joint`, rigid.
-  `breakForce` is the paper's torque-based fracture; `breakOnPull` also breaks on linear force
-  (the new negative-threshold mode). Soft joints and springs are for a later version.
+- `addJoint(a, b, { anchorA?, anchorB?, type?, breakForce?, breakOnPull? })` returns a `Joint`:
+  `type` 'fixed' (rigid, the default) or 'ball' (held at the anchors, free to turn: the joint
+  with no angular stiffness). `breakForce` is the paper's torque-based fracture; `breakOnPull`
+  also breaks on linear force (the new negative-threshold mode). A ball joint carries no torque,
+  so it breaks only on pull.
+- `addSpring(a, b, { anchorA?, anchorB?, stiffness, rest? })` (0.2): the solver's springs, added
+  at runtime (`GpuSolver3D.appendSprings`); `rest` defaults to the anchors' distance when added.
 - `joint.remove()` (`releaseJoints`, whose slots are reused). `joint.broken` and
   `world.onBreak(cb)` report breaks seen at a readback (a broken joint's penalties are zeroed on
   the GPU); the world then releases it, so its bodies collide again.
@@ -89,7 +146,8 @@ renderer.setAnimationLoop(() => {
   `positionNode` that places and rotates each instance. No copies, no readback.
 - Options: `bodies?` (a shape, `'box'` by default, or a list, or a test; the mesh follows
   bodies as they come and go), `geometry?` (default: a unit box, or a sphere for `'sphere'`),
-  and `material` (any node material). A colour per body: `bodyMesh.setColor(body, color)`.
+  and `material` (any node material; one already drawing another `BodyMesh` is copied, since each
+  mesh sets its own nodes on it). A colour per body: `bodyMesh.setColor(body, color)`.
 - Several `BodyMesh`es can share one world, for different materials per group of bodies.
 
 ## Decisions to make now
@@ -101,9 +159,9 @@ renderer.setAnimationLoop(() => {
    throughout; `World` takes `gravity` as a vector and sets `up` and the scalar from it.
 2. **Shapes in v0.1.** Boxes and spheres, which the GPU solver already collides. Capsules and
    convex hulls come later.
-3. **Contact events.** Out of v0.1. `readContactList` exists, but a good event API (filtering,
-   batching, cost) deserves its own design. v0.1 has joint breaks only.
-4. **Raycasts and picking.** Out of v0.1 (CPU picking from a snapshot is easy to add later).
+3. **Contact events.** Out of v0.1 (joint breaks only); in 0.2, opt-in per body and filtered on
+   the GPU (above).
+4. **Raycasts and picking.** Out of v0.1; in 0.2, on the GPU (above).
 
 ## What moves where
 

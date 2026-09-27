@@ -45,15 +45,26 @@ renderer.setAnimationLoop(() => {
 await world.read();
 ```
 
-- **Bodies**: `addBox`, `addSphere` (position, rotation, velocity, density, friction, `fixed`);
-  `body.set({ position, velocity, ... })`, `body.setFixed()`, `body.remove()` (its slot is
+- **Bodies**: `addBox`, `addSphere`, `addHull({ points })` (convex hulls; pass the renderer
+  `requiredLimits: await recommendedLimits()` so they collide as hulls), with position, rotation,
+  velocity, density, friction, `fixed`;
+  `body.applyImpulse(J, point)`, `applyForce(F, point)` (every step until `clearForces()`),
+  `applyTorque`, collision groups (`group`, `collidesWith`), `body.moveTo(position, rotation)` (a
+  fixed body as a moving platform or door, carrying what it touches), `body.set({ position, velocity, ... })`,
+  `body.setFixed()`, `body.remove()` (its slot is
   reused). Adds, changes and removals go to the GPU together at the next step.
-- **Joints**: `addJoint(a, b, { anchorA, anchorB, breakForce, breakOnPull })`,
-  `joint.remove()`, and `world.onBreak(joint => ...)` at each readback.
+- **Joints**: `addJoint(a, b, { anchorA, anchorB, type: 'fixed' | 'ball', breakForce, breakOnPull })`,
+  `addSpring(a, b, { stiffness, rest })`, `joint.remove()`, and `world.onBreak(joint => ...)` at
+  each readback.
 - **Drawing**: `BodyMesh` takes any node material, geometry (scaled to each body's size) and
   a set of bodies (a shape, a list or a test), with `setColor(body, color)` per body.
+- **Raycasts**: `await world.raycast(origin, direction)` gives the first body hit, the point and
+  the normal; `world.raycasts([...])` casts many rays in one GPU pass.
+- **Contact events**: `reportContacts: true` on a body and `world.onContact(e => ...)` for
+  begin and end, with where, the normal and how hard (for sounds, damage, triggers).
 - **Reading back**: `await world.read()` (or `world.readbackEvery = n`) for positions,
-  rotations and velocities, and to learn which joints broke.
+  rotations and velocities, and to learn which joints broke. `world.read(bodies)` and
+  `world.track(bodies)` read only the bodies you need (160 bytes each, not the whole world).
 - **Headless**: `World.create({ device })` runs without a renderer (Node with Dawn, workers).
 - **Advanced**: `three-avbd/advanced` exposes the solver underneath (`world.solver`) and the
   layout of its body and joint buffers, for your own compute passes over the bodies.

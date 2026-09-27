@@ -3,9 +3,10 @@
 
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { BodyMesh, World } from '../src/lib/index.ts';
+import { BodyMesh, convexHull, recommendedLimits, World } from '../src/lib/index.ts';
 
-const renderer = new THREE.WebGPURenderer({ antialias: true });
+// The limits the solver makes use of (hulls collide as hulls where the GPU allows)
+const renderer = new THREE.WebGPURenderer({ antialias: true, requiredLimits: await recommendedLimits() });
 renderer.setPixelRatio(devicePixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -38,6 +39,16 @@ for (let k = 1; k <= 8; k++) {
   const next = world.addBox({ size: [0.6, 0.9, 0.6], position: [-8, 12 - k, 0] })!;
   world.addJoint(link, next, { anchorA: [0, -0.5, 0], anchorB: [0, 0.45, 0], breakForce: 150, breakOnPull: true });
   link = next;
+}
+
+// A few rocks: convex hulls of random points, each shape shared by several bodies
+const rocks = [0, 1, 2].map(() => convexHull(Array.from({ length: 36 }, () => (Math.random() - 0.5) * 1.6))!);
+for (let k = 0; k < 18; k++) world.addHull({ shape: rocks[k % 3], position: [6 + (k % 3) * 1.8, 1 + Math.floor(k / 3) * 1.6, (k % 2) - 0.5] });
+const rockMaterial = new THREE.MeshStandardNodeMaterial({ color: 0x8a8f96, roughness: 0.9 });
+for (const shape of rocks) {
+  const m = new BodyMesh(world, { bodies: shape, material: rockMaterial });
+  m.castShadow = m.receiveShadow = true;
+  scene.add(m);
 }
 
 const boxes = new BodyMesh(world, { bodies: 'box', material: new THREE.MeshStandardNodeMaterial({ color: 0xd9c9a8, roughness: 0.7 }) });
