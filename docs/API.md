@@ -60,6 +60,12 @@ renderer.setAnimationLoop(() => {
 
 - `addBox({ size, position, rotation?, velocity?, angularVelocity?, density?, friction?, fixed? })`
   and `addSphere({ radius, ... })` return a `Body` handle.
+- `addHull({ points | shape, ... })` (0.2): a convex hull of points (a mesh's vertices), or a
+  `shape` from `convexHull(points)` shared by many bodies (one GPU record per shape). `position`
+  and `rotation` place the points' own frame; the body sits at the centre of mass on its
+  principal axes. Hulls collide as hulls where the device allows a ninth storage buffer per stage
+  (`world.hullsEnabled`), else as their bounding box: `recommendedLimits()` gives the renderer the
+  limits to ask for. `BodyMesh` draws a shape's bodies with `bodies: shape` (`hullGeometry`).
 - A handle's `index` is its slot in the GPU buffer, for custom shaders. It's stable for the
   body's life (bodies are added at runtime, into a world that starts empty, so the solver's
   spatial reordering of an initial scene never applies).
@@ -92,7 +98,8 @@ renderer.setAnimationLoop(() => {
   `positionNode` that places and rotates each instance. No copies, no readback.
 - Options: `bodies?` (a shape, `'box'` by default, or a list, or a test; the mesh follows
   bodies as they come and go), `geometry?` (default: a unit box, or a sphere for `'sphere'`),
-  and `material` (any node material). A colour per body: `bodyMesh.setColor(body, color)`.
+  and `material` (any node material; one already drawing another `BodyMesh` is copied, since each
+  mesh sets its own nodes on it). A colour per body: `bodyMesh.setColor(body, color)`.
 - Several `BodyMesh`es can share one world, for different materials per group of bodies.
 
 ## Decisions to make now

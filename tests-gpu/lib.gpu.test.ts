@@ -1,7 +1,7 @@
 // The library (src/lib): only its public API, as a user would drive it, headless on Dawn.
 
 import assert from 'node:assert/strict';
-import { World } from '../src/lib/index.ts';
+import { convexHull, World } from '../src/lib/index.ts';
 import { gpuTest } from './device.ts';
 
 const steps = (world: World, n: number) => {
@@ -110,5 +110,31 @@ gpuTest('three-avbd: a box on a spring oscillates about its equilibrium (mg/k be
   }
   const mean = sum / n;
   assert.ok(Math.abs(mean - (4 - 9.81 / 100)) < 0.02, `mean height ${mean}, equilibrium ${4 - 0.0981}`);
+  world.destroy();
+});
+
+gpuTest('three-avbd: a hull is placed by its points\' frame, and a tetrahedron settles flat on a face', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  assert.ok(world.hullsEnabled, 'the test device allows hulls');
+  world.addBox({ size: [10, 1, 10], position: [0, -0.5, 0], fixed: true });
+  // A corner of a cube: its centre of mass is a quarter of the way along each edge from the corner
+  const points = [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1];
+  const shape = convexHull(points)!;
+  const tetra = world.addHull({ shape, position: [0, 2, 0] })!;
+  const c = tetra.position;
+  assert.ok(Math.abs(c[0] - 0.25) < 1e-6 && Math.abs(c[1] - 2.25) < 1e-6 && Math.abs(c[2] - 0.25) < 1e-6, `at its centre of mass: ${c}`);
+  steps(world, 180);
+  await world.read();
+  // Its vertices in the world: three on the ground (a face, flat), none below. As its bounding
+  // box it would rest on a box face, with only the vertices on that face down
+  const [p, q] = [tetra.position, tetra.rotation];
+  const ys: number[] = [];
+  for (let i = 0; i < shape.vertices.length / 3; i++) {
+    const v = [shape.vertices[3 * i], shape.vertices[3 * i + 1], shape.vertices[3 * i + 2]];
+    const t = [2 * (q[1] * v[2] - q[2] * v[1]), 2 * (q[2] * v[0] - q[0] * v[2]), 2 * (q[0] * v[1] - q[1] * v[0])];
+    ys.push(p[1] + v[1] + q[3] * t[1] + (q[2] * t[0] - q[0] * t[2]));
+  }
+  assert.equal(ys.filter((y) => y < 0.03).length, 3, `three vertices on the ground: ${ys.map((y) => y.toFixed(3))}`);
+  assert.ok(Math.min(...ys) > -0.03, 'none below it');
   world.destroy();
 });

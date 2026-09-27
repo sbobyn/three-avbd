@@ -5,6 +5,7 @@
 import { cross, instanceIndex, materialColor, normalGeometry, normalize, positionGeometry, select, storage, transformNormalToView, varying } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { B_POS, B_ROT, B_SIZE, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
+import type { HullShape } from '../avbd3d/shapes.ts';
 import type { Body, World } from './world.ts';
 
 type Vec3 = THREE.Node<'vec3'>;
@@ -18,18 +19,56 @@ function rotate(q: Vec4, v: Vec3): Vec3 {
   return v.add(t.mul(q.w)).add(cross(q.xyz, t));
 }
 
+/** Materials a BodyMesh has set its nodes on. */
+const claimed = new WeakSet<THREE.Material>();
+
+const isHull = (w: unknown): w is HullShape => typeof w === 'object' && w !== null && !Array.isArray(w) && 'faces' in w;
+
+/**
+ * A hull's faces as triangles, at unit size (divided by the hull's size, as BodyMesh scales it
+ * back up), each face flat-shaded.
+ */
+export function hullGeometry(shape: HullShape): THREE.BufferGeometry {
+  const v = shape.vertices;
+  const unit = (i: number) => [v[3 * i] / shape.size[0], v[3 * i + 1] / shape.size[1], v[3 * i + 2] / shape.size[2]];
+  const positions: number[] = [];
+  const normals: number[] = [];
+  for (const face of shape.faces) {
+    // A fan from the first vertex (the face is convex, counter-clockwise from outside)
+    const p = face.verts.map(unit);
+    const e1 = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]];
+    const e2 = [p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]];
+    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    const l = Math.hypot(n[0], n[1], n[2]) || 1;
+    for (let k = 1; k + 1 < p.length; k++) {
+      for (const q of [p[0], p[k], p[k + 1]]) {
+        positions.push(q[0], q[1], q[2]);
+        normals.push(n[0] / l, n[1] / l, n[2] / l);
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  return g;
+}
+
 export interface BodyMeshOptions {
   /**
-   * Which bodies to draw: a shape (every body of it, as they come and go), a list, or a test.
-   * Default: every box.
+   * Which bodies to draw: a shape (every body of it, as they come and go), a hull shape (every
+   * body made from it), a list, or a test. Default: every box.
    */
-  bodies?: 'box' | 'sphere' | Body[] | ((body: Body) => boolean);
+  bodies?: 'box' | 'sphere' | HullShape | Body[] | ((body: Body) => boolean);
   /**
    * The shape drawn for each body, at unit size: scaled by the body's size (a unit box, or a
-   * sphere of diameter 1, fits the body exactly). Default: a box, or a sphere for 'sphere'.
+   * sphere of diameter 1, fits the body exactly). Default: a box, a sphere for 'sphere', the
+   * hull itself (hullGeometry) for a hull shape.
    */
   geometry?: THREE.BufferGeometry;
-  /** A node material (its position and normal are set here). Default: MeshStandardNodeMaterial. */
+  /**
+   * A node material: its position, normal and colour nodes are set here, so a material already
+   * drawing another BodyMesh is copied. Default: MeshStandardNodeMaterial.
+   */
   material?: THREE.NodeMaterial;
 }
 
@@ -44,14 +83,19 @@ export class BodyMesh extends THREE.Mesh<THREE.InstancedBufferGeometry, THREE.No
     if (!world.bodyAttribute) throw new Error('BodyMesh: the world has no body attribute (create it with a renderer)');
     const n = world.maxBodies;
     const which = options.bodies ?? 'box';
-    const source = options.geometry ?? (which === 'sphere' ? new THREE.IcosahedronGeometry(0.5, 3) : new THREE.BoxGeometry(1, 1, 1));
+    const source =
+      options.geometry ??
+      (which === 'sphere' ? new THREE.IcosahedronGeometry(0.5, 3) : isHull(which) ? hullGeometry(which) : new THREE.BoxGeometry(1, 1, 1));
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.index = source.index;
     geometry.setAttribute('position', source.getAttribute('position'));
     geometry.setAttribute('normal', source.getAttribute('normal'));
     if (source.getAttribute('uv')) geometry.setAttribute('uv', source.getAttribute('uv'));
     geometry.instanceCount = 0;
-    const material = options.material ?? new THREE.MeshStandardNodeMaterial();
+    // Each mesh sets its own nodes on its material: one already in use is copied
+    let material = options.material ?? new THREE.MeshStandardNodeMaterial();
+    if (claimed.has(material)) material = material.clone();
+    claimed.add(material);
     super(geometry, material);
     this.world = world;
     this.which = which;
@@ -91,7 +135,11 @@ export class BodyMesh extends THREE.Mesh<THREE.InstancedBufferGeometry, THREE.No
   refresh(): void {
     const w = this.which;
     const all = this.world.bodies;
-    const list = Array.isArray(w) ? w.filter((b) => b.alive) : typeof w === 'function' ? all.filter(w) : all.filter((b) => b.shape === w);
+    const list =
+      Array.isArray(w) ? w.filter((b) => b.alive)
+      : typeof w === 'function' ? all.filter(w)
+      : isHull(w) ? all.filter((b) => b.hull === w)
+      : all.filter((b) => b.shape === w);
     (this.ids.array as Uint32Array).set(list.map((b) => b.index));
     this.ids.needsUpdate = true;
     this.geometry.instanceCount = list.length;

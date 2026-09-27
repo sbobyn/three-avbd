@@ -9,7 +9,7 @@ import { B_ANGVEL, B_POS, B_ROT, B_VEL, BODY_FLOATS, J_PEN_LIN, JOINT_FLOATS } f
 import { GpuSolver3D, gpuParams3D } from '../avbd3d/gpu/solver.ts';
 import { Rigid } from '../avbd3d/ref/body.ts';
 import { Solver } from '../avbd3d/ref/solver.ts';
-import { sphere } from '../avbd3d/shapes.ts';
+import { convexHull, hull, type HullShape, sphere } from '../avbd3d/shapes.ts';
 
 export type Vec3 = [number, number, number];
 /** A unit quaternion, x y z w (as THREE.Quaternion's toArray). */
@@ -55,6 +55,17 @@ export interface SphereOptions extends BodyOptions {
   radius: number;
 }
 
+/**
+ * A convex hull: of `points` (x, y, z each: a mesh's vertices, say), or a `shape` made once with
+ * convexHull and shared by many bodies. `position` and `rotation` place the points' own frame (as
+ * you'd place the mesh they came from); the body itself sits at the hull's centre of mass, turned
+ * to its principal axes (its `position` and `rotation` from then on).
+ */
+export interface HullOptions extends BodyOptions {
+  points?: ArrayLike<number>;
+  shape?: HullShape;
+}
+
 export interface JointOptions {
   /** Where the joint holds, in each body's own frame (m). */
   anchorA?: Vec3;
@@ -89,6 +100,16 @@ const PARK = 1e5;
 
 const DEFAULTS = { density: 1, friction: 0.5 };
 
+/** The quaternion product a·b (b first, then a), x y z w. */
+function multiply(a: ArrayLike<number>, b: ArrayLike<number>): Quat {
+  return [
+    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+  ];
+}
+
 /** v turned by the unit quaternion q (x, y, z, w). */
 function rotate(q: ArrayLike<number>, v: ArrayLike<number>): Vec3 {
   const [x, y, z, w] = [q[0], q[1], q[2], q[3]];
@@ -101,8 +122,10 @@ export class Body {
   readonly world: World;
   /** The body's slot in the GPU buffer (for custom shaders): stable for its life. */
   readonly index: number;
-  readonly shape: 'box' | 'sphere';
-  /** Full widths (a sphere's: its diameter on every axis). */
+  readonly shape: 'box' | 'sphere' | 'hull';
+  /** A hull body's shape (its vertices and faces in the body's own frame). */
+  readonly hull: HullShape | null;
+  /** Full widths (a sphere's: its diameter on every axis; a hull's: its bounds on its principal axes). */
   readonly size: Vec3;
   readonly density: number;
   readonly friction: number;
@@ -114,10 +137,11 @@ export class Body {
   private isAlive = true;
 
   /** @internal Made by World.addBox / addSphere. */
-  constructor(world: World, index: number, shape: 'box' | 'sphere', size: Vec3, options: BodyOptions) {
+  constructor(world: World, index: number, shape: 'box' | 'sphere' | 'hull', size: Vec3, options: BodyOptions, hullShape: HullShape | null = null) {
     this.world = world;
     this.index = index;
     this.shape = shape;
+    this.hull = hullShape;
     this.size = size;
     this.density = options.density ?? DEFAULTS.density;
     this.friction = options.friction ?? DEFAULTS.friction;
@@ -233,6 +257,18 @@ export class Joint {
   }
 }
 
+/**
+ * The device limits the solver makes use of, as high as this machine's GPU goes: pass them to
+ * the renderer (new WebGPURenderer({ requiredLimits: await recommendedLimits() })) so hulls
+ * collide as hulls and big worlds fit. Empty without WebGPU.
+ */
+export async function recommendedLimits(): Promise<Record<string, number>> {
+  const adapter = typeof navigator !== 'undefined' ? await navigator.gpu?.requestAdapter() : null;
+  if (!adapter) return {};
+  const { maxStorageBuffersPerShaderStage, maxStorageBufferBindingSize, maxBufferSize } = adapter.limits;
+  return { maxStorageBuffersPerShaderStage, maxStorageBufferBindingSize, maxBufferSize };
+}
+
 export class World {
   /** The solver underneath (three-avbd/advanced): its parameters, buffers and counters. */
   readonly solver: GpuSolver3D;
@@ -333,11 +369,32 @@ export class World {
     return this.add('sphere', [d, d, d], options);
   }
 
-  private add(shape: 'box' | 'sphere', size: Vec3, options: BodyOptions): Body | null {
+  /**
+   * Add a convex hull (of points, or a shape from convexHull); null when the world is full. It
+   * collides as a hull where the device allows (World.hullsEnabled), else as its bounding box.
+   */
+  addHull(options: HullOptions): Body | null {
+    const shape = options.shape ?? (options.points ? convexHull(options.points) : null);
+    if (!shape) throw new Error('addHull: no hull (pass a shape, or points that aren\'t flat or all in one place)');
+    // The points' frame placed as asked; the body at the centre of mass, on the principal axes
+    const q = options.rotation ?? [0, 0, 0, 1];
+    const p = options.position ?? [0, 0, 0];
+    const c = rotate(q, shape.center);
+    const position: Vec3 = [p[0] + c[0], p[1] + c[1], p[2] + c[2]];
+    const rotation = multiply(q, shape.rotation);
+    return this.add('hull', shape.size, { ...options, position, rotation }, shape);
+  }
+
+  /** Whether hulls collide as hulls (the device allows a ninth storage buffer per shader stage). */
+  get hullsEnabled(): boolean {
+    return this.solver.hulls;
+  }
+
+  private add(shape: 'box' | 'sphere' | 'hull', size: Vec3, options: BodyOptions, hullShape: HullShape | null = null): Body | null {
     // A removed body's slot first, else the next one past the end
     const index = this.free.length ? this.free.pop()! : this.solver.bodyCount + this.appends.length;
     if (index >= this.maxBodies) return null;
-    const body = new Body(this, index, shape, [size[0], size[1], size[2]], options);
+    const body = new Body(this, index, shape, [size[0], size[1], size[2]], options, hullShape);
     // A slot freed since the last step: the old body's parking write is superseded
     for (const old of this.rewrites) if (old.index === index) this.rewrites.delete(old);
     this.slots[index] = body;
@@ -510,6 +567,7 @@ export class World {
     const r =
       parked ? new Rigid(this.scratch, [0.1, 0.1, 0.1], 0, 0, position)
       : body.shape === 'sphere' ? sphere(this.scratch, body.size[0] / 2, density, body.friction, position, velocity)
+      : body.hull ? hull(this.scratch, body.hull, density, body.friction, position, rotation, velocity)
       : new Rigid(this.scratch, body.size, density, body.friction, position, velocity);
     const q = Math.hypot(rotation[0], rotation[1], rotation[2], rotation[3]) || 1;
     r.positionAng.set([rotation[0] / q, rotation[1] / q, rotation[2] / q, rotation[3] / q]);
