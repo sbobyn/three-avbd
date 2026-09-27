@@ -102,6 +102,8 @@ const T_SPRING = ${T_SPRING};
 
 const PENALTY_MIN = 1.0;
 const PENALTY_MAX = 1e10;
+// Least LDLᵀ pivot of the primal solve, relative to its diagonal (wgsl-solve.ts finishBody)
+const PIVOT_FLOOR = 1e-5;
 const COLLISION_MARGIN = 0.01;
 const STICK_THRESH = 0.00001;
 

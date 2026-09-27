@@ -2,6 +2,39 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-09-27 — Bodies lost to NaN at high mass ratios: negative pivots in the f32 primal solve
+
+three-destruction's urban demo lost bodies when fragments of a few grams were crushed under
+floor slabs of about 30 t. A lost body then spread NaN to the whole scene: comparisons with NaN
+pass every broadphase test.
+
+**Cause.** `finishBody` solves each body's 6x6 Newton system with an unpivoted LDLᵀ in f32. A
+sliver resting on an edge under the slab has contact rows near PENALTY_MAX (1e10). Rotation
+about that edge is held only by its inertia term, I/h² ≈ 1e-3, about 12 orders of magnitude
+below the rows around it. In f32 that pivot cancels to noise.
+
+**Measured on the CPU** (the shader's elimination order, `Math.fround`, 0.6 g sliver, two edge
+contacts, h = 1/120):
+
+| contact stiffness k | exact last pivot | f32 last pivot |
+|---|---|---|
+| 1e8 | 4.6 | 4.6 |
+| 1e9 | 4.6 | 2.6 |
+| 1e10 | 4.6 | −18 |
+
+A negative pivot turns that direction's Newton step into ascent. The body spins up over the
+iterations to Inf, then NaN.
+
+**Fix.** Each pivot is floored at `PIVOT_FLOOR` (1e-5) times its diagonal: `D = max(D, A_kk · 1e-5)`.
+This stiffens only a direction that ill-conditioned (130 instead of 4.6 in the example), and the
+parity tests are unchanged. `tests-gpu/pivot.gpu.test.ts` seeds that sliver from the reference
+with every contact at PENALTY_MAX, spinning at 3 rad/s about the edge. Without the floor it is
+NaN within 20 steps; with it, it stays finite and in place.
+
+**In the urban demo** (three-destruction at ef3edfd, mass floor off, `pnpm stress`):
+- without the floor, 3 of 9 runs lost bodies, 1,042 to 1,382 each;
+- with it, 0 of 8 runs lost any.
+
 ## 2026-09-26 — The GPU tests' intermittent crash: a timing read destroyed mid-map
 
 The GPU suite used to die about one run in four (`pnpm test:gpu`: the process exits with no error,
