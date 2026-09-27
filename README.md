@@ -1,5 +1,7 @@
 # three-avbd
 
+[![npm](https://img.shields.io/npm/v/three-avbd)](https://www.npmjs.com/package/three-avbd)
+
 Rigid-body physics on the GPU, in the browser: an implementation of *Augmented Vertex Block
 Descent* ([Giles, Diaz, Yuksel — SIGGRAPH 2025](https://graphics.cs.utah.edu/research/projects/avbd/))
 in TypeScript, Three.js and WGSL compute. Hundreds of thousands of bodies with contacts,
@@ -15,6 +17,8 @@ Needs a browser with WebGPU: Chrome or Edge on any platform, Safari 26 on macOS 
 Firefox where it ships WebGPU. Nothing is baked: every scene is simulated live on your GPU.
 
 ## Use it in your project
+
+[three-avbd on npm](https://www.npmjs.com/package/three-avbd):
 
 ```sh
 npm install three-avbd three
