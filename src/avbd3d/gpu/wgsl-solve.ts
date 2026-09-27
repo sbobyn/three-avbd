@@ -276,19 +276,19 @@ fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
   bodies[i].inertialPos = vec4f(inertialPos, bodies[i].inertialPos.w);
   bodies[i].inertialRot = qadd(rot, angVel * dt);
 
-  // Adaptive warm start (original VBD paper); vel.w holds last step's vel.z. With
+  // Adaptive warm start (original VBD paper), along up; vel.w holds last step's velocity along up. With
   // FLAG_START_AT_REST a body slower than REST_SPEED starts from x- instead: at few
   // iterations a resting stack never corrects the extrapolated guess, which pumps tall walls
   // until they buckle (docs/FINDINGS.md, Stage 8m)
   var w = 0.0;
-  if (abs(g) > 0.0) { w = clamp((vel.z - vel.w) / dt * sign(g) / abs(g), 0.0, 1.0); }
+  if (abs(g) > 0.0) { w = clamp((dot(vel.xyz, params.up.xyz) - vel.w) / dt * sign(g) / abs(g), 0.0, 1.0); }
   let slow = length(vel.xyz) + length(angVel) * bodies[i].moment.w < REST_SPEED;
   let atRest = (params.flags & FLAG_START_AT_REST) != 0u && slow;
 
   bodies[i].initialPos = pos;
   bodies[i].initialRot = rot;
   if (dynamic && !atRest) {
-    bodies[i].pos = vec4f(pos.xyz + vel.xyz * dt + vec3f(0.0, 0.0, g * (w * dt * dt)), pos.w);
+    bodies[i].pos = vec4f(pos.xyz + vel.xyz * dt + params.up.xyz * (g * (w * dt * dt)), pos.w);
     bodies[i].rot = qadd(rot, angVel * dt);
   }
 }
@@ -528,12 +528,13 @@ fn dual(@builtin(global_invocation_id) gid: vec3u) {
 fn updateVelocities(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
   if (i >= params.bodyCount) { return; }
-  let prevZ = bodies[i].vel.z;
+  // This step's starting velocity along up, for the next step's adaptive warm start
+  let prevUp = dot(bodies[i].vel.xyz, params.up.xyz);
   if (bodies[i].size.w > 0.0) {
-    bodies[i].vel = vec4f((bodies[i].pos.xyz - bodies[i].initialPos.xyz) / params.dt, prevZ);
+    bodies[i].vel = vec4f((bodies[i].pos.xyz - bodies[i].initialPos.xyz) / params.dt, prevUp);
     bodies[i].angVel = vec4f(qsub(bodies[i].rot, bodies[i].initialRot) / params.dt, bodies[i].angVel.w);
   } else {
-    bodies[i].vel.w = prevZ;
+    bodies[i].vel.w = prevUp;
   }
 }
 `;

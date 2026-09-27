@@ -131,7 +131,7 @@ struct Body {
   moment: vec4f,       // principal moments, w: bounding radius
   inertialPos: vec4f,  // inertial target y, w: step it last moved from its reference pose (u32)
   inertialRot: vec4f,
-  vel: vec4f,          // xyz, w: previous step's vel.z (adaptive warm start)
+  vel: vec4f,          // xyz, w: previous step's velocity along up (adaptive warm start)
   angVel: vec4f,       // xyz, w: shape (SHAPE_BOX, SHAPE_SPHERE, SHAPE_SAIL, or SHAPE_HULL + hull offset)
 }
 

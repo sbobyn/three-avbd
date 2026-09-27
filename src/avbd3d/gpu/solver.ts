@@ -809,7 +809,9 @@ export class GpuSolver3D {
       f.set(b.inertialLin, o + B_INERTIAL_POS);
       f.set(b.inertialAng, o + B_INERTIAL_ROT);
       f.set(b.velocityLin, o + B_VEL);
-      f[o + B_VEL + 3] = b.prevVelocityLin[2];
+      // Last step's velocity along up (the adaptive warm start's)
+      const up = this.params.up;
+      f[o + B_VEL + 3] = b.prevVelocityLin[0] * up[0] + b.prevVelocityLin[1] * up[1] + b.prevVelocityLin[2] * up[2];
       f.set(b.velocityAng, o + B_ANGVEL);
       const sphere = isSphere(b);
       const shape = this.hulls ? hullOf(b) : undefined;
