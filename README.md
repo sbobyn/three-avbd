@@ -48,8 +48,9 @@ await world.read();
 - **Bodies**: `addBox`, `addSphere` (position, rotation, velocity, density, friction, `fixed`);
   `body.set({ position, velocity, ... })`, `body.setFixed()`, `body.remove()` (its slot is
   reused). Adds, changes and removals go to the GPU together at the next step.
-- **Joints**: `addJoint(a, b, { anchorA, anchorB, breakForce, breakOnPull })`,
-  `joint.remove()`, and `world.onBreak(joint => ...)` at each readback.
+- **Joints**: `addJoint(a, b, { anchorA, anchorB, type: 'fixed' | 'ball', breakForce, breakOnPull })`,
+  `addSpring(a, b, { stiffness, rest })`, `joint.remove()`, and `world.onBreak(joint => ...)` at
+  each readback.
 - **Drawing**: `BodyMesh` takes any node material, geometry (scaled to each body's size) and
   a set of bodies (a shape, a list or a test), with `setColor(body, color)` per body.
 - **Reading back**: `await world.read()` (or `world.readbackEvery = n`) for positions,

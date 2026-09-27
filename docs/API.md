@@ -1,7 +1,6 @@
 # three-avbd v0.1: library API (design for review)
 
-Status: v0.1 built (`src/lib`, stage 9 in `PLAN.md`), not yet published. Springs are still to
-come.
+Status: v0.1 published (npm `three-avbd`); 0.2 in progress (see `PLAN.md` stage 10).
 
 ## Goal
 
@@ -75,9 +74,13 @@ renderer.setAnimationLoop(() => {
 
 ### Joints
 
-- `addJoint(a, b, { anchorA?, anchorB?, breakForce?, breakOnPull? })` returns a `Joint`, rigid.
-  `breakForce` is the paper's torque-based fracture; `breakOnPull` also breaks on linear force
-  (the new negative-threshold mode). Soft joints and springs are for a later version.
+- `addJoint(a, b, { anchorA?, anchorB?, type?, breakForce?, breakOnPull? })` returns a `Joint`:
+  `type` 'fixed' (rigid, the default) or 'ball' (held at the anchors, free to turn: the joint
+  with no angular stiffness). `breakForce` is the paper's torque-based fracture; `breakOnPull`
+  also breaks on linear force (the new negative-threshold mode). A ball joint carries no torque,
+  so it breaks only on pull.
+- `addSpring(a, b, { anchorA?, anchorB?, stiffness, rest? })` (0.2): the solver's springs, added
+  at runtime (`GpuSolver3D.appendSprings`); `rest` defaults to the anchors' distance when added.
 - `joint.remove()` (`releaseJoints`, whose slots are reused). `joint.broken` and
   `world.onBreak(cb)` report breaks seen at a readback (a broken joint's penalties are zeroed on
   the GPU); the world then releases it, so its bodies collide again.

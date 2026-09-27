@@ -65,3 +65,50 @@ gpuTest('three-avbd: removed bodies free their slots for new ones', async (devic
   assert.ok(Math.abs(d.position[0] - 3) < 1e-3, 'straight down');
   world.destroy();
 });
+
+gpuTest('three-avbd: a ball joint lets a box swing down on its pivot; a fixed joint holds it out', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  // A box held out 2 m sideways from a fixed pivot, by each kind of joint
+  const arms = (['ball', 'fixed'] as const).map((type, k) => {
+    const pivot = world.addBox({ size: [0.2, 0.2, 0.2], position: [0, 5, 4 * k], fixed: true })!;
+    const box = world.addBox({ size: [0.5, 0.5, 0.5], position: [2, 5, 4 * k] })!;
+    world.addJoint(pivot, box, { type, anchorB: [-2, 0, 0] });
+    return box;
+  });
+  // Released level, the ball-jointed one swings through the bottom (after about 0.84 s)
+  let lowest = Infinity;
+  let reach = [Infinity, 0];
+  for (let k = 0; k < 20; k++) {
+    steps(world, 5);
+    await world.read();
+    const [x, y] = arms[0].position;
+    lowest = Math.min(lowest, y);
+    const r = Math.hypot(x, y - 5);
+    reach = [Math.min(reach[0], r), Math.max(reach[1], r)];
+    const fixed = arms[1].position;
+    assert.ok(Math.abs(fixed[1] - 5) < 0.1 && Math.abs(fixed[0] - 2) < 0.05, `the fixed one is held out: ${fixed}`);
+  }
+  assert.ok(lowest < 3.1, `the ball-jointed box swung down to the bottom: lowest y ${lowest}`);
+  assert.ok(reach[0] > 1.95 && reach[1] < 2.05, `and stayed 2 m from its pivot: ${reach}`);
+  world.destroy();
+});
+
+gpuTest('three-avbd: a box on a spring oscillates about its equilibrium (mg/k below its rest length)', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  const hook = world.addBox({ size: [0.2, 0.2, 0.2], position: [0, 5, 0], fixed: true })!;
+  // 1 kg on 100 N/m, let go at its rest length (1 m): it swings between 0 and 2mg/k of stretch
+  const box = world.addBox({ size: [1, 1, 1], position: [0, 4, 0] })!;
+  const spring = world.addSpring(hook, box, { stiffness: 100 });
+  assert.ok(Math.abs(spring.rest - 1) < 1e-6, `rest length from where it was added: ${spring.rest}`);
+  // Mean over six periods (T = 2π√(m/k) = 0.628 s, 37.7 steps)
+  let sum = 0;
+  const n = 113;
+  for (let k = 0; k < n; k++) {
+    steps(world, 2);
+    await world.read();
+    sum += box.position[1];
+  }
+  const mean = sum / n;
+  assert.ok(Math.abs(mean - (4 - 9.81 / 100)) < 0.02, `mean height ${mean}, equilibrium ${4 - 0.0981}`);
+  world.destroy();
+});

@@ -60,11 +60,26 @@ export interface JointOptions {
   anchorA?: Vec3;
   anchorB?: Vec3;
   /**
+   * 'fixed' (the default): the bodies hold together as one. 'ball': they hold together at the
+   * anchors but turn freely about them (ball and socket).
+   */
+  type?: 'fixed' | 'ball';
+  /**
    * The force it takes to break the joint (N): measured on its torque, as in the paper, or
    * with `breakOnPull` on its pull too. None: it never breaks.
    */
   breakForce?: number;
   breakOnPull?: boolean;
+}
+
+export interface SpringOptions {
+  /** Where the spring is fixed on each body, in its own frame (m). */
+  anchorA?: Vec3;
+  anchorB?: Vec3;
+  /** N/m. */
+  stiffness: number;
+  /** Its length at rest (m). Default: how far apart the anchors are when it's added. */
+  rest?: number;
 }
 
 /** Steps between the solver's storage checks (contacts, pairs and colours grow as needed). */
@@ -73,6 +88,14 @@ const ADAPT_EVERY = 10;
 const PARK = 1e5;
 
 const DEFAULTS = { density: 1, friction: 0.5 };
+
+/** v turned by the unit quaternion q (x, y, z, w). */
+function rotate(q: ArrayLike<number>, v: ArrayLike<number>): Vec3 {
+  const [x, y, z, w] = [q[0], q[1], q[2], q[3]];
+  // t = 2 (u × v); v + w t + u × t
+  const t = [2 * (y * v[2] - z * v[1]), 2 * (z * v[0] - x * v[2]), 2 * (x * v[1] - y * v[0])];
+  return [v[0] + w * t[0] + (y * t[2] - z * t[1]), v[1] + w * t[1] + (z * t[0] - x * t[2]), v[2] + w * t[2] + (x * t[1] - y * t[0])];
+}
 
 export class Body {
   readonly world: World;
@@ -162,23 +185,30 @@ export class Joint {
   readonly world: World;
   readonly a: Body;
   readonly b: Body;
+  readonly type: 'fixed' | 'ball' | 'spring';
   readonly anchorA: Vec3;
   readonly anchorB: Vec3;
   readonly breakForce: number;
   readonly breakOnPull: boolean;
+  /** A spring's stiffness (N/m) and rest length (m). */
+  readonly stiffness: number;
+  readonly rest: number;
   /** @internal The solver's joint slot (-1 until the next step adds it). */
   slot = -1;
   private state: 'held' | 'broken' | 'removed' = 'held';
 
-  /** @internal Made by World.addJoint. */
-  constructor(world: World, a: Body, b: Body, options: JointOptions) {
+  /** @internal Made by World.addJoint and addSpring. */
+  constructor(world: World, a: Body, b: Body, options: JointOptions & Partial<SpringOptions> & { spring?: boolean }) {
     this.world = world;
     this.a = a;
     this.b = b;
+    this.type = options.spring ? 'spring' : (options.type ?? 'fixed');
     this.anchorA = options.anchorA ?? [0, 0, 0];
     this.anchorB = options.anchorB ?? [0, 0, 0];
-    this.breakForce = options.breakForce ?? Infinity;
+    this.breakForce = options.spring ? Infinity : (options.breakForce ?? Infinity);
     this.breakOnPull = options.breakOnPull ?? false;
+    this.stiffness = options.stiffness ?? Infinity;
+    this.rest = options.rest ?? 0;
   }
 
   /** It broke (seen at a readback: World.read). */
@@ -349,13 +379,35 @@ export class World {
 
   // --- Joints ----------------------------------------------------------------------------------
 
-  /** Join two bodies rigidly at their anchors, until (optionally) it breaks. */
+  /** Join two bodies at their anchors, rigidly or (type 'ball') free to turn, until (optionally) it breaks. */
   addJoint(a: Body, b: Body, options: JointOptions = {}): Joint {
-    if (!a.alive || !b.alive) throw new Error('addJoint: both bodies must be in the world');
-    if (a.world !== this || b.world !== this) throw new Error('addJoint: bodies of another world');
+    this.checkPair(a, b, 'addJoint');
     const joint = new Joint(this, a, b, options);
     this.pendingJoints.push(joint);
     return joint;
+  }
+
+  /** A spring between two bodies' anchors, pulling (or pushing) them towards its rest length. */
+  addSpring(a: Body, b: Body, options: SpringOptions): Joint {
+    this.checkPair(a, b, 'addSpring');
+    const anchorA = options.anchorA ?? [0, 0, 0];
+    const anchorB = options.anchorB ?? [0, 0, 0];
+    // At rest where it's added, unless told otherwise
+    const at = (body: Body, anchor: Vec3) => {
+      const r = rotate(body.rotation, anchor);
+      const p = body.position;
+      return [p[0] + r[0], p[1] + r[1], p[2] + r[2]];
+    };
+    const [pa, pb] = [at(a, anchorA), at(b, anchorB)];
+    const rest = options.rest ?? Math.hypot(pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]);
+    const spring = new Joint(this, a, b, { ...options, anchorA, anchorB, rest, spring: true });
+    this.pendingJoints.push(spring);
+    return spring;
+  }
+
+  private checkPair(a: Body, b: Body, what: string): void {
+    if (!a.alive || !b.alive) throw new Error(`${what}: both bodies must be in the world`);
+    if (a.world !== this || b.world !== this) throw new Error(`${what}: bodies of another world`);
   }
 
   /** Called with each joint seen broken (at a readback). Returns a function that unsubscribes. */
@@ -426,18 +478,21 @@ export class World {
       this.rewrites.clear();
     }
     if (this.pendingJoints.length) {
-      // One upload per kind of fracture
+      // One upload per kind of joint and fracture
       const groups = new Map<string, Joint[]>();
       for (const j of this.pendingJoints) {
-        const key = `${j.breakForce} ${j.breakOnPull}`;
+        const key = `${j.type} ${j.breakForce} ${j.breakOnPull}`;
         groups.set(key, [...(groups.get(key) ?? []), j]);
       }
       for (const list of groups.values()) {
-        const slots = this.solver.appendJoints(
-          list.map((j) => ({ a: j.a.index, b: j.b.index, rA: j.anchorA, rB: j.anchorB })),
-          list[0].breakForce,
-          list[0].breakOnPull,
-        );
+        const slots =
+          list[0].type === 'spring'
+            ? this.solver.appendSprings(list.map((j) => ({ a: j.a.index, b: j.b.index, rA: j.anchorA, rB: j.anchorB, stiffness: j.stiffness, rest: j.rest })))
+            : this.solver.appendJoints(
+                list.map((j) => ({ a: j.a.index, b: j.b.index, rA: j.anchorA, rB: j.anchorB, angular: j.type === 'ball' ? 0 : undefined })),
+                list[0].breakForce,
+                list[0].breakOnPull,
+              );
         list.forEach((j, k) => {
           j.slot = slots[k];
           this.joints.add(j);

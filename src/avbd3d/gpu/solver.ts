@@ -1060,39 +1060,65 @@ export class GpuSolver3D {
 
   /**
    * Append joints between body pairs in one upload (appendJoint one at a time is a write per
-   * joint): each holds `rA` on its first body to `rB` on its second, rigidly, until the angular
-   * force it carries passes `fracture` (with `linear`, or the linear force: not in the paper,
-   * which breaks joints on torque alone). Returns the first slot.
+   * joint): each holds `rA` on its first body to `rB` on its second, rigidly (or with `angular`
+   * 0, as a ball joint: free to turn), until the angular force it carries passes `fracture`
+   * (with `linear`, or the linear force: not in the paper, which breaks joints on torque alone).
+   * Returns their slots.
    */
-  appendJoints(joints: { a: number; b: number; rA: ArrayLike<number>; rB: ArrayLike<number> }[], fracture: number, linear = false): number[] {
-    // Released slots first (lowest first, written in runs), the rest appended in one write
+  appendJoints(joints: { a: number; b: number; rA: ArrayLike<number>; rB: ArrayLike<number>; angular?: number }[], fracture: number, linear = false): number[] {
+    return this.appendConstraints(joints.length, (k, o) => {
+      const { a, b, rA, rB, angular } = joints[k];
+      o[J_PEN_LIN + 3] = BIG;
+      o[J_PEN_ANG + 3] = angular === undefined ? BIG : finite(angular);
+      o[J_LAM_LIN + 3] = linear ? -finite(fracture) : finite(fracture);
+      o.set([rA[0], rA[1], rA[2]], J_RA);
+      o.set([rB[0], rB[1], rB[2]], J_RB);
+      const [sa, sb] = [this.bodies[a].size, this.bodies[b].size];
+      o[J_LAM_ANG + 3] = (sa[0] + sb[0]) ** 2 + (sa[1] + sb[1]) ** 2 + (sa[2] + sb[2]) ** 2;
+      return [T_JOINT, a, b];
+    });
+  }
+
+  /**
+   * Append springs between body pairs in one upload: each pulls `rA` on its first body towards
+   * `rB` on its second with `stiffness` (N/m), about `rest` metres apart. Returns their slots.
+   */
+  appendSprings(springs: { a: number; b: number; rA: ArrayLike<number>; rB: ArrayLike<number>; stiffness: number; rest: number }[]): number[] {
+    return this.appendConstraints(springs.length, (k, o) => {
+      const { a, b, rA, rB, stiffness, rest } = springs[k];
+      o[J_PEN_LIN + 3] = finite(stiffness);
+      o.set([rA[0], rA[1], rA[2], rest], J_RA);
+      o.set([rB[0], rB[1], rB[2]], J_RB);
+      return [T_SPRING, a, b];
+    });
+  }
+
+  /**
+   * `n` constraints into slots (released ones first, lowest first, the rest appended), each
+   * record filled by `fill` (it returns the type and the two bodies), uploaded in a write per
+   * run of slots.
+   */
+  private appendConstraints(n: number, fill: (k: number, record: Float32Array) => [number, number, number]): number[] {
     const slots: number[] = [];
     if (this.freeSlots.length) {
       this.freeSlots.sort((x, y) => y - x);
-      while (slots.length < joints.length && this.freeSlots.length) slots.push(this.freeSlots.pop()!);
+      while (slots.length < n && this.freeSlots.length) slots.push(this.freeSlots.pop()!);
     }
-    const fresh = joints.length - slots.length;
+    const fresh = n - slots.length;
     let capacity = this.jointCapacity;
     while (this.jointCount + fresh > capacity) capacity *= 2;
     if (capacity > this.jointCapacity) this.allocateJoints(capacity);
     for (let k = 0; k < fresh; k++) slots.push(this.jointCount++);
-    const o = new Float32Array(joints.length * JOINT_FLOATS);
-    joints.forEach(({ a, b, rA, rB }, k) => {
-      const j = k * JOINT_FLOATS;
-      o[j + J_PEN_LIN + 3] = BIG;
-      o[j + J_PEN_ANG + 3] = BIG;
-      o[j + J_LAM_LIN + 3] = linear ? -finite(fracture) : finite(fracture);
-      o.set([rA[0], rA[1], rA[2]], j + J_RA);
-      o.set([rB[0], rB[1], rB[2]], j + J_RB);
-      const [sa, sb] = [this.bodies[a].size, this.bodies[b].size];
-      o[j + J_LAM_ANG + 3] = (sa[0] + sb[0]) ** 2 + (sa[1] + sb[1]) ** 2 + (sa[2] + sb[2]) ** 2;
-      this.info.set([T_JOINT, a, b, 0], slots[k] * 4);
+    const o = new Float32Array(n * JOINT_FLOATS);
+    for (let k = 0; k < n; k++) {
+      const [type, a, b] = fill(k, o.subarray(k * JOINT_FLOATS, (k + 1) * JOINT_FLOATS));
+      this.info.set([type, a, b, 0], slots[k] * 4);
       this.releasedSlots.delete(slots[k]);
       this.noCollide(a, b, slots[k]);
-    });
-    for (let k = 0; k < joints.length; ) {
+    }
+    for (let k = 0; k < n; ) {
       let e = k + 1;
-      while (e < joints.length && slots[e] === slots[e - 1] + 1) e++;
+      while (e < n && slots[e] === slots[e - 1] + 1) e++;
       this.device.queue.writeBuffer(this.jointBuffer, slots[k] * JOINT_FLOATS * 4, o, k * JOINT_FLOATS, (e - k) * JOINT_FLOATS);
       this.device.queue.writeBuffer(this.infoBuffer, slots[k] * 16, this.info, slots[k] * 4, (e - k) * 4);
       k = e;
