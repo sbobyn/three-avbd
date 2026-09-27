@@ -11,6 +11,9 @@ friction and joints, stepped entirely on the GPU and drawn straight from the sol
 [2D demo](https://three-avbd.vercel.app/2d.html) ·
 [Results vs the paper](https://three-avbd.vercel.app/results.html)
 
+**Built with it: [Voxel City](https://three-voxel-destruction.vercel.app)**, a Teardown-inspired
+destructible city of 94,000 voxel bodies ([code](https://github.com/sbobyn/three-voxel-destruction)).
+
 ![Trailer: a 110,000-brick ring smashed, cannonballs, rope, chain mail, springs, ragdolls on cloth, friction, a flag in the wind, and 100,000 box columns, all recorded live in Chrome](docs/media/trailer.gif)
 
 Needs a browser with WebGPU: Chrome or Edge on any platform, Safari 26 on macOS and iOS,
