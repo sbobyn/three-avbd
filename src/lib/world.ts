@@ -11,6 +11,7 @@ import { Rigid } from '../avbd3d/ref/body.ts';
 import { Solver } from '../avbd3d/ref/solver.ts';
 import { convexHull, hull, type HullShape, sphere } from '../avbd3d/shapes.ts';
 import { addImpulse, noPush, Pusher, type Pushes } from './push.ts';
+import { type Ray, Raycaster } from './raycast.ts';
 
 export type Vec3 = [number, number, number];
 /** A unit quaternion, x y z w (as THREE.Quaternion's toArray). */
@@ -65,6 +66,24 @@ export interface SphereOptions extends BodyOptions {
 export interface HullOptions extends BodyOptions {
   points?: ArrayLike<number>;
   shape?: HullShape;
+}
+
+/** Where a ray first meets a body. */
+export interface RayHit {
+  /** The body hit (null if it was removed while the cast was on its way back). */
+  body: Body | null;
+  /** How far along the ray (m): 0 when it starts inside the body. */
+  distance: number;
+  point: Vec3;
+  /** The surface's outward normal there (against the ray when it starts inside). */
+  normal: Vec3;
+}
+
+export interface RaycastOptions {
+  /** Default: as far as it goes. */
+  maxDistance?: number;
+  /** Bodies it passes through (at most 16: the caster's own, say). */
+  ignore?: Body[];
 }
 
 export interface JointOptions {
@@ -319,6 +338,7 @@ export class World {
   private readonly impulses = new Map<Body, Pushes>();
   private readonly forces = new Map<Body, Pushes>();
   private readonly pusher: Pusher;
+  private raycaster: Raycaster | null = null;
   private snapshot: { data: Float32Array; writes: number } | null = null;
   private writes = 0;
   private steps = 0;
@@ -640,6 +660,30 @@ export class World {
     if (!parked) r.velocityAng.set(angularVelocity);
     this.scratch.bodies.length = 0;
     return r;
+  }
+
+  // --- Queries ---------------------------------------------------------------------------------
+
+  /**
+   * The first body along a ray, where the GPU has the bodies now (after the steps taken so far):
+   * null if it hits nothing. Async, like a readback: it resolves a frame or two later.
+   */
+  async raycast(origin: Vec3, direction: Vec3, options: RaycastOptions = {}): Promise<RayHit | null> {
+    return (await this.raycasts([{ origin, direction, maxDistance: options.maxDistance }], options))[0];
+  }
+
+  /** Many rays at once (one GPU pass for all: up to 65,535). */
+  async raycasts(rays: Ray[], options: { ignore?: Body[] } = {}): Promise<(RayHit | null)[]> {
+    this.flush();
+    this.raycaster ??= new Raycaster(this.device);
+    const raw = await this.raycaster.cast(
+      this.solver.bodyBuffer,
+      this.solver.hullStorage,
+      this.solver.bodyCount,
+      rays,
+      (options.ignore ?? []).map((b) => b.index),
+    );
+    return raw.map((h) => (h ? { body: this.slots[h.index] ?? null, distance: h.distance, point: h.point, normal: h.normal } : null));
   }
 
   // --- Reading back ------------------------------------------------------------------------------

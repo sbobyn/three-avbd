@@ -371,6 +371,10 @@ export class GpuSolver3D {
    */
   readonly hulls: boolean;
   private hullBuffer: GPUBuffer;
+  /** The hull buffer (layout in ./wgsl-hull.ts), for passes of your own: it's replaced as it grows. */
+  get hullStorage(): GPUBuffer {
+    return this.hullBuffer;
+  }
   private hullCapacity = 4096;
   private hullTop = 0;
   private readonly hullSlots = new Map<HullShape, HullSlot>();

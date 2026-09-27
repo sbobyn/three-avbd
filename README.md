@@ -56,6 +56,8 @@ await world.read();
   each readback.
 - **Drawing**: `BodyMesh` takes any node material, geometry (scaled to each body's size) and
   a set of bodies (a shape, a list or a test), with `setColor(body, color)` per body.
+- **Raycasts**: `await world.raycast(origin, direction)` gives the first body hit, the point and
+  the normal; `world.raycasts([...])` casts many rays in one GPU pass.
 - **Reading back**: `await world.read()` (or `world.readbackEvery = n`) for positions,
   rotations and velocities, and to learn which joints broke.
 - **Headless**: `World.create({ device })` runs without a renderer (Node with Dawn, workers).

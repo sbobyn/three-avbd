@@ -174,3 +174,34 @@ gpuTest('three-avbd: a standing force holds a box up against gravity until clear
   assert.ok(Math.abs(fall - 0.5 * 9.81 * 0.25) < 0.1, `then falls freely: ${fall} m in half a second`);
   world.destroy();
 });
+
+gpuTest('three-avbd: raycasts find the nearest body and its surface (box, sphere, turned box, hull)', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  const ground = world.addBox({ size: [20, 1, 20], position: [0, -0.5, 0], fixed: true })!;
+  const box = world.addBox({ size: [1, 1, 1], position: [0, 0.5, 0], fixed: true })!;
+  const ball = world.addSphere({ radius: 0.5, position: [3, 0.5, 0], fixed: true })!;
+  // 2 m long in x, turned a quarter about y: long in z, its +z end at z = 1
+  const turned = world.addBox({ size: [2, 1, 1], position: [-3, 0.5, 0], rotation: [0, Math.SQRT1_2, 0, Math.SQRT1_2], fixed: true })!;
+  // A corner of a cube (faces x = 0, y = 0, z = 0 and x + y + z = 1), its corner at (6, 0, 0)
+  const tetra = world.addHull({ points: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1], position: [6, 0, 0], fixed: true })!;
+  const close = (u: ArrayLike<number>, v: number[], tol = 1e-4) => Array.from(u).every((x, i) => Math.abs(x - v[i]) < tol);
+  const show = (h: { body: { index: number } | null; distance: number; normal: number[] } | null) => (h ? `body ${h.body?.index} at ${h.distance}, normal ${h.normal}` : 'none');
+  const [onBox, onBall, onTurned, onTetra, up] = await world.raycasts([
+    { origin: [0, 5, 0], direction: [0, -1, 0] },
+    { origin: [3, 5, 0], direction: [0, -2, 0] },
+    { origin: [-3, 0.5, 5], direction: [0, 0, -1] },
+    { origin: [6.2, 5, 0.2], direction: [0, -1, 0] },
+    { origin: [0, 5, 0], direction: [0, 1, 0] },
+  ]);
+  assert.ok(onBox && onBox.body === box && close([onBox.distance], [4]) && close(onBox.normal, [0, 1, 0]), `the box's top: ${show(onBox)}`);
+  assert.ok(onBall && onBall.body === ball && close([onBall.distance], [4]) && close(onBall.normal, [0, 1, 0]), `the sphere's top: ${show(onBall)}`);
+  assert.ok(onTurned && onTurned.body === turned && close([onTurned.distance], [4]) && close(onTurned.normal, [0, 0, 1]), `the turned box's end: ${show(onTurned)}`);
+  const s = 1 / Math.sqrt(3);
+  assert.ok(onTetra && onTetra.body === tetra && close([onTetra.distance], [4.4]) && close(onTetra.normal, [s, s, s]), `the hull's slanted face: ${show(onTetra)}`);
+  assert.ok(close(onTetra!.point, [6.2, 0.6, 0.2]), `at ${onTetra!.point}`);
+  assert.equal(up, null, 'nothing above');
+  assert.equal(await world.raycast([0, 5, 0], [0, -1, 0], { maxDistance: 3 }), null, 'out of reach');
+  const through = await world.raycast([0, 5, 0], [0, -1, 0], { ignore: [box] });
+  assert.ok(through && through.body === ground && close([through.distance], [5]), `ignoring the box, the ground: ${show(through)}`);
+  world.destroy();
+});

@@ -84,6 +84,17 @@ renderer.setAnimationLoop(() => {
   and costs a buffer copy, so it's explicit. A `world.readbackEvery` option keeps a snapshot
   refreshed automatically for gameplay that needs recent poses.
 
+### Queries (0.2)
+
+- `await world.raycast(origin, direction, { maxDistance?, ignore? })` gives the first body along
+  a ray and where: `{ body, distance, point, normal }`, or null. `world.raycasts(rays)` casts many
+  at once (up to 65,535). Against boxes, spheres and hulls (as they collide), where the GPU has
+  them after the steps taken so far; the answer comes back a frame or two later, like a readback.
+- On the GPU (`src/lib/raycast.ts`): every ray against every body, the nearest hit per ray by an
+  atomic minimum on the distance's bits, ties to the lowest body index, then the normal. Brute
+  force, so the cost grows with rays × bodies; a pass through the broadphase grid can come later.
+  `ignore` (up to 16 bodies) lets a ray start inside its caster.
+
 ### Joints
 
 - `addJoint(a, b, { anchorA?, anchorB?, type?, breakForce?, breakOnPull? })` returns a `Joint`:
