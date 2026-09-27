@@ -10,6 +10,7 @@ import { GpuSolver3D, gpuParams3D } from '../avbd3d/gpu/solver.ts';
 import { Rigid } from '../avbd3d/ref/body.ts';
 import { Solver } from '../avbd3d/ref/solver.ts';
 import { convexHull, hull, type HullShape, sphere } from '../avbd3d/shapes.ts';
+import { addImpulse, noPush, Pusher, type Pushes } from './push.ts';
 
 export type Vec3 = [number, number, number];
 /** A unit quaternion, x y z w (as THREE.Quaternion's toArray). */
@@ -197,6 +198,31 @@ export class Body {
     this.world.write(this);
   }
 
+  /** A push (N·s) at a point in the world (none: through its centre of mass), at the next step. */
+  applyImpulse(impulse: Vec3, point?: Vec3): void {
+    if (this.isAlive) addImpulse(this.world.pushesOf(this, false), impulse, point);
+  }
+
+  /** A twist (N·m·s, about world axes through its centre of mass), at the next step. */
+  applyAngularImpulse(impulse: Vec3): void {
+    if (this.isAlive) this.world.pushesOf(this, false).moment.forEach((_, a, m) => (m[a] += impulse[a]));
+  }
+
+  /** A force (N) at a point in the world (none: through its centre of mass), every step until clearForces. */
+  applyForce(force: Vec3, point?: Vec3): void {
+    if (this.isAlive) addImpulse(this.world.pushesOf(this, true), force, point);
+  }
+
+  /** A torque (N·m, about world axes through its centre of mass), every step until clearForces. */
+  applyTorque(torque: Vec3): void {
+    if (this.isAlive) this.world.pushesOf(this, true).moment.forEach((_, a, m) => (m[a] += torque[a]));
+  }
+
+  /** Stop the forces and torques applied to it. */
+  clearForces(): void {
+    this.world.clearForces(this);
+  }
+
   /** Take it out of the world, with its joints. Its slot is reused by later adds. */
   remove(): void {
     if (!this.isAlive) return;
@@ -289,6 +315,10 @@ export class World {
   private readonly joints = new Set<Joint>();
   private readonly scratch = new Solver();
   private readonly breakListeners = new Set<(joint: Joint) => void>();
+  /** Impulses for the next step, and forces for every step (per body, summed). */
+  private readonly impulses = new Map<Body, Pushes>();
+  private readonly forces = new Map<Body, Pushes>();
+  private readonly pusher: Pusher;
   private snapshot: { data: Float32Array; writes: number } | null = null;
   private writes = 0;
   private steps = 0;
@@ -305,6 +335,7 @@ export class World {
     this.solver = new GpuSolver3D(device, this.scratch, { bodyBuffer: buffer, bodyCapacity: options.maxBodies });
     Object.assign(this.solver.params, gpuParams3D(), { dt: options.dt ?? 1 / 60, iterations: options.iterations ?? 10 });
     this.gravity = options.gravity ?? [0, -9.81, 0];
+    this.pusher = new Pusher(device, this.solver.bodyBuffer);
   }
 
   static async create(options: WorldOptions): Promise<World> {
@@ -425,6 +456,8 @@ export class World {
   /** @internal Body.remove: its joints go, and it's parked out of the way. */
   removeBody(body: Body): void {
     for (const j of [...this.joints, ...this.pendingJoints]) if (j.a === body || j.b === body) j.remove();
+    this.impulses.delete(body);
+    this.forces.delete(body);
     this.slots[body.index] = null;
     this.free.push(body.index);
     // Parked: fixed, small, far off, a slot of space each
@@ -507,6 +540,7 @@ export class World {
   /** One fixed step (dt). */
   step(): void {
     this.flush();
+    this.push();
     this.solver.step();
     this.steps++;
     if (this.steps % ADAPT_EVERY === 0 && !this.adapting) {
@@ -517,6 +551,38 @@ export class World {
         .finally(() => (this.adapting = false));
     }
     if (this.readbackEvery > 0 && this.steps % this.readbackEvery === 0 && !this.reading) void this.read();
+  }
+
+  /** @internal A body's pushes: this step's impulses, or its standing forces. */
+  pushesOf(body: Body, standing: boolean): Pushes {
+    const map = standing ? this.forces : this.impulses;
+    let p = map.get(body);
+    if (!p) map.set(body, (p = noPush()));
+    return p;
+  }
+
+  /** @internal Body.clearForces. */
+  clearForces(body: Body): void {
+    this.forces.delete(body);
+  }
+
+  /** This step's impulses and a step's worth of the forces, onto the bodies' velocities. */
+  private push(): void {
+    if (!this.impulses.size && !this.forces.size) return;
+    const all = new Map<number, Pushes>();
+    for (const [body, p] of this.impulses) all.set(body.index, p);
+    const dt = this.dt;
+    for (const [body, f] of this.forces) {
+      const p = all.get(body.index) ?? noPush();
+      for (let a = 0; a < 3; a++) {
+        p.lin[a] += f.lin[a] * dt;
+        p.offLin[a] += f.offLin[a] * dt;
+        p.moment[a] += f.moment[a] * dt;
+      }
+      all.set(body.index, p);
+    }
+    this.pusher.apply(all);
+    this.impulses.clear();
   }
 
   /** Send what bodies and joints were added, changed or removed since the last step. */
@@ -620,6 +686,7 @@ export class World {
 
   /** Free the GPU buffers (the world can't be used after). */
   destroy(): void {
+    this.pusher.destroy();
     this.solver.destroy();
   }
 }

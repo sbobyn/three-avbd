@@ -48,7 +48,8 @@ await world.read();
 - **Bodies**: `addBox`, `addSphere`, `addHull({ points })` (convex hulls; pass the renderer
   `requiredLimits: await recommendedLimits()` so they collide as hulls), with position, rotation,
   velocity, density, friction, `fixed`;
-  `body.set({ position, velocity, ... })`, `body.setFixed()`, `body.remove()` (its slot is
+  `body.applyImpulse(J, point)`, `applyForce(F, point)` (every step until `clearForces()`),
+  `applyTorque`, `body.set({ position, velocity, ... })`, `body.setFixed()`, `body.remove()` (its slot is
   reused). Adds, changes and removals go to the GPU together at the next step.
 - **Joints**: `addJoint(a, b, { anchorA, anchorB, type: 'fixed' | 'ball', breakForce, breakOnPull })`,
   `addSpring(a, b, { stiffness, rest })`, `joint.remove()`, and `world.onBreak(joint => ...)` at

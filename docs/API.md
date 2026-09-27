@@ -73,6 +73,12 @@ renderer.setAnimationLoop(() => {
   value as of the last readback), `body.setFixed(fixed)` (both through `rewriteBodies`), and
   `body.remove()` (its joints go, it's parked far off, and its slot is reused). All of these are
   batched into the next step.
+- Pushing (0.2): `body.applyImpulse(J, point?)` and `applyAngularImpulse(L)` act at the next
+  step; `applyForce(F, point?)` and `applyTorque(T)` act every step until `clearForces()`. A
+  small compute pass over the body buffer (`src/lib/push.ts`) turns each body's pushes, summed on
+  the CPU, into Δv = J/m and Δω = I⁻¹ r × J with the mass, moments and pose the GPU holds, so a
+  point is exact even though the CPU's poses are a readback old. (The solver's implicit step
+  loses about 0.1% of a spin per step.)
 - Reading back: `await world.read()` refreshes a snapshot, after which `body.position`,
   `body.rotation` and `body.velocity` are plain arrays as of that readback. Readback is async
   and costs a buffer copy, so it's explicit. A `world.readbackEvery` option keeps a snapshot

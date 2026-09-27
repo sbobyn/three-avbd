@@ -138,3 +138,39 @@ gpuTest('three-avbd: a hull is placed by its points\' frame, and a tetrahedron s
   assert.ok(Math.min(...ys) > -0.03, 'none below it');
   world.destroy();
 });
+
+gpuTest('three-avbd: impulses change velocity (J/m) and, off-centre, spin (I⁻¹ r × J)', async (device) => {
+  const world = await World.create({ device, maxBodies: 16, gravity: [0, 0, 0] });
+  // 1 m cubes of 1 kg: I = m/6 about each axis
+  const a = world.addBox({ size: [1, 1, 1], position: [0, 0, 0] })!;
+  const b = world.addBox({ size: [1, 1, 1], position: [0, 0, 5] })!;
+  a.applyImpulse([2, 0, 0]);
+  b.applyImpulse([0, 1, 0], [0.5, 0, 5]);
+  // Just after (the solver's implicit step then loses spin slowly: 0.1% a step)
+  world.step();
+  await world.read();
+  const close = (u: number[], v: number[], tol: number) => u.every((x, i) => Math.abs(x - v[i]) < tol);
+  assert.ok(close(a.velocity, [2, 0, 0], 1e-3), `through its centre: v ${a.velocity}`);
+  assert.ok(close(a.angularVelocity, [0, 0, 0], 1e-3), `and no spin: ω ${a.angularVelocity}`);
+  assert.ok(close(b.velocity, [0, 1, 0], 1e-3), `off-centre: v ${b.velocity}`);
+  assert.ok(close(b.angularVelocity, [0, 0, 3], 0.005), `and spinning at r·J/I = 3 rad/s about z: ω ${b.angularVelocity}`);
+  steps(world, 29);
+  await world.read();
+  assert.ok(Math.abs(a.position[0] - 1) < 0.01, `1 m in half a second: x ${a.position[0]}`);
+  world.destroy();
+});
+
+gpuTest('three-avbd: a standing force holds a box up against gravity until cleared', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  const box = world.addBox({ size: [1, 1, 1], position: [0, 5, 0] })!;
+  box.applyForce([0, 9.81, 0]);
+  steps(world, 60);
+  await world.read();
+  assert.ok(Math.abs(box.position[1] - 5) < 0.01, `held up: y ${box.position[1]}`);
+  box.clearForces();
+  steps(world, 30);
+  await world.read();
+  const fall = 5 - box.position[1];
+  assert.ok(Math.abs(fall - 0.5 * 9.81 * 0.25) < 0.1, `then falls freely: ${fall} m in half a second`);
+  world.destroy();
+});
