@@ -480,6 +480,7 @@ export class GpuSolver3D {
   private readonly timing: { querySet: GPUQuerySet; resolve: GPUBuffer; read: GPUBuffer } | null;
   private timingCallback: ((profile: StepProfile) => void) | null = null;
   private timingBusy = false;
+  private destroyed = false;
 
   constructor(device: GPUDevice, ref: Solver, options: GpuSolverOptions = {}) {
     this.device = device;
@@ -1353,13 +1354,14 @@ export class GpuSolver3D {
         const t = new BigUint64Array(read.getMappedRange()).slice();
         read.unmap();
         this.timingBusy = false;
+        if (this.destroyed) return this.releaseTiming();
         const ms = (a: number, b: number) => Number(t[b] - t[a]) / 1e6;
         const profile = { total: ms(0, stamps - 1) } as StepProfile;
         PHASES.forEach((name, i) => (profile[name] = ms(2 * i, 2 * i + 1)));
         callback(profile);
       }, () => {
-        // Destroyed before the timing came back
         this.timingBusy = false;
+        if (this.destroyed) this.releaseTiming();
       });
     }
   }
@@ -1488,14 +1490,24 @@ export class GpuSolver3D {
     return out;
   }
 
+  /** The step timing's query set and buffers. */
+  private releaseTiming(): void {
+    this.timing?.resolve.destroy();
+    this.timing?.read.destroy();
+    this.timing?.querySet.destroy();
+  }
+
   destroy(): void {
     if (this.ownsBodyBuffer) this.bodyBuffer.destroy();
     const buffers = [
       this.jointBuffer, this.infoBuffer, ...this.contactBuffers, ...this.manifoldBuffers, this.pairBuffer, this.tableBuffer, this.gridBuffer, this.staticBuffer,
-      this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.refBuffer, this.hullBuffer, this.passBuffer, this.timing?.resolve, this.timing?.read,
+      this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.refBuffer, this.hullBuffer, this.passBuffer,
     ];
     for (const b of buffers) b?.destroy();
-    this.timing?.querySet.destroy();
+    // A timing read still mapping keeps its buffers until it settles: destroying a buffer mid-map
+    // crashed Dawn under Node (the GPU tests' intermittent crash, docs/FINDINGS.md)
+    this.destroyed = true;
+    if (!this.timingBusy) this.releaseTiming();
     this.gridScan.destroy();
     this.colorHistScan.destroy();
     this.adjScan?.destroy();

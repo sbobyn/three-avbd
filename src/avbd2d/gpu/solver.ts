@@ -125,6 +125,7 @@ export class GpuSolver2D {
   private readonly timing: { querySet: GPUQuerySet; resolve: GPUBuffer; read: GPUBuffer } | null;
   private timingCallback: ((profile: StepProfile) => void) | null = null;
   private timingBusy = false;
+  private destroyed = false;
 
   constructor(device: GPUDevice, topology: SoaSolver2D, options: GpuSolverOptions = {}) {
     this.device = device;
@@ -672,14 +673,18 @@ export class GpuSolver2D {
       this.timingCallback = null;
       this.timingBusy = true;
       const read = this.timing!.read;
-      void read.mapAsync(GPUMapMode.READ).then(() => {
+      read.mapAsync(GPUMapMode.READ).then(() => {
         const t = new BigUint64Array(read.getMappedRange()).slice();
         read.unmap();
         this.timingBusy = false;
+        if (this.destroyed) return this.releaseTiming();
         const ms = (a: number, b: number) => Number(t[b] - t[a]) / 1e6;
         const profile = { total: ms(0, stamps - 1) } as StepProfile;
         PHASES.forEach((name, i) => (profile[name] = ms(2 * i, 2 * i + 1)));
         callback(profile);
+      }, () => {
+        this.timingBusy = false;
+        if (this.destroyed) this.releaseTiming();
       });
     }
   }
@@ -807,14 +812,23 @@ export class GpuSolver2D {
     return out;
   }
 
+  /** The step timing's query set and buffers. */
+  private releaseTiming(): void {
+    this.timing?.resolve.destroy();
+    this.timing?.read.destroy();
+    this.timing?.querySet.destroy();
+  }
+
   destroy(): void {
     if (this.ownsBodyBuffer) this.bodyBuffer.destroy();
     const buffers = [
       this.jointBuffer, this.infoBuffer, ...this.contactBuffers, this.pairBuffer, this.tableBuffer, this.gridBuffer, this.staticBuffer,
-      this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.passBuffer, this.timing?.resolve, this.timing?.read,
+      this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.passBuffer,
     ];
     for (const b of buffers) b?.destroy();
-    this.timing?.querySet.destroy();
+    // A timing read still mapping keeps its buffers until it settles (see the 3D solver's destroy)
+    this.destroyed = true;
+    if (!this.timingBusy) this.releaseTiming();
     this.gridScan.destroy();
     this.colorHistScan.destroy();
     this.adjScan?.destroy();
