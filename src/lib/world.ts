@@ -394,7 +394,11 @@ export class World {
   private readonly forces = new Map<Body, Pushes>();
   private readonly pusher: Pusher;
   private raycaster: Raycaster | null = null;
-  private snapshot: { data: Float32Array; writes: number } | null = null;
+  /** The last readback of each body's record, and the write count it was issued at (-1: never read). */
+  private readonly snapshot: Float32Array;
+  private readonly readAt: Float64Array;
+  /** Which bodies the automatic readback reads (World.track; null: all). */
+  private tracked: Body[] | null = null;
   private writes = 0;
   private steps = 0;
   private owed = 0;
@@ -411,6 +415,8 @@ export class World {
     Object.assign(this.solver.params, gpuParams3D(), { dt: options.dt ?? 1 / 60, iterations: options.iterations ?? 10 });
     this.gravity = options.gravity ?? [0, -9.81, 0];
     this.pusher = new Pusher(device, this.solver.bodyBuffer);
+    this.snapshot = new Float32Array(options.maxBodies * BODY_FLOATS);
+    this.readAt = new Float64Array(options.maxBodies).fill(-1);
   }
 
   static async create(options: WorldOptions): Promise<World> {
@@ -629,7 +635,7 @@ export class World {
         .then((counters) => this.solver.adapt(counters))
         .finally(() => (this.adapting = false));
     }
-    if (this.readbackEvery > 0 && this.steps % this.readbackEvery === 0 && !this.reading) void this.read();
+    if (this.readbackEvery > 0 && this.steps % this.readbackEvery === 0 && !this.reading) void this.read(this.tracked ?? undefined);
   }
 
   /** @internal A body's pushes: this step's impulses, or its standing forces. */
@@ -819,17 +825,17 @@ export class World {
 
   /**
    * Read the bodies' poses and velocities back from the GPU (and see which joints broke): after
-   * it resolves, Body.position and the rest are as of now. One read at a time: a call while one
-   * is running waits for it.
+   * it resolves, Body.position and the rest are as of now. `bodies`: only these (a body's record
+   * is 160 bytes; all of them, at 100k bodies, 16 MB), the rest keeping their last readback. One
+   * read at a time: a call while one is running waits for it.
    */
-  read(): Promise<void> {
+  read(bodies?: Body[]): Promise<void> {
     if (this.reading) return this.reading;
     this.flush();
     const writes = this.writes;
     const breakable = [...this.joints].filter((j) => j.breakForce < Infinity);
     this.reading = (async () => {
-      const [data, joints] = await Promise.all([this.solver.readBodies(), breakable.length ? this.solver.readJoints() : Promise.resolve(null)]);
-      this.snapshot = { data, writes };
+      const [, joints] = await Promise.all([this.readBodies(bodies, writes), breakable.length ? this.solver.readJoints() : Promise.resolve(null)]);
       if (joints) {
         // A broken joint's penalties are zeroed (wgsl-solve.ts dualJoint): let it go properly
         const broken = breakable.filter((j) => this.joints.has(j) && j.slot * JOINT_FLOATS < joints.length && joints[j.slot * JOINT_FLOATS + J_PEN_LIN + 3] === 0);
@@ -846,12 +852,46 @@ export class World {
     return this.reading;
   }
 
+  /** Which bodies the automatic readback (readbackEvery) reads: these only, or (null) all. */
+  track(bodies: Body[] | null): void {
+    this.tracked = bodies;
+  }
+
+  /** Bodies' records into the snapshot: all of them, or runs of these copied out one by one. */
+  private async readBodies(bodies: Body[] | undefined, writes: number): Promise<void> {
+    if (!bodies) {
+      const data = await this.solver.readBodies();
+      this.snapshot.set(data);
+      this.readAt.fill(writes, 0, data.length / BODY_FLOATS);
+      return;
+    }
+    const indices = [...new Set(bodies.filter((b) => b.alive && b.index < this.solver.bodyCount).map((b) => b.index))].sort((x, y) => x - y);
+    if (!indices.length) return;
+    const bytes = BODY_FLOATS * 4;
+    const staging = this.device.createBuffer({ size: indices.length * bytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const encoder = this.device.createCommandEncoder({ label: 'read bodies' });
+    for (let k = 0; k < indices.length; ) {
+      let e = k + 1;
+      while (e < indices.length && indices[e] === indices[e - 1] + 1) e++;
+      encoder.copyBufferToBuffer(this.solver.bodyBuffer, indices[k] * bytes, staging, k * bytes, (e - k) * bytes);
+      k = e;
+    }
+    this.device.queue.submit([encoder.finish()]);
+    await staging.mapAsync(GPUMapMode.READ);
+    const data = new Float32Array(staging.getMappedRange().slice(0));
+    staging.unmap();
+    staging.destroy();
+    indices.forEach((index, k) => {
+      this.snapshot.set(data.subarray(k * BODY_FLOATS, (k + 1) * BODY_FLOATS), index * BODY_FLOATS);
+      this.readAt[index] = writes;
+    });
+  }
+
   /** @internal A body's state: from the last readback, unless it was written since. */
   stateOf(body: Body, offset: number, n: number): number[] {
-    const s = this.snapshot;
-    if (s && s.writes >= body.written && (body.index + 1) * BODY_FLOATS <= s.data.length) {
+    if (this.readAt[body.index] >= body.written) {
       const o = body.index * BODY_FLOATS + offset;
-      return Array.from(s.data.subarray(o, o + n));
+      return Array.from(this.snapshot.subarray(o, o + n));
     }
     const { position, rotation, velocity, angularVelocity } = body.state;
     return [...(offset === B_POS ? position : offset === B_ROT ? rotation : offset === B_VEL ? velocity : angularVelocity)];

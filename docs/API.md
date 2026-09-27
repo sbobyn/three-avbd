@@ -94,6 +94,11 @@ renderer.setAnimationLoop(() => {
   `body.rotation` and `body.velocity` are plain arrays as of that readback. Readback is async
   and costs a buffer copy, so it's explicit. A `world.readbackEvery` option keeps a snapshot
   refreshed automatically for gameplay that needs recent poses.
+- Tracked readback (0.2): `world.read(bodies)` copies only those bodies' records (160 bytes
+  each; runs of neighbouring slots in one copy) into a small staging buffer, where a full read
+  is 16 MB at 100k bodies. The rest keep their last readback: each body remembers when it was
+  last read, not the world. `world.track(bodies)` (null: all) points `readbackEvery` at a subset,
+  the player and what's near it, say.
 
 ### Queries (0.2)
 

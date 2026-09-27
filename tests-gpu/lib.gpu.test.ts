@@ -269,3 +269,24 @@ gpuTest('three-avbd: a fixed body moved each step (moveTo) carries what rests on
   assert.ok(Math.abs(angle - Math.PI / 2) < 0.01 && Math.abs(q[0]) < 1e-3 && Math.abs(q[2]) < 1e-3, `turned a quarter about y: ${q}`);
   world.destroy();
 });
+
+gpuTest('three-avbd: read(bodies) reads back only those bodies; track() narrows the automatic readback', async (device) => {
+  const world = await World.create({ device, maxBodies: 16, gravity: [0, 0, 0] });
+  // Five bodies drifting up at 1 m/s; a and c are not neighbours, and d, e are (one run)
+  const [a, b, c, d, e] = [0, 1, 2, 3, 4].map((k) => world.addBox({ size: [1, 1, 1], position: [3 * k, 0, 0], velocity: [0, 1, 0] })!);
+  steps(world, 60);
+  await world.read([a, c, d, e]);
+  for (const body of [a, c, d, e]) assert.ok(Math.abs(body.position[1] - 1) < 0.02, `read: ${body.position}`);
+  assert.strictEqual(b.position[1], 0, 'b was not read: still as it was added');
+  assert.deepStrictEqual([a, c, d, e].map((x) => x.position[0]), [0, 6, 9, 12], 'each read record went to its own body');
+  await world.read();
+  assert.ok(Math.abs(b.position[1] - 1) < 0.02, `a full read: ${b.position}`);
+  // Tracking a only: the automatic readback leaves the others where the last read had them
+  world.readbackEvery = 60;
+  world.track([a]);
+  steps(world, 60);
+  await world.read([]); // (waits for the automatic read the last step started)
+  assert.ok(Math.abs(a.position[1] - 2) < 0.05, `a tracked: ${a.position}`);
+  assert.ok(Math.abs(b.position[1] - 1) < 0.02, `b untracked: ${b.position}`);
+  world.destroy();
+});

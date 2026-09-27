@@ -61,7 +61,8 @@ await world.read();
 - **Raycasts**: `await world.raycast(origin, direction)` gives the first body hit, the point and
   the normal; `world.raycasts([...])` casts many rays in one GPU pass.
 - **Reading back**: `await world.read()` (or `world.readbackEvery = n`) for positions,
-  rotations and velocities, and to learn which joints broke.
+  rotations and velocities, and to learn which joints broke. `world.read(bodies)` and
+  `world.track(bodies)` read only the bodies you need (160 bytes each, not the whole world).
 - **Headless**: `World.create({ device })` runs without a renderer (Node with Dawn, workers).
 - **Advanced**: `three-avbd/advanced` exposes the solver underneath (`world.solver`) and the
   layout of its body and joint buffers, for your own compute passes over the bodies.
