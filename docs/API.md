@@ -1,6 +1,6 @@
-# three-avbd v0.1: library API (design for review)
+# three-avbd: library API
 
-Status: v0.1 published (npm `three-avbd`); 0.2 in progress (see `PLAN.md` stage 10).
+Status: v0.2 (npm `three-avbd`; see `PLAN.md` stages 9 and 10).
 
 ## Goal
 
