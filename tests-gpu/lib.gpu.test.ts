@@ -1,7 +1,7 @@
 // The library (src/lib): only its public API, as a user would drive it, headless on Dawn.
 
 import assert from 'node:assert/strict';
-import { convexHull, World } from '../src/lib/index.ts';
+import { type ContactEvent, convexHull, World } from '../src/lib/index.ts';
 import { gpuTest } from './device.ts';
 
 const steps = (world: World, n: number) => {
@@ -288,5 +288,48 @@ gpuTest('three-avbd: read(bodies) reads back only those bodies; track() narrows 
   await world.read([]); // (waits for the automatic read the last step started)
   assert.ok(Math.abs(a.position[1] - 2) < 0.05, `a tracked: ${a.position}`);
   assert.ok(Math.abs(b.position[1] - 1) < 0.02, `b untracked: ${b.position}`);
+  world.destroy();
+});
+
+gpuTest('three-avbd: contact events: a reporting box landing begins once (how hard), rests quietly, and ends when lifted', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  const ground = world.addBox({ size: [40, 1, 40], position: [0, -0.5, 0], fixed: true })!;
+  // 1 kg falling 1.25 m: 5 m/s at impact. A second box nearby, not reporting, lands unheard.
+  const box = world.addBox({ size: [1, 1, 1], position: [0, 1.75, 0], reportContacts: true })!;
+  world.addBox({ size: [1, 1, 1], position: [5, 1.75, 0] });
+  const events: ContactEvent[] = [];
+  world.onContact((e) => events.push(e));
+  steps(world, 120);
+  await world.read();
+  assert.strictEqual(events.length, 1, `one event: ${events.map((e) => `${e.type}@${e.step}`)}`);
+  const [hit] = events;
+  assert.ok(hit.type === 'begin' && new Set([hit.a, hit.b]).has(box) && new Set([hit.a, hit.b]).has(ground), 'box and ground began touching');
+  // It lands after about sqrt(2 * 1.25 / 9.81) = 0.505 s, step 30
+  assert.ok(Math.abs(hit.step - 30) <= 2, `when: step ${hit.step}`);
+  assert.ok(Math.abs(hit.point[1]) < 0.05 && Math.abs(hit.point[0]) < 0.6, `where: ${hit.point}`);
+  const up = hit.a === box ? 1 : -1;
+  assert.ok(Math.abs(hit.normal[1] * up - 1) < 1e-3, `the normal points from b to a: ${hit.normal}`);
+  assert.ok(hit.impulse > 4 && hit.impulse < 6.5, `how hard: ${hit.impulse} N·s (m v = 5)`);
+  // Lifted off: it ends; then stops reporting, so landing again is unheard
+  box.set({ position: [0, 3, 0], velocity: [0, 0, 0] });
+  steps(world, 5);
+  await world.read();
+  assert.deepStrictEqual(events.slice(1).map((e) => e.type), ['end'], 'lifted: an end');
+  box.reportContacts = false;
+  steps(world, 120);
+  await world.read();
+  assert.strictEqual(events.length, 2, 'no longer reporting');
+  // Removed while touching, its slot reused at once: the end is the removed box's, not the newcomer's
+  box.reportContacts = true;
+  steps(world, 5);
+  await world.read();
+  events.length = 0;
+  box.remove();
+  const newcomer = world.addBox({ size: [1, 1, 1], position: [0, 10, 0] })!;
+  assert.strictEqual(newcomer.index, box.index, 'the slot is reused');
+  steps(world, 2);
+  await world.read();
+  assert.deepStrictEqual(events.map((e) => [e.type, e.a === box || e.b === box]), [['end', true]], 'the removed box stopped touching');
+  assert.strictEqual(world.droppedContactEvents, 0);
   world.destroy();
 });

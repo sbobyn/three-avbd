@@ -10,6 +10,7 @@ import { GpuSolver3D, gpuParams3D } from '../avbd3d/gpu/solver.ts';
 import { Rigid } from '../avbd3d/ref/body.ts';
 import { Solver } from '../avbd3d/ref/solver.ts';
 import { convexHull, hull, type HullShape, sphere } from '../avbd3d/shapes.ts';
+import { BEGIN, ContactWatch } from './contacts.ts';
 import { addImpulse, noPush, Pusher, type Pushes } from './push.ts';
 import { type Ray, Raycaster } from './raycast.ts';
 
@@ -30,6 +31,10 @@ export interface WorldOptions {
   dt?: number;
   /** Solver iterations per step: more is stiffer and costs more. */
   iterations?: number;
+  /** Contact events: pairs touching at once with a body that reports contacts (default 8192). */
+  maxContactPairs?: number;
+  /** Contact events kept between readbacks; more are dropped (default 4096). */
+  maxContactEvents?: number;
 }
 
 /** A body's starting state: where it is, how it's turned, how it moves. */
@@ -53,6 +58,8 @@ export interface BodyOptions extends BodyState {
    */
   group?: number;
   collidesWith?: number;
+  /** Report when it starts and stops touching other bodies (World.onContact). */
+  reportContacts?: boolean;
 }
 
 export interface BoxOptions extends BodyOptions {
@@ -122,6 +129,22 @@ export interface SpringOptions {
   rest?: number;
 }
 
+/**
+ * Two bodies starting or stopping touching, one of them reporting contacts. A begin says where
+ * (the contact points' average), the normal (from b towards a) and how hard: the normal impulse
+ * of the step they met in (N·s; a landing's is about its mass times its speed).
+ */
+export interface ContactEvent {
+  type: 'begin' | 'end';
+  a: Body;
+  b: Body;
+  point: Vec3;
+  normal: Vec3;
+  impulse: number;
+  /** The step it happened in (World.stepCount). */
+  step: number;
+}
+
 /** Steps between the solver's storage checks (contacts, pairs and colours grow as needed). */
 const ADAPT_EVERY = 10;
 /** Where removed bodies are parked, far from anything (a slot per body, so none overlap). */
@@ -168,6 +191,9 @@ export class Body {
   state: Required<BodyState>;
   /** @internal The world's write count when this body was last written. */
   written = 0;
+  /** @internal The first step it's in. */
+  addedAt = 0;
+  private reports: boolean;
   private groups: number;
   private mask: number;
   private isFixed: boolean;
@@ -185,6 +211,7 @@ export class Body {
     this.isFixed = options.fixed ?? false;
     this.groups = options.group ?? 1;
     this.mask = options.collidesWith ?? 0xffffffff;
+    this.reports = options.reportContacts ?? false;
     this.state = {
       position: options.position ?? [0, 0, 0],
       rotation: options.rotation ?? [0, 0, 0, 1],
@@ -209,6 +236,14 @@ export class Body {
     this.groups = group;
     this.mask = collidesWith;
     this.world.refilter(this);
+  }
+  /** Whether it reports its contacts (World.onContact), from the next step. */
+  get reportContacts(): boolean {
+    return this.reports;
+  }
+  set reportContacts(on: boolean) {
+    this.reports = on;
+    this.world.rewatch(this);
   }
   get alive(): boolean {
     return this.isAlive;
@@ -382,6 +417,16 @@ export class World {
   private readonly joints = new Set<Joint>();
   private readonly scratch = new Solver();
   private readonly breakListeners = new Set<(joint: Joint) => void>();
+  private readonly contactListeners = new Set<(event: ContactEvent) => void>();
+  private contactWatch: ContactWatch | null = null;
+  private readonly rewatches = new Set<Body>();
+  private readonly reporting = new Set<Body>();
+  /** The pass ran last step (so it runs once more when the last reporting body goes, for the ends). */
+  private contactsLive = false;
+  private droppedEvents = 0;
+  /** Each slot's last removed body (an event may come back after its slot was reused). */
+  private readonly gone: (Body | null)[] = [];
+  private readonly contactOptions: { pairs: number; events: number };
   /** Bodies whose collision groups go to the GPU at the next step (every new body, so a reused slot's are reset). */
   private readonly refilters = new Set<Body>();
   /** Fixed bodies moved (moveTo) since the last step, and those still sliding there (steps left). */
@@ -417,6 +462,7 @@ export class World {
     this.pusher = new Pusher(device, this.solver.bodyBuffer);
     this.snapshot = new Float32Array(options.maxBodies * BODY_FLOATS);
     this.readAt = new Float64Array(options.maxBodies).fill(-1);
+    this.contactOptions = { pairs: options.maxContactPairs ?? 8192, events: options.maxContactEvents ?? 4096 };
   }
 
   static async create(options: WorldOptions): Promise<World> {
@@ -511,6 +557,8 @@ export class World {
     for (const old of this.rewrites) if (old.index === index) this.rewrites.delete(old);
     this.slots[index] = body;
     body.written = ++this.writes;
+    body.addedAt = this.steps + 1;
+    if (body.reportContacts) this.rewatches.add(body);
     if (index >= this.solver.bodyCount) this.appends.push(body);
     else this.rewrites.add(body);
     this.refilters.add(body);
@@ -541,7 +589,9 @@ export class World {
     this.impulses.delete(body);
     this.forces.delete(body);
     this.slots[body.index] = null;
+    this.gone[body.index] = body;
     this.free.push(body.index);
+    if (body.reportContacts) this.rewatches.add(body);
     // Parked: fixed, small, far off, a slot of space each
     body.state = { position: [PARK + 2 * body.index, PARK, PARK], rotation: [0, 0, 0, 1], velocity: [0, 0, 0], angularVelocity: [0, 0, 0] };
     body.written = ++this.writes;
@@ -588,6 +638,26 @@ export class World {
     return () => this.breakListeners.delete(listener);
   }
 
+  /**
+   * Called with each contact event (bodies starting or stopping touching, one of them with
+   * reportContacts), in step order, when a readback lands (World.read or readbackEvery).
+   * Returns a function that unsubscribes.
+   */
+  onContact(listener: (event: ContactEvent) => void): () => void {
+    this.contactListeners.add(listener);
+    return () => this.contactListeners.delete(listener);
+  }
+
+  /** Contact events lost since the world began, for want of room between readbacks (maxContactEvents). */
+  get droppedContactEvents(): number {
+    return this.droppedEvents;
+  }
+
+  /** @internal Body.reportContacts. */
+  rewatch(body: Body): void {
+    if (body.alive) this.rewatches.add(body);
+  }
+
   /** @internal Joint.remove. */
   removeJoint(joint: Joint): void {
     if (joint.slot < 0) {
@@ -628,6 +698,10 @@ export class World {
     this.push();
     this.solver.step();
     this.steps++;
+    if (this.contactWatch && (this.reporting.size || this.contactsLive)) {
+      this.contactWatch.run(this.solver.contactStorage, this.solver.manifoldCapacity, this.steps, this.dt);
+      this.contactsLive = this.reporting.size > 0;
+    }
     if (this.steps % ADAPT_EVERY === 0 && !this.adapting) {
       this.adapting = true;
       this.solver
@@ -703,6 +777,17 @@ export class World {
       this.rewrites.clear();
     }
     this.slide();
+    if (this.rewatches.size) {
+      const list = [...this.rewatches];
+      this.contactWatch ??= new ContactWatch(this.device, this.solver.bodyBuffer, this.maxBodies, this.contactOptions.pairs, this.contactOptions.events);
+      const on = list.map((b) => b.alive && b.reportContacts);
+      this.contactWatch.setWatched(
+        list.map((b) => b.index),
+        on,
+      );
+      list.forEach((b, k) => (on[k] ? this.reporting.add(b) : this.reporting.delete(b)));
+      this.rewatches.clear();
+    }
     if (this.refilters.size) {
       const list = [...this.refilters].filter((b) => b.alive).sort((x, y) => x.index - y.index);
       this.solver.setFilters(
@@ -835,7 +920,11 @@ export class World {
     const writes = this.writes;
     const breakable = [...this.joints].filter((j) => j.breakForce < Infinity);
     this.reading = (async () => {
-      const [, joints] = await Promise.all([this.readBodies(bodies, writes), breakable.length ? this.solver.readJoints() : Promise.resolve(null)]);
+      const [, joints, contacts] = await Promise.all([
+        this.readBodies(bodies, writes),
+        breakable.length ? this.solver.readJoints() : Promise.resolve(null),
+        this.contactWatch?.read() ?? Promise.resolve(null),
+      ]);
       if (joints) {
         // A broken joint's penalties are zeroed (wgsl-solve.ts dualJoint): let it go properly
         const broken = breakable.filter((j) => this.joints.has(j) && j.slot * JOINT_FLOATS < joints.length && joints[j.slot * JOINT_FLOATS + J_PEN_LIN + 3] === 0);
@@ -846,6 +935,24 @@ export class World {
           }
           this.solver.releaseJoints(broken.map((j) => j.slot));
           for (const j of broken) for (const listener of this.breakListeners) listener(j);
+        }
+      }
+      if (contacts) {
+        this.droppedEvents += contacts.dropped;
+        // A slot's body then: the one in it now, unless it came after (then the one removed from it)
+        const at = (index: number, step: number) => {
+          const now = this.slots[index];
+          if (now && now.addedAt <= step) return now;
+          const gone = this.gone[index];
+          return gone && gone.addedAt <= step ? gone : null;
+        };
+        for (const e of contacts.events) {
+          // (An end is of a pair that touched the step before: its bodies as they were then)
+          const then = e.kind === BEGIN ? e.step : e.step - 1;
+          const [a, b] = [at(e.a, then), at(e.b, then)];
+          if (!a || !b) continue;
+          const event: ContactEvent = { type: e.kind === BEGIN ? 'begin' : 'end', a, b, point: e.point, normal: e.normal, impulse: e.impulse, step: e.step };
+          for (const listener of this.contactListeners) listener(event);
         }
       }
     })().finally(() => (this.reading = null));
@@ -900,6 +1007,7 @@ export class World {
   /** Free the GPU buffers (the world can't be used after). */
   destroy(): void {
     this.pusher.destroy();
+    this.contactWatch?.destroy();
     this.solver.destroy();
   }
 }

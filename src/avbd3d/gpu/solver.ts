@@ -435,6 +435,14 @@ export class GpuSolver3D {
     return this.filterBuffer;
   }
   private readonly counterBuffer: GPUBuffer;
+  /**
+   * The pair records and contact points the last step wrote, and the counters (C_MANIFOLDS: how
+   * many pairs), for passes of your own between steps: replaced as they grow, and swapped each step.
+   */
+  get contactStorage(): { manifolds: GPUBuffer; contacts: GPUBuffer; counters: GPUBuffer } {
+    const last = 1 - this.parity;
+    return { manifolds: this.manifoldBuffers[last], contacts: this.contactBuffers[last], counters: this.counterBuffer };
+  }
   private readonly argsBuffer: GPUBuffer;
   private adjBuffer: GPUBuffer | null = null;
   private readonly colorBuffer: GPUBuffer;

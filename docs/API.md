@@ -111,6 +111,21 @@ renderer.setAnimationLoop(() => {
   force, so the cost grows with rays × bodies; a pass through the broadphase grid can come later.
   `ignore` (up to 16 bodies) lets a ray start inside its caster.
 
+### Contact events (0.2)
+
+- `reportContacts: true` on a body (or `body.reportContacts = true` later) and
+  `world.onContact(cb)`: `{ type: 'begin' | 'end', a, b, point, normal, impulse, step }` when it
+  starts or stops touching another body. A begin says where (the contact points' average), the
+  normal (from b towards a) and how hard (the normal impulse of the step they met in: a landing's
+  is about m·v), for sounds, damage and triggers.
+- On the GPU (`src/lib/contacts.ts`), after each step while any body reports: the step's pairs
+  with a reporting body go into a hash set, and are checked against last step's set; only the
+  changes are written out. So a resting pile costs a small pass a step, not a readback, and no
+  begin or end is missed between readbacks. The events come back with the next readback
+  (`read()` or `readbackEvery`), in step order. `maxContactPairs` (default 8192) sizes the sets
+  and `maxContactEvents` (4096) the events kept between readbacks; `world.droppedContactEvents`
+  counts any lost.
+
 ### Joints
 
 - `addJoint(a, b, { anchorA?, anchorB?, type?, breakForce?, breakOnPull? })` returns a `Joint`:
@@ -144,9 +159,9 @@ renderer.setAnimationLoop(() => {
    throughout; `World` takes `gravity` as a vector and sets `up` and the scalar from it.
 2. **Shapes in v0.1.** Boxes and spheres, which the GPU solver already collides. Capsules and
    convex hulls come later.
-3. **Contact events.** Out of v0.1. `readContactList` exists, but a good event API (filtering,
-   batching, cost) deserves its own design. v0.1 has joint breaks only.
-4. **Raycasts and picking.** Out of v0.1 (CPU picking from a snapshot is easy to add later).
+3. **Contact events.** Out of v0.1 (joint breaks only); in 0.2, opt-in per body and filtered on
+   the GPU (above).
+4. **Raycasts and picking.** Out of v0.1; in 0.2, on the GPU (above).
 
 ## What moves where
 

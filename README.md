@@ -60,6 +60,8 @@ await world.read();
   a set of bodies (a shape, a list or a test), with `setColor(body, color)` per body.
 - **Raycasts**: `await world.raycast(origin, direction)` gives the first body hit, the point and
   the normal; `world.raycasts([...])` casts many rays in one GPU pass.
+- **Contact events**: `reportContacts: true` on a body and `world.onContact(e => ...)` for
+  begin and end, with where, the normal and how hard (for sounds, damage, triggers).
 - **Reading back**: `await world.read()` (or `world.readbackEvery = n`) for positions,
   rotations and velocities, and to learn which joints broke. `world.read(bodies)` and
   `world.track(bodies)` read only the bodies you need (160 bytes each, not the whole world).
