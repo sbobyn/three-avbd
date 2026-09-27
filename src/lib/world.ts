@@ -129,6 +129,12 @@ const PARK = 1e5;
 
 const DEFAULTS = { density: 1, friction: 0.5 };
 
+/** q scaled to unit length. */
+function normalised(q: ArrayLike<number>): Quat {
+  const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1;
+  return [q[0] / l, q[1] / l, q[2] / l, q[3] / l];
+}
+
 /** The quaternion product a·b (b first, then a), x y z w. */
 function multiply(a: ArrayLike<number>, b: ArrayLike<number>): Quat {
   return [
@@ -235,6 +241,21 @@ export class Body {
     };
     this.world.write(this);
   }
+
+  /**
+   * Move a fixed body (a platform, a door, a hand) to a new pose over the next update's steps:
+   * it slides there, pushing and carrying what it touches (call it every frame to animate it).
+   * A moving body is set there instead (set: its contacts start afresh). For a fixed body that
+   * keeps moving (a conveyor, a turntable), set its velocity: set({ velocity, angularVelocity }).
+   */
+  moveTo(position: Vec3, rotation?: Quat): void {
+    if (!this.isAlive) return;
+    if (!this.isFixed) return this.set({ position, rotation });
+    this.world.move(this, position, rotation ?? this.state.rotation);
+  }
+
+  /** @internal Where a moved fixed body is going (World.flush turns it into a velocity). */
+  target: { position: Vec3; rotation: Quat } | null = null;
 
   /** Pin it where it is (fixed) or let it go. */
   setFixed(fixed: boolean): void {
@@ -363,6 +384,11 @@ export class World {
   private readonly breakListeners = new Set<(joint: Joint) => void>();
   /** Bodies whose collision groups go to the GPU at the next step (every new body, so a reused slot's are reset). */
   private readonly refilters = new Set<Body>();
+  /** Fixed bodies moved (moveTo) since the last step, and those still sliding there (steps left). */
+  private readonly moves = new Set<Body>();
+  private readonly sliding = new Map<Body, number>();
+  /** Steps the current update is running (moveTo spreads a move over them). */
+  private stepsThisUpdate = 1;
   /** Impulses for the next step, and forces for every step (per body, summed). */
   private readonly impulses = new Map<Body, Pushes>();
   private readonly forces = new Map<Body, Pushes>();
@@ -576,12 +602,15 @@ export class World {
   /** Run the fixed steps `seconds` of time owes (at most maxSubsteps). Returns how many ran. */
   update(seconds: number): number {
     this.owed += Math.max(0, seconds);
+    // How many steps this call runs: fixed bodies moved with moveTo slide over all of them
+    this.stepsThisUpdate = Math.max(1, Math.min(this.maxSubsteps, Math.floor(this.owed / this.dt)));
     let n = 0;
     while (this.owed >= this.dt && n < this.maxSubsteps) {
       this.step();
       this.owed -= this.dt;
       n++;
     }
+    this.stepsThisUpdate = 1;
     // Behind by more than maxSubsteps allow: let the rest go rather than fall further behind
     this.owed = Math.min(this.owed, this.dt);
     return n;
@@ -609,6 +638,18 @@ export class World {
     let p = map.get(body);
     if (!p) map.set(body, (p = noPush()));
     return p;
+  }
+
+  /** @internal Body.moveTo on a fixed body. */
+  move(body: Body, position: Vec3, rotation: Quat): void {
+    if (this.appends.includes(body) || this.rewrites.has(body)) {
+      // Waiting to be written whole: it's simply put there
+      body.state = { ...body.state, position, rotation };
+      body.written = ++this.writes;
+      return;
+    }
+    body.target = { position, rotation: normalised(rotation) };
+    this.moves.add(body);
   }
 
   /** @internal Body.setCollisionGroups. */
@@ -655,6 +696,7 @@ export class World {
       );
       this.rewrites.clear();
     }
+    this.slide();
     if (this.refilters.size) {
       const list = [...this.refilters].filter((b) => b.alive).sort((x, y) => x.index - y.index);
       this.solver.setFilters(
@@ -689,6 +731,48 @@ export class World {
     }
   }
 
+  /**
+   * Fixed bodies moved with moveTo: a velocity that takes each from where it is to its target
+   * over this update's steps (the solver moves a fixed body by its velocity, so what it touches
+   * sees it slide); stopped again once there.
+   */
+  private slide(): void {
+    const buffer = this.solver.bodyBuffer;
+    const writeVelocity = (b: Body, v: ArrayLike<number>, w: ArrayLike<number>) => {
+      const o = b.index * BODY_FLOATS;
+      this.device.queue.writeBuffer(buffer, (o + B_VEL) * 4, new Float32Array([v[0], v[1], v[2]]));
+      this.device.queue.writeBuffer(buffer, (o + B_ANGVEL) * 4, new Float32Array([w[0], w[1], w[2]]));
+    };
+    // Arrived: stop (unless moved again)
+    for (const [b, left] of this.sliding) {
+      if (left > 1) this.sliding.set(b, left - 1);
+      else {
+        this.sliding.delete(b);
+        if (b.alive && !this.moves.has(b)) {
+          writeVelocity(b, [0, 0, 0], [0, 0, 0]);
+          b.state = { ...b.state, velocity: [0, 0, 0], angularVelocity: [0, 0, 0] };
+        }
+      }
+    }
+    for (const b of this.moves) {
+      if (!b.alive || !b.target) continue;
+      const time = this.stepsThisUpdate * this.dt;
+      const [p, q] = [b.state.position, b.state.rotation];
+      const { position, rotation } = b.target;
+      const v: Vec3 = [(position[0] - p[0]) / time, (position[1] - p[1]) / time, (position[2] - p[2]) / time];
+      // The turn from q to the target, the short way: ω = 2 vec(target q⁻¹) / time
+      let d = multiply(rotation, [-q[0], -q[1], -q[2], q[3]]);
+      if (d[3] < 0) d = [-d[0], -d[1], -d[2], -d[3]];
+      const w: Vec3 = [(2 * d[0]) / time, (2 * d[1]) / time, (2 * d[2]) / time];
+      writeVelocity(b, v, w);
+      b.state = { position, rotation, velocity: v, angularVelocity: w };
+      b.written = ++this.writes;
+      b.target = null;
+      this.sliding.set(b, this.stepsThisUpdate);
+    }
+    this.moves.clear();
+  }
+
   /** A body as the solver takes it (built in a scratch reference solver, then let go). */
   private rigid(body: Body): Rigid {
     const parked = !body.alive;
@@ -699,8 +783,7 @@ export class World {
       : body.shape === 'sphere' ? sphere(this.scratch, body.size[0] / 2, density, body.friction, position, velocity)
       : body.hull ? hull(this.scratch, body.hull, density, body.friction, position, rotation, velocity)
       : new Rigid(this.scratch, body.size, density, body.friction, position, velocity);
-    const q = Math.hypot(rotation[0], rotation[1], rotation[2], rotation[3]) || 1;
-    r.positionAng.set([rotation[0] / q, rotation[1] / q, rotation[2] / q, rotation[3] / q]);
+    r.positionAng.set(normalised(rotation));
     if (!parked) r.velocityAng.set(angularVelocity);
     this.scratch.bodies.length = 0;
     return r;

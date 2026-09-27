@@ -291,6 +291,12 @@ fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
     bodies[i].pos = vec4f(pos.xyz + vel.xyz * dt + params.up.xyz * (g * (w * dt * dt)), pos.w);
     bodies[i].rot = qadd(rot, angVel * dt);
   }
+  // A fixed body with a velocity is kinematic: it moves by it over the step, from where it
+  // started (initialPos), so what it touches sees it slide and is pushed and carried along
+  if (!dynamic && (any(vel.xyz != vec3f(0.0)) || any(angVel != vec3f(0.0)))) {
+    bodies[i].pos = vec4f(pos.xyz + vel.xyz * dt, pos.w);
+    bodies[i].rot = qadd(rot, angVel * dt);
+  }
 }
 
 // --- Primal: one colour -----------------------------------------------------------------------

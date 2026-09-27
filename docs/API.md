@@ -73,6 +73,12 @@ renderer.setAnimationLoop(() => {
   value as of the last readback), `body.setFixed(fixed)` (both through `rewriteBodies`), and
   `body.remove()` (its joints go, it's parked far off, and its slot is reused). All of these are
   batched into the next step.
+- Kinematic bodies (0.2): `body.moveTo(position, rotation?)` on a fixed body slides it to the
+  pose over the next update's steps, pushing and carrying what it touches (platforms, doors,
+  hands); a fixed body given a velocity with `set` keeps moving (a conveyor). In the solver a
+  fixed body with a velocity is kinematic: it advances by it at the start of each step from its
+  starting pose, so contacts see it slide (teleported between steps, friction never saw it
+  move and nothing was carried).
 - Collision groups (0.2): `group` and `collidesWith` bitmasks (32 groups) on a body, or
   `body.setCollisionGroups(group, collidesWith)` later; two bodies collide when each is in a group
   the other collides with (default: group 1, colliding with all). The broadphase reads them from a

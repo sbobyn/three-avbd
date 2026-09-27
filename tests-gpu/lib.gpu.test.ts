@@ -233,3 +233,39 @@ gpuTest('three-avbd: collision groups: a body only meets the groups it collides 
   assert.ok(Math.abs(late.position[1] - 0.5) < 0.05, `it lands on the ground once it collides: y ${late.position[1]}`);
   world.destroy();
 });
+
+gpuTest('three-avbd: a fixed body moved each step (moveTo) carries what rests on it: a conveyor and an elevator', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  world.addBox({ size: [40, 1, 40], position: [0, -0.5, 0], fixed: true });
+  const slide = world.addBox({ size: [4, 0.5, 4], position: [0, 1, 0], fixed: true })!;
+  const lift = world.addBox({ size: [4, 0.5, 4], position: [10, 1, 0], fixed: true })!;
+  const onSlide = world.addBox({ size: [1, 1, 1], position: [0, 1.75, 0] })!;
+  const onLift = world.addBox({ size: [1, 1, 1], position: [10, 1.75, 0] })!;
+  steps(world, 30);
+  await world.read();
+  const [x0, y0] = [onSlide.position[0], onLift.position[1]];
+  // One second: the slide at 1 m/s along x, the lift up at 0.5 m/s
+  for (let k = 1; k <= 60; k++) {
+    slide.moveTo([k / 60, 1, 0]);
+    lift.moveTo([10, 1 + 0.5 * (k / 60), 0]);
+    world.step();
+  }
+  await world.read();
+  const carried = onSlide.position[0] - x0;
+  assert.ok(carried > 0.8 && carried < 1.02, `friction carried the box along: ${carried} m (the slide went 1 m)`);
+  assert.ok(Math.abs(onLift.position[1] - y0 - 0.5) < 0.05, `the lift raised its box 0.5 m: ${onLift.position[1] - y0}`);
+  assert.ok(Math.abs(slide.position[0] - 1) < 1e-4, `the slide is where it was moved: ${slide.position}`);
+  // A door swung a quarter turn about y over a second ends up turned a quarter
+  const door = world.addBox({ size: [2, 2, 0.1], position: [-10, 1, 0], fixed: true })!;
+  world.step();
+  for (let k = 1; k <= 60; k++) {
+    const a = (Math.PI / 2) * (k / 60);
+    door.moveTo([-10, 1, 0], [0, Math.sin(a / 2), 0, Math.cos(a / 2)]);
+    world.step();
+  }
+  await world.read();
+  const q = door.rotation;
+  const angle = 2 * Math.atan2(q[1], q[3]);
+  assert.ok(Math.abs(angle - Math.PI / 2) < 0.01 && Math.abs(q[0]) < 1e-3 && Math.abs(q[2]) < 1e-3, `turned a quarter about y: ${q}`);
+  world.destroy();
+});
