@@ -28,6 +28,7 @@ import { hullOf, isSail, isSphere, type HullShape } from '../shapes.ts';
 import { rotate, vec3 } from '../ref/math.ts';
 import { broadphaseWGSL, contactsHullWGSL, contactsWGSL, refsWGSL } from './wgsl-collision.ts';
 import { solveWGSL } from './wgsl-solve.ts';
+import { largestSmall } from './radii.ts';
 
 export { PHASES, type StepProfile };
 
@@ -56,15 +57,6 @@ const pow2AtLeast = (n: number): number => 2 ** Math.ceil(Math.log2(Math.max(n, 
 /** Byte size of a body buffer holding `n` bodies. */
 export const bodyBufferSize = (n: number): number => Math.max(n, 1) * BODY_FLOATS * 4;
 
-/**
- * Bodies with radius above LARGE_FACTOR × median radius are tested brute-force against every
- * body instead of sizing the grid cells, up to MAX_LARGE of the largest (each costs a test
- * per body). Showcase balls are ~3x the median brick; at the 2D factor of 4 they set 4 m
- * cells and the wall-smash broadphase took most of an 8 ms step.
- */
-const LARGE_FACTOR = 2;
-
-const MAX_LARGE = 64;
 /** Contact points one manifold can hold (the narrowphase's MAX_CONTACTS). */
 const MAX_MANIFOLD_POINTS = 8;
 /** Colours kept free above those in use (see adapt), and the least the cap starts at. */
@@ -229,13 +221,9 @@ function estimatePairs(bodies: Rigid[], degree: Int32Array): { pairs: number; to
     for (let k = 0; k < 3; k++) for (let c = 0; c < 3; c++) h[c] += b.size[k] * 0.5 * Math.abs(axes[i][k][c]);
     return h;
   });
-  // The GPU's classification (uploadStatics): up to MAX_LARGE bodies above LARGE_FACTOR x the
+  // The GPU's classification (uploadStatics, radii.ts): up to MAX_LARGE bodies above LARGE_FACTOR x the
   // median radius are tested against everything; the rest size the grid cells
-  const radii = bodies.map((b) => b.radius).sort((x, y) => x - y);
-  const median = radii[n >> 1] ?? 1;
-  let maxSmall = 0;
-  for (const r of radii) if (r <= LARGE_FACTOR * median) maxSmall = Math.max(maxSmall, r);
-  if (n > MAX_LARGE) maxSmall = Math.max(maxSmall, radii[n - MAX_LARGE - 1]);
+  const maxSmall = largestSmall(Float64Array.from(bodies, (b) => b.radius));
   const cell = Math.max(2 * maxSmall, 1e-3);
   const overlap = (i: number, j: number) => {
     const a = bodies[i];
@@ -872,12 +860,9 @@ export class GpuSolver3D {
   private uploadStatics(): void {
     if (this.radiiDirty) {
       const n = this.bodyCount;
-      const radii = Float64Array.from({ length: n }, (_, i) => this.bodies[i].radius).sort();
-      const median = n > 0 ? radii[n >> 1] : 1;
-      let maxSmall = 0;
-      for (let i = 0; i < n; i++) if (radii[i] <= LARGE_FACTOR * median) maxSmall = Math.max(maxSmall, radii[i]);
-      // Beyond MAX_LARGE candidates, the rest stay small (and size the cells)
-      if (n > MAX_LARGE) maxSmall = Math.max(maxSmall, radii[n - MAX_LARGE - 1]);
+      const radii = new Float64Array(n);
+      for (let i = 0; i < n; i++) radii[i] = this.bodies[i].radius;
+      const maxSmall = largestSmall(radii);
       // Threshold midway to the next radius up, so f32 noise can't flip a body's class
       let minLarge = Infinity;
       for (let i = 0; i < n; i++) if (radii[i] > maxSmall) minLarge = Math.min(minLarge, radii[i]);
