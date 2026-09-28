@@ -1,6 +1,6 @@
 {
   "name": "three-avbd",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "GPU rigid-body physics for Three.js (WebGPU): Augmented Vertex Block Descent. Tens of thousands of boxes, spheres and convex hulls with joints, springs, raycasts and contact events, drawn straight from the GPU.",
   "license": "MIT",
   "type": "module",
