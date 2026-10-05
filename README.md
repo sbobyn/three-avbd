@@ -74,7 +74,8 @@ await world.read();
   `world.track(bodies)` read only the bodies you need (160 bytes each, not the whole world).
 - **Headless**: `World.create({ device })` runs without a renderer (Node with Dawn, workers).
 - **Advanced**: `three-avbd/advanced` exposes the solver underneath (`world.solver`) and the
-  layout of its body and joint buffers, for your own compute passes over the bodies.
+  layout of its body, joint and contact buffers and counters, for your own compute passes and
+  readbacks.
 
 The design and what's planned: [docs/API.md](docs/API.md). A runnable example:
 [examples/basic.ts](examples/basic.ts) (`pnpm dev`, then `/examples/basic.html`).
