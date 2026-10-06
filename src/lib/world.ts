@@ -5,7 +5,7 @@
 // live in a buffer Three.js draws from directly (BodyMesh): no copies, no readback to draw.
 
 import * as THREE from 'three/webgpu';
-import { B_ANGVEL, B_POS, B_ROT, B_VEL, BODY_FLOATS, JOINT_FLOATS } from '../avbd3d/gpu/layout.ts';
+import { B_ANGVEL, B_POS, B_ROT, B_VEL, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
 import { decodeJoint, type JointState } from '../avbd3d/gpu/joints.ts';
 import { GpuSolver3D, gpuParams3D } from '../avbd3d/gpu/solver.ts';
 import { Rigid } from '../avbd3d/ref/body.ts';
@@ -387,6 +387,12 @@ export class Joint {
   readonly rest: number;
   /** @internal The solver's joint slot (-1 until the next step adds it). */
   slot = -1;
+  /**
+   * @internal The order it was placed in the solver in (World.flush): 1 for the first joint. A
+   * readback speaks only for the joints placed before it began: a later joint may sit in the slot
+   * of one removed since, where the readback holds that joint's record.
+   */
+  placed = 0;
   private state: 'held' | 'broken' | 'removed' = 'held';
   private pull = 0;
   private torque = 0;
@@ -500,6 +506,8 @@ export class World {
   private readonly rewrites = new Set<Body>();
   private pendingJoints: Joint[] = [];
   private readonly joints = new Set<Joint>();
+  /** Joints placed in the solver so far (Joint.placed). */
+  private placements = 0;
   private readonly scratch = new Solver();
   private readonly breakListeners = new Set<(joint: Joint) => void>();
   private readonly contactListeners = new Set<(event: ContactEvent) => void>();
@@ -902,6 +910,7 @@ export class World {
       const placed = (list: Joint[], slots: number[]) =>
         list.forEach((j, k) => {
           j.slot = slots[k];
+          j.placed = ++this.placements;
           this.joints.add(j);
         });
       if (joints.length) {
@@ -1027,6 +1036,8 @@ export class World {
     // Joints whose state changes by itself (they break, they bend), or that were asked for
     const watched = this.jointsWanted || [...this.joints].some((j) => j.breakForce < Infinity || j.yieldForce < Infinity);
     this.jointsWanted = false;
+    // The joints this readback holds the records of: those placed by now
+    const placed = this.placements;
     this.reading = (async () => {
       const [, joints, contacts] = await Promise.all([
         this.readBodies(bodies, writes),
@@ -1037,8 +1048,10 @@ export class World {
         // A broken joint's penalties are zeroed (wgsl-solve.ts dualJoint): let it go properly
         const broken: Joint[] = [];
         const state: JointState = { linear: 0, angular: 0, broken: false, rest: [0, 0, 0, 1] };
+        // Of the joints still in the world: one removed meanwhile is gone, and one placed after the
+        // readback began may hold the slot of a joint that was removed: not its record to judge by
         for (const j of this.joints) {
-          if (j.type === 'spring' || j.slot * JOINT_FLOATS >= joints.length) continue;
+          if (j.type === 'spring' || j.placed > placed) continue;
           decodeJoint(joints, j.slot, state);
           j.update(state);
           if (state.broken && j.breakForce < Infinity) broken.push(j);

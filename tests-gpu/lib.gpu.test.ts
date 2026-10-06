@@ -435,3 +435,68 @@ gpuTest('three-avbd: readJoints says what a joint carries: its pull (N), and joi
   assert.deepEqual(spring.force, { linear: 0, angular: 0 }, 'a spring has no multipliers');
   world.destroy();
 });
+
+/** A fixed hook with a box of `kg` hanging from it by a joint that breaks past `breakForce` N (of pull). */
+function hang(world: World, x: number, kg: number, breakForce = 1000) {
+  const hook = world.addBox({ size: [1, 1, 1], position: [x, 5, 0], fixed: true })!;
+  const box = world.addBox({ size: [1, 1, 1], density: kg, position: [x, 4, 0] })!;
+  const joint = world.addJoint(hook, box, { anchorA: [0, -0.5, 0], anchorB: [0, 0.5, 0], breakForce, breakOnPull: true });
+  return { hook, box, joint };
+}
+
+// A readback is of the joints as they were when it began. A joint added while it is in flight can
+// take the slot of one removed since (or before): the record the readback holds there is the old joint's.
+gpuTest('three-avbd: a joint that takes a freed slot while a read is in flight is not judged broken by the old joint\'s zeroed record', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  const seen: unknown[] = [];
+  world.onBreak((j) => seen.push(j));
+  const gone = hang(world, 0, 1);
+  const kept = hang(world, 4, 1);
+  steps(world, 30);
+  await world.read();
+  assert.ok(gone.joint.holding && kept.joint.holding);
+
+  // A removed joint's slot is zeroed, which reads as broken: the readback in flight holds that record
+  gone.joint.remove();
+  const reading = world.read();
+  const fresh = hang(world, 8, 1);
+  world.step();
+  assert.equal(fresh.joint.slot, gone.joint.slot, 'the new joint took the freed slot');
+  await reading;
+  assert.ok(fresh.joint.holding && !fresh.joint.broken, 'not broken by the old joint\'s zeroed record');
+  assert.deepEqual(seen, [], 'and no break was reported');
+
+  // Read afterwards, it is seen as it is, and holds
+  steps(world, 30);
+  await world.read();
+  assert.deepEqual(seen, []);
+  assert.ok(fresh.joint.holding && Math.abs(fresh.box.position[1] - 4) < 0.1, `its box hangs: y ${fresh.box.position[1].toFixed(2)}`);
+  world.destroy();
+});
+
+gpuTest('three-avbd: a joint that takes the slot of one removed while a read is in flight is not given that joint\'s force', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  const heavy = hang(world, 0, 5);
+  const kept = hang(world, 4, 1);
+  steps(world, 30);
+  await world.read();
+  assert.ok(heavy.joint.force.linear > 40, `the heavy box pulls ${heavy.joint.force.linear.toFixed(1)} N`);
+
+  // The readback in flight holds the heavy joint's live record (49 N) at its slot, which the new joint then takes
+  const reading = world.read();
+  heavy.joint.remove();
+  const fresh = hang(world, 8, 1);
+  world.step();
+  assert.equal(fresh.joint.slot, heavy.joint.slot, 'the new joint took the freed slot');
+  await reading;
+  assert.equal(fresh.joint.force.linear, 0, 'not read yet: not given the heavy box\'s pull');
+  assert.equal(fresh.joint.bend, 0);
+  assert.ok(fresh.joint.holding);
+  assert.ok(Math.abs(kept.joint.force.linear - 9.81) < 0.5, 'a joint that was there is read as ever');
+
+  // The next readback reads it as it is
+  steps(world, 30);
+  await world.readJoints();
+  assert.ok(Math.abs(fresh.joint.force.linear - 9.81) < 0.5, `pull ${fresh.joint.force.linear.toFixed(2)} N`);
+  world.destroy();
+});
