@@ -112,7 +112,10 @@ The limit is on the net bend, the angle between the rest the joint holds and the
 with (so it is what `Joint.bend` says, and a hinge bent one way and back is as far from where it
 started as it ends up). Tested only when the joint yields, as that is the only time the rest
 moves. The start rest has to be in the record (a quaternion needs four words, and only three
-were spare), hence the second growth of `JOINT_FLOATS`.
+were spare), hence the second growth of `JOINT_FLOATS`. An accumulated angle, the path length of
+the rest's turns, would fit in a spare word and need no start rest, but it measures something
+else: a hinge swung back and forth would count both ways, and it would no longer be the number
+`Joint.bend` and the HUD report.
 
 The cantilever of four links with a weight on the end, the weld at the wall yielding at 60 and
 tearing at 120 (never reached: the dual sees 60), breakBend 0.6 rad (34.38°), 10 iterations,
