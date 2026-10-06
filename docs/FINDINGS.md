@@ -2,7 +2,7 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
-## 2026-10-06 — Joints that hold a turn and bend for good: a rest rotation, yield, per-joint thresholds
+## 2026-10-06 — Joints that hold a turn and bend for good: a rest rotation, yield, a bend limit, per-joint thresholds
 
 Why: three-destruction (`three-destruction/avbd`) builds falling building sections and hinges on
 the GPU joints, and 0.2.2 made it work around three things. `appendJoints` took one break
@@ -21,7 +21,13 @@ What (`GpuSolver3D.appendJoints`, `World.addJoint`, the reference `Joint`; layou
   the dual update a force asked of it past `yield` but not past `fracture` moves its rest to
   `rotA⁻¹·rotB`, zeroes the step's reference error C0 and cuts |λ_ang| back to `yield`; the
   penalty is not ramped while it gives (the force is at its bound, as a clamped one's).
-- The joint record is 36 floats (`JOINT_FLOATS`, 32 before): breaking for raw readers through
+- A bend limit (`breakBend`, `J_BREAK_BEND`, in the spare w of B's anchor), on a plastic joint:
+  when it gives and has then bent past the limit, the turn from the rest it started with
+  (`J_REST_START`) to the one it holds, it breaks, as by fracture. Tested in the dual update
+  (`dualJoint`, `Joint.updateDual`) in each iteration that the joint yields in. See below for why
+  fracture alone cannot do it.
+- The joint record is 40 floats (`JOINT_FLOATS`, 32 before): the rest, the rest it started with,
+  and the yield and bend-limit words in spare w's. Breaking for raw readers through
   `three-avbd/advanced`. The warm start and the dual store back only the fields they change.
 - Skipped: linear (positional) plasticity. The linear rows stay hard, and break on `linear`.
 
@@ -89,13 +95,44 @@ demand of the load (W g L / torque arm):
 | seen by the dual | 30 | 61 | 63 | 69 | 74 | 79 | 81 | 86 |
 
 So an angular fracture just above the yield tears only what arrives all at once, and a heavy
-static load makes the hinge swing rather than tear. To make a load break a plastic joint use its
-pull (`linear`: |λ_lin| is the weight it carries and stays hard): the Plastic Beam's wall weld
-(bends at 700 N·m, tears at 400 N) pulled up to 139 N under 8 kg (bent, held), 255 N under 14 kg
-(a folded beam, held) and ~550 N under 25 kg (CPU: torn at 20 kg and up, not at 14).
+static load makes the hinge swing rather than tear. (A joint set up so, a finite `breakForce`
+above its `yieldForce` and neither `breakOnPull` nor `breakBend`, warns once.) Two ways make a
+load break a plastic joint. Its bend (`breakBend`, next section) is for a hinge that a load keeps
+bending. Its pull (`linear`: |λ_lin| is the weight it carries, in newtons, and stays hard) is
+for a joint that carries a weight: the Plastic Beam's wall weld (bends at 700 N·m, tears at
+400 N) pulled up to 139 N under 8 kg (bent, held), 255 N under 14 kg (a folded beam, held) and
+~550 N under 25 kg (CPU: torn at 20 kg and up, not at 14). With `linear` the one threshold is in
+newtons for the pull and applies to the angular force at the same number.
 
 A load put on all at once overshoots to about twice its static demand before the solver settles:
 5 kg asking 29 reached 61 and gave 1.7° with a yield of 60; 2 kg stayed at 30 and held.
+
+### A bend limit: a sustained overload tears a plastic joint
+The limit is on the net bend, the angle between the rest the joint holds and the one it started
+with (so it is what `Joint.bend` says, and a hinge bent one way and back is as far from where it
+started as it ends up). Tested only when the joint yields, as that is the only time the rest
+moves. The start rest has to be in the record (a quaternion needs four words, and only three
+were spare), hence the second growth of `JOINT_FLOATS`.
+
+The cantilever of four links with a weight on the end, the weld at the wall yielding at 60 and
+tearing at 120 (never reached: the dual sees 60), breakBend 0.6 rad (34.38°), 10 iterations,
+dt 1/60. One scene, run on the reference (f64) and on the GPU built from it. Without the limit
+every load holds, however far it swings; with it:
+
+| weight | 4 kg | 6 | 8 | 10 | 12 | 15 | 20 |
+|---|---|---|---|---|---|---|---|
+| bend with no limit, held: CPU | 0.85° | 2.95° | 8.39° | 33.19° | 64.26° | 89.56° | 110.03° |
+| the same, GPU | 0.85° | 2.92° | 8.30° | 32.83° | 63.47° | 88.40° | 108.87° |
+| with the limit, CPU | holds | holds | holds | holds | step 70, 34.41° | step 59, 34.51° | step 53, 34.45° |
+| with the limit, GPU | holds | holds | holds | holds | step 71, 34.66° | step 59, 34.50° | step 53, 34.45° |
+
+A load that bends it less than the limit leaves it holding (10 kg, at 33.2°, 1.2° short); one that
+bends it further breaks it within the turn of an iteration of the limit (0.03° to 0.28° over),
+and the heavier the sooner (53, 59, 70 steps). The GPU breaks in the reference's step or one
+later, with the bend within 0.25°. A seeded single step of a joint within its limit, past it
+(it breaks in an early iteration, at 3.12° of bend) and one that began with a rest of 25° (it has
+bent 3.29° from it, not 25°) matches the reference on whether it breaks, and on the bend to
+7e-8 and the poses to 2e-7 (`tests-gpu/avbd3d-gpu.gpu.test.ts`).
 
 ### Why C0 moves with the rest (and the penalty does not ramp)
 The step's reference error C0 (Eq. 18) is computed once, at the start of the step. A joint that
@@ -119,11 +156,12 @@ pull. 2 kg: 0.3° of bend, holds. 8 kg: 21° at the wall and about 43° at the t
 tears at about 1.2 s and the beam falls. From 10 kg up the beam folds along its length instead.
 
 ### Cost: within the noise
-The joint record is 144 bytes where it was 128, and the angle lock multiplies the rest in.
-Measured against main (a copy of its tree on the same Dawn device, M4 Max, the two run
-alternately). The machine's own spread dwarfs any difference: on battery the same code varied
-14 to 22 ms a step on the lattice below, and charging at 8% it still spread 6.6 to 11.6 ms on
-the Jointed drop. Fastest and median wall ms per step:
+The joint record was 144 bytes (36 floats) where it was 128 on main, and the angle lock
+multiplies the rest in; the bend limit made it 160 bytes (40 floats). The first measurement is
+against main (a copy of its tree on the same Dawn device, M4 Max, the two run alternately). The
+machine's own spread dwarfs any difference: on battery the same code varied 14 to 22 ms a step
+on the lattice below, and charging at 8% it still spread 6.6 to 11.6 ms on the Jointed drop.
+Fastest and median wall ms per step:
 - `pnpm bench3d:gpu`, "Jointed drop 34k (71k joints)", 10 runs each: main 6.64 / 9.47, here
   6.82 / 8.91 (the GPU phases' fastest: 6.03 and 6.09). Chain mail 1.6k, 4 runs each: 1.14 / 1.21
   and 1.15 / 1.24. Jointed drop 6k: 3.17 / 3.42 and 3.16 / 3.49.
@@ -132,8 +170,20 @@ the Jointed drop. Fastest and median wall ms per step:
 - Main with only the 144-byte record (6 runs of the Jointed drop) tied with both, at 6.57.
 
 So no cost shows beyond a few percent, under that spread. The warm start and the dual store
-back 6 and 4 of the record's 9 vec4 where they stored all 8. Re-run on a quiet machine before
-quoting a number.
+back 6 and 4 of the record's 9 vec4 (10 now) where they stored all 8. Re-run on a quiet machine
+before quoting a number.
+
+The second growth, 144 to 160 bytes and the bend test in the dual, against the tree before it
+(the same device, alternated, then again with the order reversed; the machine was busy, load
+average about 16, which is the spread):
+- "Jointed drop 34k (71k joints)", 18 runs each, wall ms per step, fastest / median: 6.55 / 7.60
+  before, 6.72 / 7.42 after (GPU phases: 6.03 / 6.58 and 6.16 / 6.46).
+- Jointed drop 6k, 22 runs each: 3.50 / 3.83 before, 3.62 / 4.03 after (GPU phases 2.69 / 3.21
+  and 2.82 / 3.04). Chain mail 1.6k, 6 runs each: 1.30 / 1.50 and 1.34 / 1.58.
+
+The sign of the difference changes with the statistic, and each tree's own spread (3.5 to 4.9
+ms on the 6k) is larger than it: no cost shows, and none is claimed. A joint that does not
+yield never enters the bend test; what it pays for is the larger record.
 
 ## 2026-09-27 — Bodies lost to NaN at high mass ratios: negative pivots in the f32 primal solve
 

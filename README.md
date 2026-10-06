@@ -60,13 +60,15 @@ await world.read();
   fixed body as a moving platform or door, carrying what it touches), `body.set({ position, velocity, ... })`,
   `body.setFixed()`, `body.remove()` (its slot is
   reused). Adds, changes and removals go to the GPU together at the next step.
-- **Joints**: `addJoint(a, b, { anchorA, anchorB, type: 'fixed' | 'ball', breakForce, breakOnPull, rest, yieldForce })`,
+- **Joints**: `addJoint(a, b, { anchorA, anchorB, type: 'fixed' | 'ball', breakForce, breakOnPull, rest, yieldForce, breakBend })`,
   `addSpring(a, b, { stiffness, rest })`, `joint.remove()`, and `world.onBreak(joint => ...)` at
   each readback. A fixed joint can hold two bodies turned apart (`rest`: a rotation, or
   `'current'`, which takes the rotations as last read, so read first or add the joint before the
-  bodies move) and bend for good under load (`yieldForce`: a plastic hinge, on the GPU with no
-  readback); `world.readJoints()` then `joint.force` and `joint.bend` say what it carries and how
-  far it has given.
+  bodies move), bend for good under load (`yieldForce`: a plastic hinge, on the GPU with no
+  readback) and break once it has bent too far (`breakBend`, in radians: a `breakForce` above the
+  yield only catches a sudden jump, and with `breakOnPull` it is in newtons);
+  `world.readJoints()` then `joint.force` and `joint.bend` say what it carries and how far it has
+  given.
 - **Drawing**: `BodyMesh` takes any node material, geometry (scaled to each body's size) and
   a set of bodies (a shape, a list or a test), with `setColor(body, color)` per body.
 - **Raycasts**: `await world.raycast(origin, direction)` gives the first body hit, the point and
@@ -79,8 +81,8 @@ await world.read();
 - **Headless**: `World.create({ device })` runs without a renderer (Node with Dawn, workers).
 - **Advanced**: `three-avbd/advanced` exposes the solver underneath (`world.solver`) and the
   layout of its body, joint and contact buffers and counters, for your own compute passes and
-  readbacks. `appendJoints` takes each joint's own break threshold, rest rotation and yield. (0.3
-  grew the joint record to 36 floats: stride by `JOINT_FLOATS`.)
+  readbacks. `appendJoints` takes each joint's own break threshold, rest rotation, yield and bend
+  limit. (0.3 grew the joint record to 40 floats: stride by `JOINT_FLOATS`.)
 
 The design and what's planned: [docs/API.md](docs/API.md). A runnable example:
 [examples/basic.ts](examples/basic.ts) (`pnpm dev`, then `/examples/basic.html`).
