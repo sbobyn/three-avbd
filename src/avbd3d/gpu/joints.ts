@@ -23,13 +23,16 @@ export interface JointState {
   rest: [number, number, number, number];
 }
 
-/** Slot `slot` of a `readJoints()` result as a JointState. */
-export function decodeJoint(joints: ArrayLike<number>, slot: number): JointState {
+/**
+ * Slot `slot` of a `readJoints()` result as a JointState (written into `into`, if given: decoding
+ * a whole readback allocates nothing that way).
+ */
+export function decodeJoint(joints: ArrayLike<number>, slot: number, into?: JointState): JointState {
   const o = slot * JOINT_FLOATS;
-  return {
-    linear: Math.hypot(joints[o + J_LAM_LIN], joints[o + J_LAM_LIN + 1], joints[o + J_LAM_LIN + 2]),
-    angular: Math.hypot(joints[o + J_LAM_ANG], joints[o + J_LAM_ANG + 1], joints[o + J_LAM_ANG + 2]),
-    broken: joints[o + J_PEN_LIN + 3] === 0 && joints[o + J_PEN_ANG + 3] === 0,
-    rest: [joints[o + J_REST], joints[o + J_REST + 1], joints[o + J_REST + 2], joints[o + J_REST + 3]],
-  };
+  const state = into ?? { linear: 0, angular: 0, broken: false, rest: [0, 0, 0, 1] };
+  state.linear = Math.hypot(joints[o + J_LAM_LIN], joints[o + J_LAM_LIN + 1], joints[o + J_LAM_LIN + 2]);
+  state.angular = Math.hypot(joints[o + J_LAM_ANG], joints[o + J_LAM_ANG + 1], joints[o + J_LAM_ANG + 2]);
+  state.broken = joints[o + J_PEN_LIN + 3] === 0 && joints[o + J_PEN_ANG + 3] === 0;
+  for (let i = 0; i < 4; i++) state.rest[i] = joints[o + J_REST + i];
+  return state;
 }

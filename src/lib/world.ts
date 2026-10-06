@@ -6,7 +6,7 @@
 
 import * as THREE from 'three/webgpu';
 import { B_ANGVEL, B_POS, B_ROT, B_VEL, BODY_FLOATS, JOINT_FLOATS } from '../avbd3d/gpu/layout.ts';
-import { decodeJoint } from '../avbd3d/gpu/joints.ts';
+import { decodeJoint, type JointState } from '../avbd3d/gpu/joints.ts';
 import { GpuSolver3D, gpuParams3D } from '../avbd3d/gpu/solver.ts';
 import { Rigid } from '../avbd3d/ref/body.ts';
 import { Solver } from '../avbd3d/ref/solver.ts';
@@ -388,8 +388,11 @@ export class Joint {
   /** @internal The solver's joint slot (-1 until the next step adds it). */
   slot = -1;
   private state: 'held' | 'broken' | 'removed' = 'held';
-  private carried = { linear: 0, angular: 0 };
+  private pull = 0;
+  private torque = 0;
   private bent = 0;
+  /** restRotation as the GPU holds it (f32), what `bend` is measured from. */
+  private readonly restStart: Float32Array | null;
 
   /** @internal Made by World.addJoint and addSpring. */
   constructor(world: World, a: Body, b: Body, options: JointInit) {
@@ -402,6 +405,7 @@ export class Joint {
     this.breakForce = options.spring ? Infinity : (options.breakForce ?? Infinity);
     this.breakOnPull = options.breakOnPull ?? false;
     this.restRotation = options.restRotation ?? null;
+    this.restStart = options.restRotation ? Float32Array.from(options.restRotation) : null;
     this.yieldForce = options.yieldForce ?? Infinity;
     this.stiffness = options.stiffness ?? Infinity;
     this.rest = options.restLength ?? 0;
@@ -415,7 +419,7 @@ export class Joint {
    * (a ball joint has no angle lock; a spring's force is its stiffness times its stretch).
    */
   get force(): { linear: number; angular: number } {
-    return { ...this.carried };
+    return { linear: this.pull, angular: this.torque };
   }
 
   /**
@@ -428,10 +432,20 @@ export class Joint {
   }
 
   /** @internal The decoded record of a readback. */
-  update(linear: number, angular: number, rest: ArrayLike<number>): void {
-    this.carried = { linear, angular };
-    const from = this.restRotation ?? [0, 0, 0, 1];
-    this.bent = 2 * Math.acos(Math.min(1, Math.abs(from[0] * rest[0] + from[1] * rest[1] + from[2] * rest[2] + from[3] * rest[3])));
+  update(state: JointState): void {
+    this.pull = state.linear;
+    this.torque = state.angular;
+    // The turn from the rest it started with to the one it holds now: conj(start)·rest
+    const [q, r] = [this.restStart, state.rest];
+    const qx = q ? -q[0] : 0;
+    const qy = q ? -q[1] : 0;
+    const qz = q ? -q[2] : 0;
+    const qw = q ? q[3] : 1;
+    const dx = qw * r[0] + qx * r[3] + qy * r[2] - qz * r[1];
+    const dy = qw * r[1] - qx * r[2] + qy * r[3] + qz * r[0];
+    const dz = qw * r[2] + qx * r[1] - qy * r[0] + qz * r[3];
+    const dw = qw * r[3] - qx * r[0] - qy * r[1] - qz * r[2];
+    this.bent = 2 * Math.atan2(Math.hypot(dx, dy, dz), Math.abs(dw));
   }
 
   /** It broke (seen at a readback: World.read). */
@@ -1022,10 +1036,11 @@ export class World {
       if (joints) {
         // A broken joint's penalties are zeroed (wgsl-solve.ts dualJoint): let it go properly
         const broken: Joint[] = [];
+        const state: JointState = { linear: 0, angular: 0, broken: false, rest: [0, 0, 0, 1] };
         for (const j of this.joints) {
           if (j.type === 'spring' || j.slot * JOINT_FLOATS >= joints.length) continue;
-          const state = decodeJoint(joints, j.slot);
-          j.update(state.linear, state.angular, state.rest);
+          decodeJoint(joints, j.slot, state);
+          j.update(state);
           if (state.broken && j.breakForce < Infinity) broken.push(j);
         }
         if (broken.length) {

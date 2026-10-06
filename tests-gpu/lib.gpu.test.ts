@@ -373,6 +373,11 @@ gpuTest('three-avbd: a joint with rest: \'current\' (or a rotation) holds the tu
   assert.ok(between(product, current.b.rotation) < 0.1, `b is a·rest: ${between(product, current.b.rotation).toFixed(3)}° off`);
   assert.ok(Math.abs(between(current.joint.restRotation!, [0, Math.sin(Math.PI / 12), 0, Math.cos(Math.PI / 12)])) < 1e-4, 'the handle says the turn it holds');
   assert.equal(twisted.joint.restRotation, null);
+  // A joint that never yielded has not bent: exactly, whatever turn it was made to hold
+  await world.readJoints();
+  assert.equal(current.joint.bend, 0);
+  assert.equal(given.joint.bend, 0);
+  assert.equal(twisted.joint.bend, 0);
   // A ball joint has no angle lock to hold a turn or to bend
   assert.throws(() => world.addJoint(current.a, current.b, { type: 'ball', rest: 'current' }), /ball joint/);
   assert.throws(() => world.addJoint(current.a, current.b, { type: 'ball', yieldForce: 5 }), /ball joint/);
