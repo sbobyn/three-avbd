@@ -1,7 +1,7 @@
 // The library (src/lib): only its public API, as a user would drive it, headless on Dawn.
 
 import assert from 'node:assert/strict';
-import { type ContactEvent, convexHull, World } from '../src/lib/index.ts';
+import { type ContactEvent, convexHull, type Quat, type Vec3, World } from '../src/lib/index.ts';
 import { gpuTest } from './device.ts';
 
 const steps = (world: World, n: number) => {
@@ -498,5 +498,45 @@ gpuTest('three-avbd: a joint that takes the slot of one removed while a read is 
   steps(world, 30);
   await world.readJoints();
   assert.ok(Math.abs(fresh.joint.force.linear - 9.81) < 0.5, `pull ${fresh.joint.force.linear.toFixed(2)} N`);
+  world.destroy();
+});
+
+// A joint the solver would refuse must throw at addJoint, where the caller is; from the queue it
+// threw at every flush, and the world could not step again
+gpuTest('three-avbd: addJoint refuses a rest that is not a rotation at the call, and a failing flush does not wedge the world', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  const hook = world.addBox({ size: [1, 1, 1], position: [0, 5, 0], fixed: true })!;
+  const box = world.addBox({ size: [1, 1, 1], position: [0, 4, 0] })!;
+  const anchors: { anchorA: Vec3; anchorB: Vec3 } = { anchorA: [0, -0.5, 0], anchorB: [0, 0.5, 0] };
+  const bad: unknown[] = [[0, 0, 0, 0], [0, 0, 0], [0, 0, 0, 1, 0], [NaN, 0, 0, 1], [0, 0, Infinity, 1], [0, 0, 0, NaN], 'identity'];
+  for (const rest of bad) assert.throws(() => world.addJoint(hook, box, { ...anchors, rest: rest as Quat }), /rotation is four finite numbers/, `rest ${String(rest)}`);
+  // 'current' from poses that are not rotations
+  const wild = world.addBox({ size: [1, 1, 1], position: [4, 4, 0], rotation: [NaN, 0, 0, 1] })!;
+  assert.throws(() => world.addJoint(hook, wild, { rest: 'current' }), /rest 'current'.*four finite numbers/);
+  // Nothing refused was queued: the world steps, and a good joint added after holds
+  world.step();
+  assert.equal(world.stepCount, 1);
+  const good = world.addJoint(hook, box, { ...anchors, rest: [0, 0, 0, 2] });
+  assert.ok(Math.abs(Math.hypot(...good.restRotation!) - 1) < 1e-12 && good.restRotation![3] === 1, 'a rest is taken as the unit rotation it scales to');
+  steps(world, 60);
+  await world.read();
+  assert.ok(good.holding && Math.abs(box.position[1] - 4) < 0.1, `it holds: y ${box.position[1].toFixed(2)}`);
+
+  // A flush that fails in the solver lets go of the joints it had not placed, and the next flush works
+  const other = world.addBox({ size: [1, 1, 1], position: [8, 4, 0] })!;
+  const doomed = world.addJoint(hook, other, { anchorA: [8, -0.5, 0], anchorB: [0, 0.5, 0] });
+  const appendJoints = world.solver.appendJoints;
+  world.solver.appendJoints = () => {
+    throw new Error('the solver refused');
+  };
+  assert.throws(() => world.step(), /the solver refused/);
+  world.solver.appendJoints = appendJoints;
+  assert.ok(!doomed.holding && !doomed.broken, 'the joint that was not placed let go');
+  assert.ok(good.holding, 'the one placed before is as it was');
+  world.step();
+  steps(world, 59);
+  await world.read();
+  assert.ok(good.holding && Math.abs(box.position[1] - 4) < 0.1, 'the world went on');
+  assert.ok(other.position[1] < 3, `and the box of the joint that was let go fell: y ${other.position[1].toFixed(2)}`);
   world.destroy();
 });

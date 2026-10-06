@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { B_ANGVEL, B_POS, B_ROT, B_VEL, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
 import { decodeJoint, type JointState } from '../avbd3d/gpu/joints.ts';
-import { GpuSolver3D, gpuParams3D } from '../avbd3d/gpu/solver.ts';
+import { GpuSolver3D, gpuParams3D, unitRotation } from '../avbd3d/gpu/solver.ts';
 import { Rigid } from '../avbd3d/ref/body.ts';
 import { Solver } from '../avbd3d/ref/solver.ts';
 import { convexHull, hull, type HullShape, sphere } from '../avbd3d/shapes.ts';
@@ -708,8 +708,12 @@ export class World {
       throw new Error("addJoint: a ball joint has no angle lock to hold a turn or to bend: 'rest' and 'yieldForce' are for fixed joints");
     }
     if (yieldForce !== undefined && !(yieldForce >= 0)) throw new Error(`addJoint: yieldForce is a force of at least 0, not ${yieldForce}`);
-    // The turn to hold: as given, or as the bodies are (by the poses the world knows)
-    const restRotation = rest === 'current' ? relativeRotation(a.rotation, b.rotation) : rest ? normalised(rest) : undefined;
+    // The turn to hold: as given, or as the bodies are (by the poses the world knows). Everything
+    // is checked here, at the call: a joint the solver would refuse must never wait in the queue
+    const restRotation =
+      rest == null ? undefined
+      : rest === 'current' ? unitRotation(relativeRotation(a.rotation, b.rotation), "addJoint: rest 'current' (from the bodies' rotations)")
+      : unitRotation(rest, 'addJoint: rest');
     const joint = new Joint(this, a, b, { ...others, restRotation, yieldForce });
     this.pendingJoints.push(joint);
     return joint;
@@ -904,35 +908,43 @@ export class World {
       this.refilters.clear();
     }
     if (this.pendingJoints.length) {
-      // One upload for the joints, one for the springs: each joint carries its own thresholds
-      const springs = this.pendingJoints.filter((j) => j.type === 'spring');
-      const joints = this.pendingJoints.filter((j) => j.type !== 'spring');
-      const placed = (list: Joint[], slots: number[]) =>
-        list.forEach((j, k) => {
-          j.slot = slots[k];
-          j.placed = ++this.placements;
-          this.joints.add(j);
-        });
-      if (joints.length) {
-        placed(
-          joints,
-          this.solver.appendJoints(
-            joints.map((j) => ({
-              a: j.a.index,
-              b: j.b.index,
-              rA: j.anchorA,
-              rB: j.anchorB,
-              angular: j.type === 'ball' ? 0 : undefined,
-              fracture: j.breakForce,
-              linear: j.breakOnPull,
-              rest: j.restRotation ?? undefined,
-              yield: j.yieldForce < Infinity ? j.yieldForce : undefined,
-            })),
-          ),
-        );
-      }
-      if (springs.length) placed(springs, this.solver.appendSprings(springs.map((j) => ({ a: j.a.index, b: j.b.index, rA: j.anchorA, rB: j.anchorB, stiffness: j.stiffness, rest: j.rest }))));
+      // Off the queue first, so that if the solver throws (addJoint checks what it would refuse, so
+      // this is a failure of the solver's own) nothing is left queued to throw again at every flush
+      const pending = this.pendingJoints;
       this.pendingJoints = [];
+      try {
+        // One upload for the joints, one for the springs: each joint carries its own thresholds
+        const springs = pending.filter((j) => j.type === 'spring');
+        const joints = pending.filter((j) => j.type !== 'spring');
+        const placed = (list: Joint[], slots: number[]) =>
+          list.forEach((j, k) => {
+            j.slot = slots[k];
+            j.placed = ++this.placements;
+            this.joints.add(j);
+          });
+        if (joints.length) {
+          placed(
+            joints,
+            this.solver.appendJoints(
+              joints.map((j) => ({
+                a: j.a.index,
+                b: j.b.index,
+                rA: j.anchorA,
+                rB: j.anchorB,
+                angular: j.type === 'ball' ? 0 : undefined,
+                fracture: j.breakForce,
+                linear: j.breakOnPull,
+                rest: j.restRotation ?? undefined,
+                yield: j.yieldForce < Infinity ? j.yieldForce : undefined,
+              })),
+            ),
+          );
+        }
+        if (springs.length) placed(springs, this.solver.appendSprings(springs.map((j) => ({ a: j.a.index, b: j.b.index, rA: j.anchorA, rB: j.anchorB, stiffness: j.stiffness, rest: j.rest }))));
+      } finally {
+        // What did not get placed lets go (its handle says so), as the joints that did stay placed
+        for (const j of pending) if (j.slot < 0) j.remove();
+      }
     }
   }
 

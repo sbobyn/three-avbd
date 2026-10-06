@@ -93,9 +93,9 @@ function freshJoint(o: Float32Array): void {
   o[J_REST + 3] = 1;
 }
 
-/** `q` (x, y, z, w) scaled to unit length, for a joint's rest. */
-function unitRotation(q: ArrayLike<number>, what: string): [number, number, number, number] {
-  const l = Math.hypot(q[0], q[1], q[2], q[3]);
+/** `q` (x, y, z, w) scaled to unit length, for a joint's rest; throws (naming `what`) unless it is four finite numbers, not all zero. */
+export function unitRotation(q: ArrayLike<number>, what: string): [number, number, number, number] {
+  const l = q.length === 4 ? Math.hypot(q[0], q[1], q[2], q[3]) : NaN;
   if (!(l > 0) || !Number.isFinite(l)) throw new Error(`${what}: a rotation is four finite numbers (x, y, z, w), not all zero`);
   return [q[0] / l, q[1] / l, q[2] / l, q[3] / l];
 }
