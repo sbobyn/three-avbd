@@ -24,16 +24,38 @@ export const B_INERTIAL_ROT = 28;
 export const B_VEL = 32;
 export const B_ANGVEL = 36;
 
-/** Floats per joint record (joints and springs): 8 vec4. */
-export const JOINT_FLOATS = 32;
+/**
+ * Floats per joint record (joints and springs): 9 vec4 (32 floats before 0.3, which added the
+ * rest rotation: anything reading the raw joint buffer strides by this).
+ *
+ * What a joint's fields hold, as `readJoints` returns them after a step (the values of its last
+ * iteration; the next step's warm start scales the multipliers by alpha * gamma):
+ * - penalty (xyz, per row) and stiffness (w): a hard row has stiffness BIG (>= HARD), a free
+ *   one (a ball joint's angle lock) 0. A joint that broke has both stiffnesses and every penalty
+ *   and multiplier zeroed (fracture and torque arm stay), which is how a broken joint reads:
+ *   stiffness 0 at J_PEN_LIN + 3 and J_PEN_ANG + 3.
+ * - multipliers λ (xyz): the force a hard row carries: |λ_lin| is the force (N) holding the
+ *   anchors together, and |λ_ang| the angular force, the one `fracture` and `yield` limit. The
+ *   torque it is, is the torque arm (J_LAM_ANG + 3) times it; the angular Jacobian is
+ *   ±torqueArm·I.
+ */
+export const JOINT_FLOATS = 36;
 export const J_PEN_LIN = 0; // xyz, w: stiffness (joint lin; spring: its stiffness)
 export const J_PEN_ANG = 4; // xyz, w: angular stiffness
-export const J_LAM_LIN = 8; // xyz, w: fracture threshold on |lambdaAng|
+export const J_LAM_LIN = 8; // xyz, w: fracture threshold on |lambdaAng| (negative: on |lambdaLin| too)
 export const J_LAM_ANG = 12; // xyz, w: torque arm
 export const J_C0_LIN = 16;
-export const J_C0_ANG = 20;
+export const J_C0_ANG = 20; // xyz, w: yield threshold on |lambdaAng| (BIG: never)
 export const J_RA = 24; // xyz (world point for world joints), w: spring rest length
 export const J_RB = 28;
+/**
+ * The relative rotation the angle lock holds, B's orientation in A's frame as a quaternion
+ * (x, y, z, w): it holds rotB = rotA·rest. The identity (0, 0, 0, 1) is the demo's joint, which
+ * holds the two rotations equal. A plastic joint moves it (see J_YIELD).
+ */
+export const J_REST = 32;
+/** The word holding a joint's yield threshold (BIG: never): past it |λ_ang| is cut back and the rest moves. */
+export const J_YIELD = J_C0_ANG + 3;
 
 /**
  * Contacts come in pairs' manifolds: a 32-byte pair record (bodies, first contact, contact
@@ -140,12 +162,13 @@ struct Body {
 struct Joint {
   penLin: vec4f,  // xyz, w: linear stiffness (>= HARD: hard); spring: its stiffness
   penAng: vec4f,  // xyz, w: angular stiffness
-  lamLin: vec4f,  // xyz, w: fracture threshold on |lamAng|
+  lamLin: vec4f,  // xyz, w: fracture threshold on |lamAng| (negative: on |lamLin| too)
   lamAng: vec4f,  // xyz, w: torque arm
   c0Lin: vec4f,   // C(x-)
-  c0Ang: vec4f,
+  c0Ang: vec4f,   // xyz: C(x-), w: yield threshold on |lamAng| (BIG: never yields)
   rA: vec4f,      // xyz: anchor on A (world point when A is the world), w: spring rest length
   rB: vec4f,      // xyz: anchor on B
+  rest: vec4f,    // the relative rotation the angle lock holds: rotB = rotA·rest (quaternion x, y, z, w)
 }
 
 struct Manifold {

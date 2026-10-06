@@ -10,7 +10,9 @@ export { Rigid } from '../avbd3d/ref/body.ts';
 export { sphere, hull } from '../avbd3d/shapes.ts';
 // Hull shapes for `hull` bodies (convexHull is also on the main entry)
 export { convexHull, hullFromTriangles, MAX_HULL_VERTICES, type HullShape } from '../avbd3d/hull.ts';
-export type { GpuParams3D, GpuSolverOptions, GpuCounters3D, GpuContact } from '../avbd3d/gpu/solver.ts';
+export type { GpuParams3D, GpuSolverOptions, GpuCounters3D, GpuContact, JointSpec } from '../avbd3d/gpu/solver.ts';
+// A joint record read back (GpuSolver3D.readJoints) decoded: the forces it carries, whether it broke
+export { decodeJoint, type JointState } from '../avbd3d/gpu/joints.ts';
 export {
   BODY_FLOATS,
   B_POS,
@@ -19,6 +21,8 @@ export {
   B_VEL,
   B_ANGVEL,
   B_MOMENT,
+  // Joint records: JOINT_FLOATS (36 since 0.3, 32 before) strides the buffer, and these are field
+  // offsets in it, each field documented in layout.ts
   JOINT_FLOATS,
   J_PEN_LIN,
   J_PEN_ANG,
@@ -26,6 +30,8 @@ export {
   J_LAM_ANG,
   J_RA,
   J_RB,
+  J_REST,
+  J_YIELD,
 } from '../avbd3d/gpu/layout.ts';
 // The contact and manifold records and the solver counters a GpuSolver3D reads back
 // (readContactList and readCounters decode them; these are for reading the raw buffers in your

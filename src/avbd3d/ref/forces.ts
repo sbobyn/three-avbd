@@ -6,6 +6,7 @@ import {
   addm,
   addScaled3,
   clamp,
+  conjugate,
   cross,
   diagonal,
   diagonalize,
@@ -18,6 +19,8 @@ import {
   mulv,
   neg3,
   outer,
+  qmul,
+  qnormalize,
   qsub,
   quat,
   rotate,
@@ -30,11 +33,13 @@ import {
   transpose,
   vec3,
   type M3,
+  type Quat,
   type V3,
 } from './math.ts';
 import type { Solver } from './solver.ts';
 
 const IDENTITY = quat();
+const qRest = quat();
 
 // Scratch shared by the (single-threaded) primal/dual updates
 const K = mat3();
@@ -67,6 +72,10 @@ const componentMin = (out: V3, a: V3, b: number): V3 => set3(out, min(a[0], b), 
  * Ball-socket joint (linear rows) plus an angle lock (angular rows), with optional fracture
  * on the angular force. Stiffness Infinity makes a row hard (dual variable + stabilization);
  * a finite stiffness makes it a spring; 0 disables it. When bodyA is null, rA is a world point.
+ *
+ * Two extensions the demo does not have, both opt-in (`rest` null and `yield` Infinity are the
+ * demo's joint to the bit): the angle lock can hold a relative rotation other than none
+ * (`rest`), and a hard one can give under load and keep the bend (`yield`).
  */
 export class Joint extends Force {
   readonly rA: V3;
@@ -82,6 +91,25 @@ export class Joint extends Force {
   fracture: number;
   torqueArm: number;
   broken = false;
+  /**
+   * Whether `fracture` also limits the linear force |λ_lin|, not just the angular one (the demo
+   * breaks on the angular force alone: with a rigid angle lock, the torque; this is the GPU
+   * solver's negative threshold, GpuSolver3D.appendJoints `linear`).
+   */
+  fractureLinear = false;
+  /**
+   * The relative rotation the angle lock holds, B's orientation in A's frame (x, y, z, w):
+   * rotB = rotA·rest. null: the identity, rotA = rotB, as in the demo. Set it before the
+   * first step, or take it from the bodies as they are (holdCurrentRotation).
+   */
+  rest: Quat | null = null;
+  /**
+   * Past this angular force, |λ_ang| (as for `fracture`) on a hard angle lock, the joint yields:
+   * in the dual update its rest turns to where the bodies are and λ_ang is cut back to this
+   * length, so it carries no more than this and keeps the bend. Fracture still applies above it.
+   * Infinity: it never yields.
+   */
+  yield = Infinity;
 
   constructor(
     solver: Solver,
@@ -111,10 +139,28 @@ export class Joint extends Force {
     return sub3(out, pA, transform(pB, bodyB.positionLin, bodyB.positionAng, this.rB));
   }
 
-  /** Angular constraint: relative rotation vector, scaled by torqueArm to length units. */
+  /**
+   * Angular constraint: relative rotation vector, scaled by torqueArm to length units. With a
+   * rest it is the turn from rotB to rotA·rest, the short way round (q and −q are one rotation,
+   * and the vector of the wrong one would push the bodies further apart).
+   */
   evaluateAng(out: V3): V3 {
-    qsub(out, this.bodyA ? this.bodyA.positionAng : IDENTITY, this.bodyB.positionAng);
+    const rotA = this.bodyA ? this.bodyA.positionAng : IDENTITY;
+    if (!this.rest) qsub(out, rotA, this.bodyB.positionAng);
+    else {
+      qmul(qRest, rotA, this.rest);
+      const rotB = this.bodyB.positionAng;
+      if (qRest[0] * rotB[0] + qRest[1] * rotB[1] + qRest[2] * rotB[2] + qRest[3] * rotB[3] < 0) for (let i = 0; i < 4; i++) qRest[i] = -qRest[i];
+      qsub(out, qRest, rotB);
+    }
     return scale3(out, out, this.torqueArm);
+  }
+
+  /** Hold the bodies' rotations as they are now: rest = rotA⁻¹·rotB (what a yield does). */
+  holdCurrentRotation(): void {
+    const rotA = this.bodyA ? this.bodyA.positionAng : IDENTITY;
+    qnormalize(qRest, qmul(qRest, conjugate(qRest, rotA), this.bodyB.positionAng));
+    (this.rest ??= quat()).set(qRest);
   }
 
   initialize(): boolean {
@@ -217,17 +263,30 @@ export class Joint extends Force {
     if (lengthSq(this.penaltyAng) > 0) {
       diagonal(K, this.penaltyAng[0], this.penaltyAng[1], this.penaltyAng[2]);
       this.evaluateAng(C);
+      let yielded = false;
       if (this.stiffnessAng === Infinity) {
         addScaled3(C, C, this.C0Ang, -alpha);
         mulv(F, K, C);
         addScaled3(this.lambdaAng, F, this.lambdaAng, 1);
+        // Yield (not in the demo): past `yield` but short of fracture, the bend becomes the new
+        // rest (its error and the step's reference error with it) and the force is cut back
+        const force2 = lengthSq(this.lambdaAng);
+        if (force2 > this.yield * this.yield && force2 <= this.fracture * this.fracture) {
+          this.holdCurrentRotation();
+          this.C0Ang.fill(0);
+          scale3(this.lambdaAng, this.lambdaAng, this.yield / Math.sqrt(force2));
+          yielded = true;
+        }
       }
-      addScaled3(this.penaltyAng, this.penaltyAng, abs3(r, C), solver.betaAng);
-      componentMin(this.penaltyAng, this.penaltyAng, min(this.stiffnessAng, PENALTY_MAX));
+      // (A yielding row's penalty stays where it is: its force is at its bound, as a clamped one's)
+      if (!yielded) {
+        addScaled3(this.penaltyAng, this.penaltyAng, abs3(r, C), solver.betaAng);
+        componentMin(this.penaltyAng, this.penaltyAng, min(this.stiffnessAng, PENALTY_MAX));
+      }
     }
 
     // Fracture
-    if (lengthSq(this.lambdaAng) > this.fracture * this.fracture) {
+    if (lengthSq(this.lambdaAng) > this.fracture * this.fracture || (this.fractureLinear && lengthSq(this.lambdaLin) > this.fracture * this.fracture)) {
       this.penaltyLin.fill(0);
       this.penaltyAng.fill(0);
       this.lambdaLin.fill(0);

@@ -74,8 +74,17 @@ fn jointLinC(k: Joint, a: i32, b: i32) -> vec3f {
   return anchorA(k, a) - (qrotate(bodies[b].rot, k.rB.xyz) + bodies[b].pos.xyz);
 }
 
+/**
+ * The angle lock's error: the turn from rotB to rotA·rest (the demo's qsub, 2·vec(q·rotB⁻¹)), in
+ * length units by the torque arm. The identity rest gives the demo's qsub(rotA, rotB). q and -q
+ * are one rotation, so the quaternion between them is taken in the hemisphere with w >= 0: the
+ * short way round, and always restoring (rest, or the two bodies' quaternions, may carry either sign).
+ */
 fn jointAngC(k: Joint, a: i32, b: i32) -> vec3f {
-  return qsub(rotA(a), bodies[b].rot) * k.lamAng.w;
+  let qb = bodies[b].rot;
+  var d = qmul(qmul(rotA(a), k.rest), qconj(qb) / dot(qb, qb));
+  d = select(d, -d, d.w < 0.0);
+  return d.xyz * 2.0 * k.lamAng.w;
 }
 
 /** Stabilized linear / angular constraints (Eq. 18 on hard rows). */
@@ -211,18 +220,19 @@ fn evalContact(k: Contact, basis: mat3x3f, friction: f32, A: PairBody, B: PairBo
 fn warmStartJoints(@builtin(global_invocation_id) gid: vec3u) {
   let j = gid.x;
   if (j >= params.jointCount || info[j].x != T_JOINT) { return; }
-  var k = joints[j];
+  let k = joints[j];
   let a = info[j].y;
   let b = info[j].z;
-  k.c0Lin = vec4f(jointLinC(k, a, b), 0.0);
-  k.c0Ang = vec4f(jointAngC(k, a, b), 0.0);
+  // Only the fields that change are stored back (not the anchors or the rest: a joint record is
+  // 144 bytes, and a joint-heavy scene runs this over every one)
+  joints[j].c0Lin = vec4f(jointLinC(k, a, b), 0.0);
+  joints[j].c0Ang = vec4f(jointAngC(k, a, b), k.c0Ang.w);
   let decay = params.alpha * params.gamma;
-  k.lamLin = vec4f(k.lamLin.xyz * decay, k.lamLin.w);
-  k.lamAng = vec4f(k.lamAng.xyz * decay, k.lamAng.w);
+  joints[j].lamLin = vec4f(k.lamLin.xyz * decay, k.lamLin.w);
+  joints[j].lamAng = vec4f(k.lamAng.xyz * decay, k.lamAng.w);
   // Penalties decay, stay within bounds, and never exceed the material stiffness
-  k.penLin = vec4f(min(clamp(k.penLin.xyz * params.gamma, vec3f(PENALTY_MIN), vec3f(PENALTY_MAX)), vec3f(k.penLin.w)), k.penLin.w);
-  k.penAng = vec4f(min(clamp(k.penAng.xyz * params.gamma, vec3f(PENALTY_MIN), vec3f(PENALTY_MAX)), vec3f(k.penAng.w)), k.penAng.w);
-  joints[j] = k;
+  joints[j].penLin = vec4f(min(clamp(k.penLin.xyz * params.gamma, vec3f(PENALTY_MIN), vec3f(PENALTY_MAX)), vec3f(k.penLin.w)), k.penLin.w);
+  joints[j].penAng = vec4f(min(clamp(k.penAng.xyz * params.gamma, vec3f(PENALTY_MIN), vec3f(PENALTY_MAX)), vec3f(k.penAng.w)), k.penAng.w);
 }
 
 /**
@@ -476,30 +486,60 @@ fn dualJoint(j: u32) {
   if (t != T_JOINT) { return; }
   let a = info[j].y;
   let b = info[j].z;
-  var k = joints[j];
+  let k = joints[j];
   let alpha = pc.alpha;
-  if (dot(k.penLin.xyz, k.penLin.xyz) > 0.0) {
+  var penLin = k.penLin;
+  var penAng = k.penAng;
+  var lamLin = k.lamLin;
+  var lamAng = k.lamAng;
+  if (dot(penLin.xyz, penLin.xyz) > 0.0) {
     let C = jointLinRows(k, a, b, alpha);
-    if (k.penLin.w >= HARD) { k.lamLin = vec4f(k.penLin.xyz * C + k.lamLin.xyz, k.lamLin.w); }
-    k.penLin = vec4f(min(k.penLin.xyz + abs(C) * params.betaLin, vec3f(min(k.penLin.w, PENALTY_MAX))), k.penLin.w);
+    if (penLin.w >= HARD) { lamLin = vec4f(penLin.xyz * C + lamLin.xyz, lamLin.w); }
+    penLin = vec4f(min(penLin.xyz + abs(C) * params.betaLin, vec3f(min(penLin.w, PENALTY_MAX))), penLin.w);
   }
-  if (dot(k.penAng.xyz, k.penAng.xyz) > 0.0) {
+  let frac = lamLin.w;
+  let limit = abs(frac);
+  var yielded = false;
+  if (dot(penAng.xyz, penAng.xyz) > 0.0) {
     let C = jointAngRows(k, a, b, alpha);
-    if (k.penAng.w >= HARD) { k.lamAng = vec4f(k.penAng.xyz * C + k.lamAng.xyz, k.lamAng.w); }
-    k.penAng = vec4f(min(k.penAng.xyz + abs(C) * params.betaAng, vec3f(min(k.penAng.w, PENALTY_MAX))), k.penAng.w);
+    if (penAng.w >= HARD) {
+      lamAng = vec4f(penAng.xyz * C + lamAng.xyz, lamAng.w);
+      // Yield (a plastic joint, see layout.ts J_YIELD): the force asked of a rigid angle lock
+      // is past yield but short of fracture, so the bend becomes the new rest (the error and
+      // the step's reference error with it: else stabilization, Eq. 18, would pull 99% of the
+      // bend back) and the force carried is cut back to yield. Perfectly plastic: the joint
+      // holds the bend with nothing more than yield, and lets the rest go on bending.
+      let yieldForce = k.c0Ang.w;
+      if (yieldForce < BIG) {
+        let force = length(lamAng.xyz);
+        if (force > yieldForce && !(limit < BIG && force > limit)) {
+          lamAng = vec4f(lamAng.xyz * (yieldForce / force), lamAng.w);
+          yielded = true;
+        }
+      }
+    }
+    // A yielding row is at its bound, as a clamped force: its penalty is not ramped
+    if (!yielded) {
+      penAng = vec4f(min(penAng.xyz + abs(C) * params.betaAng, vec3f(min(penAng.w, PENALTY_MAX))), penAng.w);
+    }
   }
   // Fracture: the joint stops acting for good (the CPU deletes it). A negative threshold (not in
   // the paper: GpuSolver3D.appendJoints) breaks on the linear force too, at the same limit
-  let frac = k.lamLin.w;
-  let limit = abs(frac);
-  let linear = frac < 0.0 && dot(k.lamLin.xyz, k.lamLin.xyz) > limit * limit;
-  if (limit < BIG && (dot(k.lamAng.xyz, k.lamAng.xyz) > limit * limit || linear)) {
-    k.penLin = vec4f(0.0);
-    k.penAng = vec4f(0.0);
-    k.lamLin = vec4f(0.0, 0.0, 0.0, frac);
-    k.lamAng = vec4f(0.0, 0.0, 0.0, k.lamAng.w);
+  let linear = frac < 0.0 && dot(lamLin.xyz, lamLin.xyz) > limit * limit;
+  if (limit < BIG && (dot(lamAng.xyz, lamAng.xyz) > limit * limit || linear)) {
+    penLin = vec4f(0.0);
+    penAng = vec4f(0.0);
+    lamLin = vec4f(0.0, 0.0, 0.0, frac);
+    lamAng = vec4f(0.0, 0.0, 0.0, lamAng.w);
   }
-  joints[j] = k;
+  joints[j].penLin = penLin;
+  joints[j].penAng = penAng;
+  joints[j].lamLin = lamLin;
+  joints[j].lamAng = lamAng;
+  if (yielded) {
+    joints[j].rest = normalize(qmul(qconj(rotA(a)), bodies[b].rot));
+    joints[j].c0Ang = vec4f(0.0, 0.0, 0.0, k.c0Ang.w);
+  }
 }
 
 fn dualManifold(m: u32) {

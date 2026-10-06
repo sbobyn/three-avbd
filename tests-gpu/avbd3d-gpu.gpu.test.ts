@@ -10,16 +10,17 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BODY_FLOATS, J_PEN_LIN } from '../src/avbd3d/gpu/layout.ts';
+import { BODY_FLOATS, J_PEN_ANG, J_PEN_LIN } from '../src/avbd3d/gpu/layout.ts';
+import { decodeJoint } from '../src/avbd3d/gpu/joints.ts';
 import { createGpuSim3D, GpuSim3D } from '../src/avbd3d/gpu/sim.ts';
 import { GpuSolver3D, gpuParams3D } from '../src/avbd3d/gpu/solver.ts';
 import { starryNight } from '../src/avbd3d/painting.ts';
 import { monaLisaTower, towerLayout } from '../src/avbd3d/tower.ts';
 import { Rigid } from '../src/avbd3d/ref/body.ts';
 import { collide } from '../src/avbd3d/ref/collide.ts';
-import { IgnoreCollision } from '../src/avbd3d/ref/forces.ts';
+import { IgnoreCollision, Joint } from '../src/avbd3d/ref/forces.ts';
 import { Manifold } from '../src/avbd3d/ref/manifold.ts';
-import { mat3, qnormalize, quat, rotate, vec3 } from '../src/avbd3d/ref/math.ts';
+import { lengthSq, mat3, qnormalize, quat, rotate, vec3 } from '../src/avbd3d/ref/math.ts';
 import { sceneByName, scenePyramid } from '../src/avbd3d/ref/scenes.ts';
 import { sphere } from '../src/avbd3d/shapes.ts';
 import { breakableWall, chainMail, heavyPendulum, wallSmash } from '../src/avbd3d/bench-scenes.ts';
@@ -592,4 +593,279 @@ gpuTest('gravity pulls against the up axis (y-up by default, z when seeded from 
   assert.ok(Math.abs(y - (5 - 1.25)) < 0.1, `y ${y}`);
   assert.ok(Math.abs(x) < 1e-5 && Math.abs(z) < 1e-5, `x ${x}, z ${z}`);
   solver.destroy();
+});
+
+// --- Per-joint thresholds, rest rotations, plastic joints ------------------------------------------
+
+/** What `readJoints` says of each slot's joint: broken, and the angle (degrees) of the rest it holds. */
+async function jointsOf(solver: GpuSolver3D, slots: number[]) {
+  const raw = await solver.readJoints();
+  return slots.map((slot) => {
+    const { broken, rest, linear, angular } = decodeJoint(raw, slot);
+    return { broken, linear, angular, bend: (2 * Math.acos(Math.min(1, Math.abs(rest[3]))) * 180) / Math.PI };
+  });
+}
+
+// One appendJoints call, five hanging 1 kg boxes (10 N on each joint): a joint's own fracture and
+// linear override the call's (5, torque only), and a joint that names neither takes the call's
+gpuTest('appendJoints: each joint carries its own break threshold, over the call\'s', async (device) => {
+  const ref = new Solver();
+  const hooks = [0, 1, 2, 3, 4].map((k) => new Rigid(ref, [1, 1, 1], 0, 0.5, [4 * k, 0, 5]));
+  const boxes = [0, 1, 2, 3, 4].map((k) => new Rigid(ref, [1, 1, 1], 1, 0.5, [4 * k, 0, 4]));
+  const solver = new GpuSolver3D(device, ref);
+  const at = (k: number) => ({ a: solver.gpuIndex(ref.bodies.indexOf(hooks[k])), b: solver.gpuIndex(ref.bodies.indexOf(boxes[k])), rA: [0, 0, -0.5], rB: [0, 0, 0.5] });
+  const slots = solver.appendJoints(
+    [
+      { ...at(0), fracture: 2, linear: true }, // pulled by 10 N: breaks
+      { ...at(1), fracture: 1e9, linear: true }, // holds
+      { ...at(2) }, // the call's 5, on torque alone (a straight hang has none): holds
+      { ...at(3), linear: true }, // the call's 5, on pull too: breaks
+      { ...at(4), fracture: Infinity, linear: true }, // never breaks
+    ],
+    5,
+  );
+  for (let k = 0; k < 60; k++) solver.step();
+  const states = await jointsOf(solver, slots);
+  assert.deepEqual(states.map((j) => j.broken), [true, false, false, true, false], 'only the weak joints broke');
+  const bodies = await solver.readBodies();
+  const z = (k: number) => bodies[solver.gpuIndex(ref.bodies.indexOf(boxes[k])) * BODY_FLOATS + 2];
+  assert.ok(z(0) < 0 && z(3) < 0, `the broken ones' boxes fell: ${z(0).toFixed(1)}, ${z(3).toFixed(1)}`);
+  for (const k of [1, 2, 4]) assert.ok(Math.abs(z(k) - 4) < 0.1, `box ${k} still hangs: z ${z(k).toFixed(2)}`);
+  // A spec that can't be taken is refused whole, before any slot is: a yield needs a rigid angle lock, and a rest a rotation
+  const count = solver.jointCount;
+  assert.throws(() => solver.appendJoints([{ ...at(0) }, { ...at(1), angular: 0, yield: 1 }]), /yield needs a rigid angle lock/);
+  assert.throws(() => solver.appendJoints([{ ...at(1), yield: -1 }]), /yield is a force/);
+  assert.throws(() => solver.appendJoints([{ ...at(1), rest: [0, 0, 0, 0] }]), /rotation/);
+  assert.equal(solver.jointCount, count, 'no slot was taken');
+  // The held joints read the pull they carry: the box's weight, 10 N
+  assert.ok(Math.abs(states[1].linear - 10) < 1 && Math.abs(states[4].linear - 10) < 1, `carrying ${states[1].linear.toFixed(1)} N, ${states[4].linear.toFixed(1)} N`);
+  solver.destroy();
+});
+
+/** Two unit boxes in free fall, B turned 30° from A, both spinning, joined at a face by one fixed joint with this `rest` (or not). */
+async function turnedPair(device: GPUDevice, options: { rest: boolean; flip?: boolean; aTurned?: boolean }): Promise<number[]> {
+  const mul = (a: number[], b: number[]) => [
+    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+  ];
+  const turn = (angle: number, axis: number[]) => {
+    const l = Math.hypot(...axis);
+    return [...axis.map((x) => (x / l) * Math.sin(angle / 2)), Math.cos(angle / 2)];
+  };
+  const conj = (q: number[]) => [-q[0], -q[1], -q[2], q[3]];
+  const qa = options.aTurned ? turn(0.9, [0.2, -0.5, 0.7]) : [0, 0, 0, 1];
+  const qr = turn(Math.PI / 6, [0.3, 0.8, 0.5]);
+  const qb = mul(qa, qr);
+  const rotate = (q: number[], v: number[]) => {
+    const t = [2 * (q[1] * v[2] - q[2] * v[1]), 2 * (q[2] * v[0] - q[0] * v[2]), 2 * (q[0] * v[1] - q[1] * v[0])];
+    return [v[0] + q[3] * t[0] + (q[1] * t[2] - q[2] * t[1]), v[1] + q[3] * t[1] + (q[2] * t[0] - q[0] * t[2]), v[2] + q[3] * t[2] + (q[0] * t[1] - q[1] * t[0])];
+  };
+  const ref = new Solver();
+  const a = new Rigid(ref, [1, 1, 1], 1, 0.5, [0, 0, 10]);
+  a.positionAng.set(qa);
+  // B's centre, so that A's anchor (0.5, 0, 0) and B's (-0.5, 0, 0) are one point
+  const [pa, pb] = [rotate(qa, [0.5, 0, 0]), rotate(qb, [0.5, 0, 0])];
+  const b = new Rigid(ref, [1, 1, 1], 1, 0.5, [pa[0] + pb[0], pa[1] + pb[1], 10 + pa[2] + pb[2]]);
+  b.positionAng.set(options.flip ? qb.map((x) => -x) : qb);
+  a.velocityAng.set([1, 2, 3]);
+  b.velocityAng.set([1, 2, 3]);
+  const solver = new GpuSolver3D(device, ref, { spatialSort: false });
+  solver.appendJoints([{ a: 0, b: 1, rA: [0.5, 0, 0], rB: [-0.5, 0, 0], rest: options.rest ? mul(conj(qa), qb) : undefined }]);
+  // The angle between the two, after 10, 30 and 60 steps
+  const angles: number[] = [];
+  for (let step = 1; step <= 60; step++) {
+    solver.step();
+    if (step === 10 || step === 30 || step === 60) {
+      const bodies = await solver.readBodies();
+      const d = mul(conj([...bodies.subarray(4, 8)]), [...bodies.subarray(BODY_FLOATS + 4, BODY_FLOATS + 8)]);
+      angles.push((2 * Math.acos(Math.min(1, Math.abs(d[3]))) * 180) / Math.PI);
+    }
+  }
+  solver.destroy();
+  return angles;
+}
+
+// three-destruction's measurement: a fixed joint twists two bodies placed 30° apart toward equal,
+// 27°, 22° and 16° after 10, 30 and 60 steps (a hull's frame is its principal frame, so the pieces
+// of a building are turned from each other); with the rest, they keep the turn
+gpuTest('a joint\'s rest rotation holds two bodies turned apart (30° through free fall and tumbling), where the default twists them', async (device) => {
+  for (const aTurned of [false, true]) {
+    const twisted = await turnedPair(device, { rest: false, aTurned });
+    [27.07, 22.07, 16.28].forEach((angle, k) => assert.ok(Math.abs(twisted[k] - angle) < 0.5, `default, step ${[10, 30, 60][k]}: ${twisted[k].toFixed(2)}° (was ${angle}°)`));
+    const held = await turnedPair(device, { rest: true, aTurned });
+    held.forEach((angle, k) => assert.ok(Math.abs(angle - 30) < 0.05, `rest, step ${[10, 30, 60][k]}: ${angle.toFixed(3)}°`));
+  }
+  // The same turn held with either sign of B's quaternion (q and -q are one rotation)
+  const flipped = await turnedPair(device, { rest: true, aTurned: true, flip: true });
+  flipped.forEach((angle, k) => assert.ok(Math.abs(angle - 30) < 0.05, `rest, B negated, step ${[10, 30, 60][k]}: ${angle.toFixed(3)}°`));
+});
+
+/**
+ * A cantilever on the GPU (z up): a fixed wall, four links of 1 m and a weight on the end, welded with
+ * appendJoints. The weld at the wall is the one that yields and breaks; `weight` 0: none.
+ */
+function cantileverOn(device: GPUDevice, weight: number, root: { yield?: number; fracture?: number; linear?: boolean }) {
+  const ref = new Solver();
+  const wall = new Rigid(ref, [1, 1, 1], 0, 0.5, [-0.5, 0, 5]);
+  const links = [0, 1, 2, 3].map((i) => new Rigid(ref, [1, 0.3, 0.3], 1, 0.5, [i + 0.5, 0, 5]));
+  const block = weight > 0 ? new Rigid(ref, [0.6, 0.6, 0.6], weight / 0.216, 0.5, [4.3, 0, 5]) : null;
+  const solver = new GpuSolver3D(device, ref, { spatialSort: false });
+  const index = (b: Rigid) => solver.gpuIndex(ref.bodies.indexOf(b));
+  const chain = [wall, ...links];
+  const slots = solver.appendJoints(
+    chain.slice(1).map((link, k) => ({
+      a: index(chain[k]),
+      b: index(link),
+      rA: k === 0 ? [0.5, 0, 0] : [0.5, 0, 0],
+      rB: [-0.5, 0, 0],
+      ...(k === 0 ? root : {}),
+    })),
+  );
+  const load = block ? solver.appendJoints([{ a: index(links[3]), b: index(block), rA: [0.5, 0, 0], rB: [-0.3, 0, 0] }])[0] : -1;
+  /** How far the first link has turned down about y, degrees. */
+  const bend = async () => {
+    const q = (await solver.readBodies()).subarray(index(links[0]) * BODY_FLOATS + 4, index(links[0]) * BODY_FLOATS + 8);
+    return (2 * Math.atan2(q[1], q[3]) * 180) / Math.PI;
+  };
+  return { solver, slots, load, bend };
+}
+
+gpuTest('a plastic joint: holds a light load rigidly, bends under a heavy one and stays bent when the load goes', async (device) => {
+  const yieldForce = 60;
+  // 2 kg out at 4.3 m asks about 12 of the weld: it holds, and no rest moves
+  const light = cantileverOn(device, 2, { yield: yieldForce });
+  for (let k = 0; k < 300; k++) light.solver.step();
+  const [held] = await jointsOf(light.solver, [light.slots[0]]);
+  assert.ok(held.bend < 0.5 && (await light.bend()) < 1, `no bend under a light load: ${held.bend}°`);
+  light.solver.destroy();
+
+  // 12 kg asks about 70, past the yield of 60: it bends, carries no more than 60, and holds the bend
+  const heavy = cantileverOn(device, 12, { yield: yieldForce });
+  let carried = 0;
+  for (let k = 0; k < 600; k++) {
+    heavy.solver.step();
+    if (k % 10 === 0) carried = Math.max(carried, (await jointsOf(heavy.solver, [heavy.slots[0]]))[0].angular);
+  }
+  const loaded = await heavy.bend();
+  const [yielded] = await jointsOf(heavy.solver, [heavy.slots[0]]);
+  assert.ok(loaded > 25, `bent under the load: ${loaded.toFixed(1)}°`);
+  assert.ok(Math.abs(yielded.bend - loaded) < 2, `and the rest it holds is the bend: ${yielded.bend.toFixed(1)}°`);
+  assert.ok(carried <= yieldForce * 1.0001 && carried > 0.8 * yieldForce, `it carried the yield and no more: ${carried.toFixed(2)}`);
+  // The weight is cut loose: the beam stays as it is
+  heavy.solver.releaseJoints([heavy.load]);
+  for (let k = 0; k < 300; k++) heavy.solver.step();
+  const unloaded = await heavy.bend();
+  assert.ok(Math.abs(unloaded - loaded) < 0.5, `bent ${loaded.toFixed(1)}° with the load, ${unloaded.toFixed(1)}° without`);
+  assert.ok(unloaded > 25, 'and still bent');
+  heavy.solver.destroy();
+
+  // The demo's joint under the same load: no bend
+  const rigid = cantileverOn(device, 12, {});
+  for (let k = 0; k < 600; k++) rigid.solver.step();
+  assert.ok((await rigid.bend()) < 3, `a joint with no yield holds: ${(await rigid.bend()).toFixed(1)}°`);
+  rigid.solver.destroy();
+});
+
+gpuTest('a plastic joint still breaks above its fracture: on its pull, and a fracture below the yield wins', async (device) => {
+  // 40 kg hangs 400 N on the weld: it yields, and tears past 300 N
+  const torn = cantileverOn(device, 40, { yield: 60, fracture: 300, linear: true });
+  for (let k = 0; k < 120; k++) torn.solver.step();
+  assert.ok((await jointsOf(torn.solver, [torn.slots[0]]))[0].broken, 'torn off the wall');
+  torn.solver.destroy();
+  // A fracture below the yield: it breaks before it gives
+  const brittle = cantileverOn(device, 20, { yield: 100, fracture: 60 });
+  for (let k = 0; k < 120; k++) brittle.solver.step();
+  const [state] = await jointsOf(brittle.solver, [brittle.slots[0]]);
+  assert.ok(state.broken && state.bend < 0.5, `broke without bending: ${state.bend.toFixed(2)}°`);
+  brittle.solver.destroy();
+});
+
+// A joint given an error it can't correct within its yield takes it as the bend. The step's
+// reference error (C0, Eq. 18) moves with the rest: kept, it would pull the new rest's error back
+// each step, and the bodies spun away (measured, docs/FINDINGS.md)
+gpuTest('a plastic joint whose bodies start off its rest takes the offset as its bend, as a rigid one slowly corrects it', async (device) => {
+  const offset = async (yieldForce: number) => {
+    const ref = new Solver();
+    new Rigid(ref, [1, 1, 1], 0, 0.5, [0, 0, 5]);
+    const b = new Rigid(ref, [1, 1, 1], 1, 0.5, [1, 0, 5]);
+    // 20° about y from the identity rest
+    b.positionAng.set([0, Math.sin(Math.PI / 18), 0, Math.cos(Math.PI / 18)]);
+    const solver = new GpuSolver3D(device, ref, { spatialSort: false });
+    solver.params.gravity = 0;
+    const [slot] = solver.appendJoints([{ a: 0, b: 1, rA: [0.5, 0, 0], rB: [-0.5, 0, 0], yield: yieldForce }]);
+    for (let k = 0; k < 120; k++) solver.step();
+    const q = (await solver.readBodies()).subarray(BODY_FLOATS + 4, BODY_FLOATS + 8);
+    const [state] = await jointsOf(solver, [slot]);
+    solver.destroy();
+    return { angle: (2 * Math.atan2(q[1], q[3]) * 180) / Math.PI, bend: state.bend, carried: state.angular };
+  };
+  const plastic = await offset(0.05);
+  assert.ok(plastic.angle > 18 && plastic.angle < 21, `B stays turned: ${plastic.angle.toFixed(2)}°`);
+  assert.ok(Math.abs(plastic.bend - plastic.angle) < 0.5, `as the rest it holds: ${plastic.bend.toFixed(2)}°`);
+  assert.ok(plastic.carried <= 0.05 * 1.001, `with no more than the yield: ${plastic.carried}`);
+  const rigid = await offset(Infinity);
+  assert.ok(rigid.angle < 12 && rigid.bend < 0.01, `a rigid joint corrects it, slowly: ${rigid.angle.toFixed(2)}°`);
+});
+
+// The GPU's dual makes the CPU reference's decisions on a joint asked for a lot at once. A heavy
+// box spinning at 10 rad/s about y is held by a joint whose angular penalty is 100 (a stiff linear
+// one, as after a long load): the force asked is 54 on the first iteration and settles at 82. The
+// reference is the oracle for what a joint does past its yield and its fracture, and in which
+// order, and for how the penalty ramps while it gives; the last case holds a turned pair by its rest.
+gpuTest('seeded single step: plastic, breaking and rest joints match the CPU reference (yield, fracture, the rest it moves)', async (device) => {
+  const cases: { name: string; yield: number; fracture: number; rest?: number[] }[] = [
+    { name: 'rigid', yield: Infinity, fracture: Infinity },
+    { name: 'yields', yield: 30, fracture: Infinity },
+    { name: 'fracture below the force asked, yield below it too', yield: 30, fracture: 40 },
+    { name: 'yield above the force asked', yield: 200, fracture: Infinity },
+    { name: 'yields between yield and fracture', yield: 30, fracture: 200 },
+    // B starts turned 25° about x from A's frame and the rest says so (no error, no yield)
+    { name: 'rest', yield: Infinity, fracture: Infinity, rest: [Math.sin((25 * Math.PI) / 360), 0, 0, Math.cos((25 * Math.PI) / 360)] },
+  ];
+  for (const c of cases) {
+    const ref = new Solver();
+    ref.gravity = 0;
+    const a = new Rigid(ref, [1, 1, 1], 0, 0.5, [0, 0, 5]);
+    const b = new Rigid(ref, [1, 1, 1], 10, 0.5, [1, 0, 5]);
+    if (c.rest) {
+      b.positionAng.set(c.rest);
+      b.positionLin.set([0.5 + 0.5 * Math.cos((25 * Math.PI) / 180), -0.5 * Math.sin((25 * Math.PI) / 180), 5]);
+    }
+    b.velocityAng.set([0, 10, 0]);
+    const joint = new Joint(ref, a, b, [0.5, 0, 0], [-0.5, 0, 0], Infinity, Infinity, c.fracture);
+    joint.yield = c.yield;
+    if (c.rest) joint.rest = Float64Array.from(c.rest);
+    joint.penaltyAng.fill(100);
+    joint.penaltyLin.fill(1e4);
+    const gpu = new GpuSolver3D(device, ref, { spatialSort: false });
+    // The reference's exact rules, as the seeded parity test above
+    for (const flag of ['matchNearest', 'faceBias', 'reuseContacts', 'startAtRest', 'massPenalty'] as const) gpu.params[flag] = false;
+    gpu.params.gravity = 0;
+    gpu.seedFrom(ref);
+    gpu.fixedColors = gpu.sequentialColors();
+    gpu.step();
+    ref.step();
+    const [bodies, joints] = [await gpu.readBodies(), await gpu.readJoints()];
+    const state = decodeJoint(joints, 0);
+    const where = `${c.name}`;
+    assert.equal(state.broken, joint.broken, `${where}: broken`);
+    if (!joint.broken) {
+      assert.ok(Math.abs(state.angular - Math.sqrt(lengthSq(joint.lambdaAng))) < 0.02 * Math.max(1, state.angular), `${where}: |λ_ang| ${state.angular} vs ${Math.sqrt(lengthSq(joint.lambdaAng))}`);
+      // The rest it holds: the reference's (null: the identity), either sign
+      const expected = joint.rest ?? [0, 0, 0, 1];
+      const same = Math.abs(state.rest[0] * expected[0] + state.rest[1] * expected[1] + state.rest[2] * expected[2] + state.rest[3] * expected[3]);
+      assert.ok(same > 1 - 1e-5, `${where}: rest ${state.rest} vs ${[...expected]}`);
+      const pen = joints.subarray(J_PEN_ANG, J_PEN_ANG + 3);
+      for (let r = 0; r < 3; r++) assert.ok(Math.abs(pen[r] - joint.penaltyAng[r]) < 1e-3 * Math.max(1, pen[r]), `${where}: penalty ${[...pen]} vs ${[...joint.penaltyAng]}`);
+    }
+    let d = 0;
+    ref.bodies.forEach((body, i) => {
+      for (let k = 0; k < 3; k++) d = Math.max(d, Math.abs(bodies[i * BODY_FLOATS + k] - body.positionLin[k]));
+      for (let k = 0; k < 4; k++) d = Math.max(d, Math.abs(bodies[i * BODY_FLOATS + 4 + k] - body.positionAng[k]));
+    });
+    assert.ok(d < 2e-4, `${where}: pose diff ${d}`);
+    gpu.destroy();
+  }
 });

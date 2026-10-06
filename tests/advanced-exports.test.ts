@@ -29,3 +29,19 @@ test('advanced exports the contact and counter layout and hull shapes', () => {
   assert.ok(Math.abs(body.mass - 2) < 1e-9);
   assert.equal(advanced.NO_COLOR, 255);
 });
+
+test('advanced exports the joint record layout (36 floats since 0.3) and decodes a joint read back', () => {
+  // Field offsets inside the record, 4-word aligned (vec4 fields), the rest quaternion last
+  const fields = [advanced.J_PEN_LIN, advanced.J_PEN_ANG, advanced.J_LAM_LIN, advanced.J_LAM_ANG, advanced.J_RA, advanced.J_RB, advanced.J_REST];
+  for (const f of fields) assert.ok(f % 4 === 0 && f + 4 <= advanced.JOINT_FLOATS, `field at ${f}`);
+  assert.equal(new Set(fields).size, fields.length);
+  assert.equal(advanced.J_REST + 4, advanced.JOINT_FLOATS);
+  assert.equal(advanced.JOINT_FLOATS, 36);
+  // The yield threshold is a word of its own, the last of C0's angular vec4: inside no field above
+  assert.ok(advanced.J_YIELD < advanced.JOINT_FLOATS && advanced.J_YIELD % 4 === 3);
+  assert.ok(!fields.some((f) => advanced.J_YIELD >= f && advanced.J_YIELD < f + 4), 'J_YIELD is in no listed field');
+  const raw = new Float32Array(advanced.JOINT_FLOATS);
+  raw.set([0, 0, 0, 1], advanced.J_REST);
+  raw[advanced.J_PEN_LIN + 3] = 3e38;
+  assert.deepEqual(advanced.decodeJoint(raw, 0), { linear: 0, angular: 0, broken: false, rest: [0, 0, 0, 1] });
+});
