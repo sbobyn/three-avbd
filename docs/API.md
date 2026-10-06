@@ -142,8 +142,11 @@ renderer.setAnimationLoop(() => {
   10, 30 and 60 steps). `rest` is the turn to hold instead: b's orientation in a's frame as a
   quaternion `[x, y, z, w]`, so the joint holds `b = a·rest` whatever frames the bodies have, or
   `'current'` for the turn they have when the joint is added (by the rotations the world knows: as
-  last read, or as set). The identity is the default, and the old joint. The error is taken the
-  short way round, so either sign of either quaternion holds.
+  last read, or as set). The identity is the default, and the old joint, except where the old one
+  went wrong: its error took the long way round, pushing the bodies apart, when the two bodies'
+  quaternions had opposite signs or were turned apart by more than 180°. It is taken the short way
+  round now, for every joint (on the GPU and in the reference), so either sign of either
+  quaternion holds.
 - Plastic joints (0.3): `yieldForce` makes a fixed joint bend. Past that angular force (the number
   `breakForce` limits, so below it) the joint gives: in the solver's dual update its rest moves to
   where the bodies are and the force it carries is cut back to `yieldForce`, a perfectly plastic

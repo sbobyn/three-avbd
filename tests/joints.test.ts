@@ -91,6 +91,29 @@ test('a rest holds with either sign of the bodies\' quaternions (q and -q are on
   assert.ok(Math.abs(between(other.a.positionAng, other.b.positionAng) - 30) < 0.05);
 });
 
+test('with no rest the lock takes the short way round too: a negated quaternion, or a turn past 180°, is the same rotation and behaves as one', () => {
+  // The demo's lock, with no rest, takes the long way round when the two bodies' quaternions are in
+  // opposite hemispheres (rotA·rotB⁻¹ has w < 0): it then pushes them apart. Both end up tumbling at
+  // 90 rad/s after one step, though their angle to each other (which is all `between` sees) is as it
+  // should be: so compare the bodies' own orientations and spins
+  const run = (apart: number, flip = false) => {
+    const { solver, a, b } = pair(apart, 'none', flip);
+    for (let i = 0; i < 40; i++) solver.step();
+    return { qa: [...a.positionAng], qb: [...b.positionAng], va: [...a.velocityAng], vb: [...b.velocityAng], angle: between(a.positionAng, b.positionAng) };
+  };
+  const same = (x: ReturnType<typeof run>, y: ReturnType<typeof run>, what: string) => {
+    x.qa.forEach((q, k) => assert.ok(Math.abs(q - y.qa[k]) < 1e-9, `${what}: A's orientation ${x.qa} against ${y.qa}`));
+    assert.ok(between(x.qb, y.qb) < 1e-6, `${what}: B's orientation ${x.qb} against ${y.qb}`);
+    [...x.va, ...x.vb].forEach((v, k) => assert.ok(Math.abs(v - [...y.va, ...y.vb][k]) < 1e-6, `${what}: spins ${[...x.va, ...x.vb]} against ${[...y.va, ...y.vb]}`));
+  };
+  const plain = run(30);
+  same(run(30, true), plain, 'B negated');
+  // 200° about an axis is −160° about it: one rotation, written with a quaternion of the other sign
+  const past = run(200);
+  same(past, run(-160), 'turned 200°');
+  assert.ok(past.angle < 100, `twisted back toward equal from 160° (the short way): ${past.angle.toFixed(1)}°`);
+});
+
 test('holdCurrentRotation takes the rest from the bodies as they are', () => {
   const { solver, a, b } = pair(40, 'none');
   const joint = solver.forces.find((f): f is Joint => f instanceof Joint)!;

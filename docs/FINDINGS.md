@@ -34,11 +34,26 @@ face, the angle between them after 10, 30 and 60 steps:
 | default (identity rest), A turned or not | 27.07° | 22.07° | 16.28° |
 | `rest = rotA⁻¹·rotB`, either sign of B's quaternion | 30.00° | 30.00° | 30.00° |
 
-The default's numbers are three-destruction's (27°, 22°, 16°) to the digit, so the identity rest
-changes nothing (the CPU reference with it set to the identity is bit-identical on Breakable, and
-the seeded parity tests are unchanged). Without the short way round, a rest and B's quaternion of
-opposite sign drift to 29.5°, 29.6°, 29.7°: the error then points the long way, and the lock
-pushes the bodies off the turn it holds.
+The default's numbers are three-destruction's (27°, 22°, 16°) to the digit. For bodies whose
+quaternions share a hemisphere and that are turned less than 180° apart, which is all that was
+measured, the identity rest changes nothing: the CPU reference with it set to the identity is
+bit-identical on Breakable, and the oracle fixtures and the seeded parity tests are unchanged.
+Outside those cases it is a fix, not a no-op. The demo's lock, qsub(rotA, rotB), takes the long
+way round when the two quaternions have opposite signs or the bodies are turned apart by more than
+180° (rotA·rotB⁻¹ has w < 0), and its error then pushes the bodies apart: a latent error that
+the short way round, taken for every joint, removes. The GPU's lock takes it for default joints
+too; the reference's no-rest branch was left as the demo's, so the two disagreed there. Both do
+now (`Joint.evaluateAng`).
+- Measured on the reference as it was (two unit boxes in free fall, 30° apart, spinning, no rest,
+  B's quaternion negated): the angle between them came out right (29.7°, 29.4°, 29.1° after 1, 2,
+  3 steps) but each body tumbled at up to 92 rad/s in the first step (2.5 rad/s with B's sign
+  positive), and a seeded single step differed from the GPU's by 1.77 in a pose component. Now
+  the negated pair is the positive one's
+  exactly (B's quaternion the negation of it: no difference at all over 40 steps), and B turned
+  200° from A is B turned −160° to 1.6e-12 (`tests/joints.test.ts`; the seeded step in
+  `tests-gpu/avbd3d-gpu.gpu.test.ts`).
+- With a rest, B's quaternion of opposite sign and no short way round drift to 29.5°, 29.6°,
+  29.7°: the error then points the long way, and the lock pushes the bodies off the turn it holds.
 
 ### What a plastic hinge does: it carries `yield`, and swings a load as a hinge
 CPU reference (f64), a cantilever of four 1 m links with a weight on the end, 10 iterations,

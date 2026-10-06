@@ -74,8 +74,9 @@ const componentMin = (out: V3, a: V3, b: number): V3 => set3(out, min(a[0], b), 
  * a finite stiffness makes it a spring; 0 disables it. When bodyA is null, rA is a world point.
  *
  * Two extensions the demo does not have, both opt-in (`rest` null and `yield` Infinity are the
- * demo's joint to the bit): the angle lock can hold a relative rotation other than none
- * (`rest`), and a hard one can give under load and keep the bend (`yield`).
+ * demo's joint to the bit, wherever the bodies' quaternions share a hemisphere: see evaluateAng):
+ * the angle lock can hold a relative rotation other than none (`rest`), and a hard one can give
+ * under load and keep the bend (`yield`).
  */
 export class Joint extends Force {
   readonly rA: V3;
@@ -140,19 +141,19 @@ export class Joint extends Force {
   }
 
   /**
-   * Angular constraint: relative rotation vector, scaled by torqueArm to length units. With a
-   * rest it is the turn from rotB to rotA·rest, the short way round (q and −q are one rotation,
-   * and the vector of the wrong one would push the bodies further apart).
+   * Angular constraint: relative rotation vector, scaled by torqueArm to length units: the turn
+   * from rotB to the rotation B should have, rotA (no rest, the demo's lock) or rotA·rest. It is
+   * taken the short way round: q and −q are one rotation, and when rotB and the one it should have
+   * are in opposite hemispheres (opposite signs, or a turn of more than 180°) the demo's vector
+   * is the long way, which pushes the bodies further apart (the GPU solver always takes the short
+   * way). Where they share a hemisphere, as the demo's bodies do, this is the demo's lock to the bit.
    */
   evaluateAng(out: V3): V3 {
     const rotA = this.bodyA ? this.bodyA.positionAng : IDENTITY;
-    if (!this.rest) qsub(out, rotA, this.bodyB.positionAng);
-    else {
-      qmul(qRest, rotA, this.rest);
-      const rotB = this.bodyB.positionAng;
-      if (qRest[0] * rotB[0] + qRest[1] * rotB[1] + qRest[2] * rotB[2] + qRest[3] * rotB[3] < 0) for (let i = 0; i < 4; i++) qRest[i] = -qRest[i];
-      qsub(out, qRest, rotB);
-    }
+    const rotB = this.bodyB.positionAng;
+    const target = this.rest ? qmul(qRest, rotA, this.rest) : rotA;
+    qsub(out, target, rotB);
+    if (target[0] * rotB[0] + target[1] * rotB[1] + target[2] * rotB[2] + target[3] * rotB[3] < 0) neg3(out, out);
     return scale3(out, out, this.torqueArm);
   }
 

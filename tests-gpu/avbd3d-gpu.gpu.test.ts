@@ -20,7 +20,7 @@ import { Rigid } from '../src/avbd3d/ref/body.ts';
 import { collide } from '../src/avbd3d/ref/collide.ts';
 import { IgnoreCollision, Joint } from '../src/avbd3d/ref/forces.ts';
 import { Manifold } from '../src/avbd3d/ref/manifold.ts';
-import { lengthSq, mat3, qnormalize, quat, rotate, vec3 } from '../src/avbd3d/ref/math.ts';
+import { lengthSq, mat3, qmul, qnormalize, quat, rotate, vec3 } from '../src/avbd3d/ref/math.ts';
 import { sceneByName, scenePyramid } from '../src/avbd3d/ref/scenes.ts';
 import { sphere } from '../src/avbd3d/shapes.ts';
 import { breakableWall, chainMail, heavyPendulum, wallSmash } from '../src/avbd3d/bench-scenes.ts';
@@ -867,6 +867,57 @@ gpuTest('seeded single step: plastic, breaking and rest joints match the CPU ref
     });
     // Measured ≤ 9.1e-8 (docs/FINDINGS.md)
     assert.ok(d < 1e-5, `${where}: pose diff ${d}`);
+    gpu.destroy();
+  }
+});
+
+// A joint with no rest holds the two rotations equal. q and -q are one rotation, so the lock's error
+// is taken the short way round: on the GPU for every joint, and in the reference whether or not the
+// joint has a rest. Without that, a reference joint whose bodies' quaternions had opposite signs, or
+// were turned apart by more than 180°, pushed them the other way (with a spin of 90 rad/s in a step).
+gpuTest('seeded single step: a joint without a rest takes the short way round on the GPU and in the reference (B\'s quaternion negated, B turned past 180°)', async (device) => {
+  const turn = (angle: number, axis: number[]) => {
+    const l = Math.hypot(...axis);
+    const h = (angle * Math.PI) / 360;
+    return quat(...axis.map((x) => (x / l) * Math.sin(h)), Math.cos(h));
+  };
+  const cases = [
+    { name: 'in one hemisphere', apart: 30, flip: false },
+    { name: 'B negated', apart: 30, flip: true },
+    { name: 'B turned 200° from A', apart: 200, flip: false },
+    { name: 'B turned 200° from A, and negated', apart: 200, flip: true },
+  ];
+  for (const c of cases) {
+    const ref = new Solver();
+    ref.gravity = 0;
+    const qa = turn(50, [0.2, -0.5, 0.7]);
+    const qb = qmul(quat(), qa, turn(c.apart, [0.3, 0.8, 0.5]));
+    const a = new Rigid(ref, [1, 1, 1], 0, 0.5, [0, 0, 5]);
+    a.positionAng.set(qa);
+    // B's centre, so that A's anchor (0.5, 0, 0) and B's (-0.5, 0, 0) are one point
+    const [pa, pb] = [rotate(vec3(), qa, [0.5, 0, 0]), rotate(vec3(), qb, [0.5, 0, 0])];
+    const b = new Rigid(ref, [1, 1, 1], 10, 0.5, [pa[0] + pb[0], pa[1] + pb[1], 5 + pa[2] + pb[2]]);
+    b.positionAng.set(c.flip ? qb.map((x) => -x) : qb);
+    const joint = new Joint(ref, a, b, [0.5, 0, 0], [-0.5, 0, 0], Infinity, Infinity);
+    joint.penaltyAng.fill(100);
+    joint.penaltyLin.fill(1e4);
+    const gpu = new GpuSolver3D(device, ref, { spatialSort: false });
+    for (const flag of ['matchNearest', 'faceBias', 'reuseContacts', 'startAtRest', 'massPenalty'] as const) gpu.params[flag] = false;
+    gpu.params.gravity = 0;
+    gpu.seedFrom(ref);
+    gpu.fixedColors = gpu.sequentialColors();
+    gpu.step();
+    ref.step();
+    const bodies = await gpu.readBodies();
+    let d = 0;
+    ref.bodies.forEach((body, i) => {
+      for (let k = 0; k < 3; k++) d = Math.max(d, Math.abs(bodies[i * BODY_FLOATS + k] - body.positionLin[k]));
+      for (let k = 0; k < 4; k++) d = Math.max(d, Math.abs(bodies[i * BODY_FLOATS + 4 + k] - body.positionAng[k]));
+    });
+    assert.ok(d < 1e-5, `${c.name}: pose diff ${d}`);
+    // And it is a lock that restores, not one that sends B spinning: B's orientation moved a little, toward A's
+    const spin = Math.hypot(...ref.bodies[1].velocityAng);
+    assert.ok(spin < 30, `${c.name}: B spins at ${spin.toFixed(1)} rad/s`);
     gpu.destroy();
   }
 });
