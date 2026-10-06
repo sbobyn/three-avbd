@@ -59,7 +59,10 @@ export interface JointSpec {
   rB: ArrayLike<number>;
   /** The angle lock's stiffness: rigid when left out, 0 a ball joint (free to turn). */
   angular?: number;
-  /** The force at which this joint breaks (|λ_ang|; with `linear`, |λ_lin| too). Default: the call's. */
+  /**
+   * The force at which this joint breaks (|λ_ang|; with `linear`, |λ_lin| too), at least 0: the
+   * sign is the solver's flag for `linear`, so a negative one is refused. Default: the call's.
+   */
   fracture?: number;
   /** Whether it also breaks on its linear force: the negative threshold. Default: the call's. */
   linear?: boolean;
@@ -67,6 +70,7 @@ export interface JointSpec {
    * The relative rotation the angle lock holds, b's orientation in a's frame (x, y, z, w): it
    * holds rotB = rotA·rest, whatever the bodies' own frames. Default: the identity, which
    * holds the two rotations equal. Take it from the bodies as they are with `rest = rotA⁻¹·rotB`.
+   * Not for a ball joint (`angular: 0`), which has no angle lock to hold it: refused.
    */
   rest?: ArrayLike<number>;
   /**
@@ -1128,6 +1132,10 @@ export class GpuSolver3D {
     // Checked before any slot is taken, so a bad spec leaves the solver as it was
     const rests = joints.map((j) => (j.rest ? unitRotation(j.rest, 'appendJoints: rest') : null));
     for (const j of joints) {
+      // A threshold's sign is the flag for breaking on the linear force too: that is `linear`'s to say
+      const limit = j.fracture ?? fracture;
+      if (!(limit >= 0)) throw new Error(`appendJoints: fracture is a force of at least 0 (a pull is limited with linear), not ${limit}`);
+      if (j.rest && j.angular === 0) throw new Error('appendJoints: rest needs an angle lock to hold it: a ball joint (angular: 0) has none');
       if (j.yield === undefined) continue;
       if (!(j.yield >= 0)) throw new Error(`appendJoints: yield is a force of at least 0, not ${j.yield}`);
       if (j.angular !== undefined) throw new Error('appendJoints: yield needs a rigid angle lock (leave angular out): a ball joint has none to bend');

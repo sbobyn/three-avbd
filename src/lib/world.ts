@@ -120,9 +120,14 @@ export interface JointOptions {
   breakOnPull?: boolean;
   /**
    * The turn a fixed joint holds between its bodies: b's orientation in a's frame (x, y, z, w),
-   * so it holds b = a·rest, whatever frames the bodies have. 'current': the turn they have when
-   * the joint is added (by their rotations as last read, or as set). Default: none, the bodies'
+   * so it holds b = a·rest, whatever frames the bodies have. Default: none, the bodies'
    * rotations held equal (which twists two bodies placed turned apart until they match).
+   *
+   * 'current' takes the turn the bodies have as the world knows it: their rotations as of the
+   * last readback (`await world.read()`), or as set since (when added, `Body.set`). It does not
+   * look at the GPU, so **the bodies must not have moved since that readback**: after steps
+   * they may have fallen and turned, and the joint would hold the turn they had at the readback.
+   * Read first, or add the joint before the bodies move.
    */
   rest?: Quat | 'current';
   /**
@@ -508,6 +513,8 @@ export class World {
   private readonly joints = new Set<Joint>();
   /** Joints placed in the solver so far (Joint.placed). */
   private placements = 0;
+  /** The kinds of warning already given (warnOnce). */
+  private readonly warned = new Set<string>();
   private readonly scratch = new Solver();
   private readonly breakListeners = new Set<(joint: Joint) => void>();
   private readonly contactListeners = new Set<(event: ContactEvent) => void>();
@@ -708,6 +715,11 @@ export class World {
       throw new Error("addJoint: a ball joint has no angle lock to hold a turn or to bend: 'rest' and 'yieldForce' are for fixed joints");
     }
     if (yieldForce !== undefined && !(yieldForce >= 0)) throw new Error(`addJoint: yieldForce is a force of at least 0, not ${yieldForce}`);
+    const breakForce = options.breakForce ?? Infinity;
+    if (!(breakForce >= 0)) throw new Error(`addJoint: breakForce is a force of at least 0, not ${breakForce}`);
+    if (yieldForce !== undefined && yieldForce < Infinity && breakForce < Infinity && yieldForce >= breakForce) {
+      this.warnOnce('never yields', `addJoint: yieldForce (${yieldForce}) is not below breakForce (${breakForce}), so the joint breaks before it can yield and never bends: lower yieldForce, or raise breakForce`);
+    }
     // The turn to hold: as given, or as the bodies are (by the poses the world knows). Everything
     // is checked here, at the call: a joint the solver would refuse must never wait in the queue
     const restRotation =
@@ -735,6 +747,13 @@ export class World {
     const spring = new Joint(this, a, b, { anchorA, anchorB, stiffness: options.stiffness, restLength: rest, spring: true });
     this.pendingJoints.push(spring);
     return spring;
+  }
+
+  /** Warn about how joints are set up, once per world however many joints are (a scene adds hundreds). */
+  private warnOnce(kind: string, message: string): void {
+    if (this.warned.has(kind)) return;
+    this.warned.add(kind);
+    console.warn(`three-avbd: ${message}`);
   }
 
   private checkPair(a: Body, b: Body, what: string): void {

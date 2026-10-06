@@ -141,8 +141,11 @@ renderer.setAnimationLoop(() => {
   twists two bodies placed turned apart toward each other (30° apart became 27°, 22° and 16° after
   10, 30 and 60 steps). `rest` is the turn to hold instead: b's orientation in a's frame as a
   quaternion `[x, y, z, w]`, so the joint holds `b = a·rest` whatever frames the bodies have, or
-  `'current'` for the turn they have when the joint is added (by the rotations the world knows: as
-  last read, or as set). The identity is the default, and the old joint, except where the old one
+  `'current'` for the turn they have when the joint is added. **`'current'` does not look at the
+  GPU:** it uses the rotations the world knows, as of the last `await world.read()` or as set
+  since, so the bodies must not have moved since that readback (bodies that have been stepped,
+  fallen or turned give the turn they had then). Read first, or add the joint before the bodies
+  move. The identity is the default, and the old joint, except where the old one
   went wrong: its error took the long way round, pushing the bodies apart, when the two bodies'
   quaternions had opposite signs or were turned apart by more than 180°. It is taken the short way
   round now, for every joint (on the GPU and in the reference), so either sign of either
@@ -178,7 +181,13 @@ renderer.setAnimationLoop(() => {
   joints `{ a, b, rA, rB, angular?, fracture?, linear?, rest?, yield? }`: a joint's own `fracture`
   and `linear` override the call's (which stay, as defaults), `rest` is the turn to hold as above
   (`rotB = rotA·rest`, so `rest = rotA⁻¹·rotB` takes it from two bodies as they are) and `yield`
-  the plastic threshold (a rigid angle lock only: left out `angular`).
+  the plastic threshold (a rigid angle lock only: left out `angular`). A call it cannot take is
+  refused whole, before any slot is: a `rest` that is not a rotation or is on a ball joint
+  (`angular: 0`, which has no angle lock to hold it), a negative or NaN `fracture` (the sign is the
+  solver's flag for `linear`: say that, not a negative force), a bad or misplaced `yield`.
+  `World.addJoint` checks the same at the call (so nothing the solver would refuse is ever queued)
+  and says once per world, with `console.warn`, when `yieldForce` is not below `breakForce`: the
+  joint breaks before it can yield, so it never bends.
 
 ### Drawing: `BodyMesh`
 

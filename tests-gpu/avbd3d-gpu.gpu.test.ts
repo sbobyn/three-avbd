@@ -636,6 +636,11 @@ gpuTest('appendJoints: each joint carries its own break threshold, over the call
   assert.throws(() => solver.appendJoints([{ ...at(0) }, { ...at(1), angular: 0, yield: 1 }]), /yield needs a rigid angle lock/);
   assert.throws(() => solver.appendJoints([{ ...at(1), yield: -1 }]), /yield is a force/);
   assert.throws(() => solver.appendJoints([{ ...at(1), rest: [0, 0, 0, 0] }]), /rotation/);
+  // ...a ball joint has no angle lock to hold a rest, and the sign of a threshold is the flag for `linear`
+  assert.throws(() => solver.appendJoints([{ ...at(0) }, { ...at(1), angular: 0, rest: [0, 0, 0, 1] }]), /rest needs an angle lock/);
+  assert.throws(() => solver.appendJoints([{ ...at(0) }, { ...at(1), fracture: -5 }]), /fracture is a force of at least 0/);
+  assert.throws(() => solver.appendJoints([{ ...at(1) }], -5), /fracture is a force of at least 0/);
+  assert.throws(() => solver.appendJoints([{ ...at(1), fracture: NaN }]), /fracture is a force of at least 0/);
   assert.equal(solver.jointCount, count, 'no slot was taken');
   // The held joints read the pull they carry: the box's weight, 10 N
   assert.ok(Math.abs(states[1].linear - 10) < 1 && Math.abs(states[4].linear - 10) < 1, `carrying ${states[1].linear.toFixed(1)} N, ${states[4].linear.toFixed(1)} N`);

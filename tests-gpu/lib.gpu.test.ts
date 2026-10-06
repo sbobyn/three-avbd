@@ -540,3 +540,36 @@ gpuTest('three-avbd: addJoint refuses a rest that is not a rotation at the call,
   assert.ok(other.position[1] < 3, `and the box of the joint that was let go fell: y ${other.position[1].toFixed(2)}`);
   world.destroy();
 });
+
+/** The messages `console.warn` got while `fn` ran. */
+function warnings(fn: () => void): string[] {
+  const seen: string[] = [];
+  const warn = console.warn;
+  console.warn = (...args: unknown[]) => void seen.push(args.join(' '));
+  try {
+    fn();
+  } finally {
+    console.warn = warn;
+  }
+  return seen;
+}
+
+gpuTest('three-avbd: addJoint refuses a negative breakForce, and warns (once) when yieldForce is not below breakForce, so the joint never yields', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  const hook = world.addBox({ size: [1, 1, 1], position: [0, 5, 0], fixed: true })!;
+  const box = world.addBox({ size: [1, 1, 1], position: [0, 4, 0] })!;
+  // A negative threshold would be taken for the solver's flag for breaking on pull too
+  assert.throws(() => world.addJoint(hook, box, { breakForce: -5 }), /breakForce is a force of at least 0/);
+  assert.throws(() => world.addJoint(hook, box, { breakForce: NaN }), /breakForce is a force of at least 0/);
+
+  const said = warnings(() => {
+    for (const [yieldForce, breakForce] of [[100, 100], [100, 50], [100, 200], [Infinity, 50], [100, Infinity]]) world.addJoint(hook, box, { yieldForce, breakForce });
+    world.addJoint(hook, box, { yieldForce: 100 });
+    world.addJoint(hook, box, { breakForce: 50 });
+  });
+  assert.equal(said.length, 1, `one warning, for the first of the joints that never yield (not one per joint): ${said.join(' | ')}`);
+  assert.match(said[0], /yieldForce \(100\) is not below breakForce \(100\).*never bends/);
+  // Once per world, and a joint set up as it should be says nothing
+  assert.deepEqual(warnings(() => void world.addJoint(hook, box, { yieldForce: 10, breakForce: 100, breakOnPull: true })), []);
+  world.destroy();
+});

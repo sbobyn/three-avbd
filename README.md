@@ -62,8 +62,9 @@ await world.read();
   reused). Adds, changes and removals go to the GPU together at the next step.
 - **Joints**: `addJoint(a, b, { anchorA, anchorB, type: 'fixed' | 'ball', breakForce, breakOnPull, rest, yieldForce })`,
   `addSpring(a, b, { stiffness, rest })`, `joint.remove()`, and `world.onBreak(joint => ...)` at
-  each readback. A fixed joint can hold two bodies turned apart (`rest: 'current'`, or a
-  rotation) and bend for good under load (`yieldForce`: a plastic hinge, on the GPU with no
+  each readback. A fixed joint can hold two bodies turned apart (`rest`: a rotation, or
+  `'current'`, which takes the rotations as last read, so read first or add the joint before the
+  bodies move) and bend for good under load (`yieldForce`: a plastic hinge, on the GPU with no
   readback); `world.readJoints()` then `joint.force` and `joint.bend` say what it carries and how
   far it has given.
 - **Drawing**: `BodyMesh` takes any node material, geometry (scaled to each body's size) and
