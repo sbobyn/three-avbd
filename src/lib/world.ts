@@ -402,8 +402,6 @@ export class Joint {
   private pull = 0;
   private torque = 0;
   private bent = 0;
-  /** restRotation as the GPU holds it (f32), what `bend` is measured from. */
-  private readonly restStart: Float32Array | null;
 
   /** @internal Made by World.addJoint and addSpring. */
   constructor(world: World, a: Body, b: Body, options: JointInit) {
@@ -416,7 +414,6 @@ export class Joint {
     this.breakForce = options.spring ? Infinity : (options.breakForce ?? Infinity);
     this.breakOnPull = options.breakOnPull ?? false;
     this.restRotation = options.restRotation ?? null;
-    this.restStart = options.restRotation ? Float32Array.from(options.restRotation) : null;
     this.yieldForce = options.yieldForce ?? Infinity;
     this.stiffness = options.stiffness ?? Infinity;
     this.rest = options.restLength ?? 0;
@@ -446,17 +443,7 @@ export class Joint {
   update(state: JointState): void {
     this.pull = state.linear;
     this.torque = state.angular;
-    // The turn from the rest it started with to the one it holds now: conj(start)·rest
-    const [q, r] = [this.restStart, state.rest];
-    const qx = q ? -q[0] : 0;
-    const qy = q ? -q[1] : 0;
-    const qz = q ? -q[2] : 0;
-    const qw = q ? q[3] : 1;
-    const dx = qw * r[0] + qx * r[3] + qy * r[2] - qz * r[1];
-    const dy = qw * r[1] - qx * r[2] + qy * r[3] + qz * r[0];
-    const dz = qw * r[2] + qx * r[1] - qy * r[0] + qz * r[3];
-    const dw = qw * r[3] - qx * r[0] - qy * r[1] - qz * r[2];
-    this.bent = 2 * Math.atan2(Math.hypot(dx, dy, dz), Math.abs(dw));
+    this.bent = state.bend;
   }
 
   /** It broke (seen at a readback: World.read). */
@@ -1078,7 +1065,7 @@ export class World {
       if (joints) {
         // A broken joint's penalties are zeroed (wgsl-solve.ts dualJoint): let it go properly
         const broken: Joint[] = [];
-        const state: JointState = { linear: 0, angular: 0, broken: false, rest: [0, 0, 0, 1] };
+        const state: JointState = { linear: 0, angular: 0, broken: false, rest: [0, 0, 0, 1], bend: 0 };
         // Of the joints still in the world: one removed meanwhile is gone, and one placed after the
         // readback began may hold the slot of a joint that was removed: not its record to judge by
         for (const j of this.joints) {

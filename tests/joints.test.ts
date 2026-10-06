@@ -11,7 +11,7 @@ import { sceneByName } from '../src/avbd3d/ref/scenes.ts';
 import { Solver } from '../src/avbd3d/ref/solver.ts';
 import { createSim3D } from '../src/avbd3d/sim.ts';
 import { decodeJoint } from '../src/avbd3d/gpu/joints.ts';
-import { J_LAM_ANG, J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_REST, JOINT_FLOATS } from '../src/avbd3d/gpu/layout.ts';
+import { J_LAM_ANG, J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_REST, J_REST_START, JOINT_FLOATS } from '../src/avbd3d/gpu/layout.ts';
 
 const deg = (r: number) => (r * 180) / Math.PI;
 /** The angle (degrees) of the turn between two orientations. */
@@ -129,7 +129,7 @@ test('holdCurrentRotation takes the rest from the bodies as they are', () => {
  * A cantilever (z up): a fixed wall, `links` links of 1 m welded end to end, and a weight on the end.
  * Only the weld at the wall, the one that carries the most, yields or breaks (the others hold).
  */
-function cantilever(weight: number, options: { yield?: number; fracture?: number; linear?: boolean; links?: number } = {}) {
+function cantilever(weight: number, options: { yield?: number; fracture?: number; linear?: boolean; links?: number; breakBend?: number } = {}) {
   const solver = new Solver();
   const links = options.links ?? 4;
   const wall = new Rigid(solver, [1, 1, 1], 0, 0.5, [-0.5, 0, 5]);
@@ -141,7 +141,10 @@ function cantilever(weight: number, options: { yield?: number; fracture?: number
     const link = new Rigid(solver, [1, 0.3, 0.3], 1, 0.5, [i + 0.5, 0, 5]);
     const joint = new Joint(solver, prev, link, anchor, [-0.5, 0, 0], Infinity, Infinity, i === 0 ? (options.fracture ?? Infinity) : Infinity);
     joint.fractureLinear = options.linear ?? false;
-    if (i === 0) joint.yield = options.yield ?? Infinity;
+    if (i === 0) {
+      joint.yield = options.yield ?? Infinity;
+      joint.breakBend = options.breakBend ?? Infinity;
+    }
     joints.push(joint);
     beam.push(link);
     prev = link;
@@ -276,6 +279,94 @@ test('fracture still applies to a plastic joint: its linear force breaks it, and
   assert.ok(brittle.root.broken && brittle.root.rest === null, 'broke without ever yielding');
 });
 
+// --- A plastic joint's bend limit ------------------------------------------------------------
+
+// With yield < force <= fracture the dual cuts the force back to yield before the fracture test, so
+// a load that goes on bending a plastic joint never breaks it: 15 kg asks 87 of the weld that yields
+// at 60, and the force the dual ever sees is 60. breakBend is how a sustained overload tears it
+test('breakBend: a plastic joint under a sustained overload bends, then breaks at its bend limit; a fracture above its yield never sees the load; a lighter load bends less and holds', () => {
+  const limit = 0.6; // rad, 34.4°
+  const run = (weight: number, breakBend: number) => {
+    const c = cantilever(weight, { yield: 60, fracture: 120, breakBend });
+    let seen = 0;
+    let brokeAt = -1;
+    for (let i = 1; i <= 300 && brokeAt < 0; i++) {
+      c.solver.step();
+      seen = Math.max(seen, Math.sqrt(lengthSq(c.root.lambdaAng)));
+      if (c.root.broken) brokeAt = i;
+    }
+    return { ...c, seen, brokeAt };
+  };
+  // Without the limit: the overload swings the weld to 90° and it holds
+  const unlimited = run(15, Infinity);
+  assert.ok(unlimited.seen <= 60 * (1 + 1e-9) && unlimited.brokeAt < 0 && !unlimited.root.broken, `the force it sees stays at the yield (${unlimited.seen}) and it never breaks`);
+  assert.ok(unlimited.root.bend > 1.4, `bent ${deg(unlimited.root.bend).toFixed(1)}°, well past the limit`);
+  // With it: it breaks when it has bent that far, within the turn of an iteration (0.1°), and with
+  // a force no fracture was set to see
+  const heavy = run(15, limit);
+  assert.ok(heavy.root.broken && heavy.brokeAt > 0, 'the overload tears it');
+  assert.ok(heavy.root.bend > limit && heavy.root.bend < limit + 0.01, `at ${deg(heavy.root.bend).toFixed(2)}° of bend, the limit being ${deg(limit).toFixed(2)}°`);
+  assert.ok(heavy.seen <= 60 * (1 + 1e-9), `with the force at ${heavy.seen}, below the fracture of 120`);
+  // A lighter load (8 kg asks 47: it gives a little on landing) bends less than the limit and holds
+  const light = run(8, limit);
+  assert.ok(!light.root.broken && light.root.bend > 0 && light.root.bend < limit / 2, `bent ${deg(light.root.bend).toFixed(1)}° and holds`);
+  // Heavier breaks sooner (the more it asks, the faster it bends)
+  assert.ok(run(20, limit).brokeAt < heavy.brokeAt, 'a heavier load tears it sooner');
+});
+
+test('the dual update: a joint that gives and has bent past its breakBend breaks (keeping the rest it moved to), within it does not, and the bend is from the rest it started with', () => {
+  // B turned 5° about y from A, penalty 100: the force asked is 150, past a yield of 50. A joint
+  // made with a 2° rest has 3° to bend to it, and asked 108
+  const dual = (breakBend: number, rest?: Float64Array, yieldForce = 50) => {
+    const solver = new Solver();
+    const a = new Rigid(solver, [1, 1, 1], 0, 0.5, [0, 0, 0]);
+    const b = new Rigid(solver, [1, 1, 1], 1, 0.5, [1, 0, 0]);
+    b.positionAng.set(turn(5, [0, 1, 0]));
+    const joint = new Joint(solver, a, b, [0.5, 0, 0], [-0.5, 0, 0], Infinity, Infinity, 200);
+    joint.yield = yieldForce;
+    joint.breakBend = breakBend;
+    if (rest) joint.rest = rest;
+    joint.penaltyAng.fill(100);
+    joint.C0Ang.set([0, 0.5, 0]);
+    joint.updateDual(0.9);
+    return joint;
+  };
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const within = dual(rad(5.7));
+  assert.ok(!within.broken && Math.abs(deg(within.bend) - 5) < 1e-9, `gave to 5° within a limit of 5.7°: ${deg(within.bend)}°`);
+  const past = dual(rad(4.6));
+  assert.ok(past.broken && Math.abs(deg(past.bend) - 5) < 1e-9, 'past a limit of 4.6° it broke, with the rest it had moved to');
+  assert.equal(Math.sqrt(lengthSq(past.lambdaAng)), 0);
+  // From the rest it started with: 2° to 5° is 3° of bend, not 5°
+  const [start, inside, outside] = [turn(2, [0, 1, 0]), dual(rad(3.4), turn(2, [0, 1, 0])), dual(rad(2.6), turn(2, [0, 1, 0]))];
+  assert.ok(!inside.broken && Math.abs(deg(inside.bend) - 3) < 1e-9, `bent ${deg(inside.bend)}° from a 2° rest, within 3.4°`);
+  assert.ok(outside.broken, 'and past 2.6°');
+  assert.ok(Math.abs(between(inside.restStart!, start)) < 1e-12, 'the rest it started with is kept');
+  // A limit is tested when the joint gives: one that holds (yield 200 is above the 150 asked) is not asked, whatever its limit
+  const holds = dual(0, undefined, 200);
+  assert.ok(!holds.broken && holds.bend === 0 && holds.restStart === null, 'a joint that did not give has not bent');
+  // And a limit of 0 breaks a joint at its first give
+  assert.ok(dual(0).broken);
+});
+
+test('Joint.bend: the turn from the rest it started with to the one it holds, 0 until it gives, whichever sign each quaternion has', () => {
+  const solver = new Solver();
+  const joint = new Joint(solver, null, new Rigid(solver, [1, 1, 1], 1, 0.5, [0, 0, 0]), [0, 0, 0], [0, 0, 0]);
+  assert.equal(joint.bend, 0);
+  joint.rest = turn(30, [0, 0, 1]);
+  assert.equal(joint.bend, 0, 'a rest it was made with is not a bend');
+  joint.restStart = quat();
+  assert.ok(Math.abs(deg(joint.bend) - 30) < 1e-9, 'a rest moved 30° from the one it started with');
+  joint.rest = turn(30, [0, 0, 1]).map((x) => -x);
+  assert.ok(Math.abs(deg(joint.bend) - 30) < 1e-9, 'either sign');
+  joint.restStart = turn(10, [0, 0, 1]);
+  joint.rest = turn(-20, [0, 0, 1]);
+  assert.ok(Math.abs(deg(joint.bend) - 30) < 1e-9, 'from 10° to −20°');
+  joint.rest = null;
+  joint.restStart = quat();
+  assert.equal(joint.bend, 0, 'no rest is the identity');
+});
+
 // --- Reading a joint back --------------------------------------------------------------------
 
 test('decodeJoint reads a record: the forces carried, whether it broke, the rest it holds', () => {
@@ -286,11 +377,17 @@ test('decodeJoint reads a record: the forces carried, whether it broke, the rest
   joints[o + J_PEN_LIN + 3] = 3e38;
   joints[o + J_PEN_ANG + 3] = 3e38;
   joints.set([0, 0, 0.6, 0.8], o + J_REST);
+  joints.set([0, 0, 0.6, 0.8], o + J_REST_START);
   const held = decodeJoint(joints, 1);
   assert.equal(held.linear, 5);
   assert.equal(held.angular, 13);
   assert.equal(held.broken, false);
   assert.deepEqual(held.rest.map((x) => Math.round(x * 10) / 10), [0, 0, 0.6, 0.8]);
+  assert.equal(held.bend, 0, 'a rest it started with is not a bend: exactly 0');
+  // Started from the identity, the rest it holds is 2·atan2(0.6, 0.8) = 73.7° away
+  joints.set([0, 0, 0, 1], o + J_REST_START);
+  assert.ok(Math.abs(deg(decodeJoint(joints, 1).bend) - 73.7398) < 1e-3, `${deg(decodeJoint(joints, 1).bend)}°`);
+  assert.equal(decodeJoint(joints, 0).bend, 0, 'an empty record');
   // A ball joint has no angle lock (its angular stiffness is 0 from the start); broken is both zeroed
   joints[o + J_PEN_ANG + 3] = 0;
   assert.equal(decodeJoint(joints, 1).broken, false, 'a ball joint is not broken');

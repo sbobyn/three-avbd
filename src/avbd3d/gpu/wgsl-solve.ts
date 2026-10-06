@@ -223,8 +223,8 @@ fn warmStartJoints(@builtin(global_invocation_id) gid: vec3u) {
   let k = joints[j];
   let a = info[j].y;
   let b = info[j].z;
-  // Only the fields that change are stored back (not the anchors or the rest: a joint record is
-  // 144 bytes, and a joint-heavy scene runs this over every one)
+  // Only the fields that change are stored back (not the anchors or the rests: a joint record is
+  // 160 bytes, and a joint-heavy scene runs this over every one)
   joints[j].c0Lin = vec4f(jointLinC(k, a, b), 0.0);
   joints[j].c0Ang = vec4f(jointAngC(k, a, b), k.c0Ang.w);
   let decay = params.alpha * params.gamma;
@@ -523,10 +523,23 @@ fn dualJoint(j: u32) {
       penAng = vec4f(min(penAng.xyz + abs(C) * params.betaAng, vec3f(min(penAng.w, PENALTY_MAX))), penAng.w);
     }
   }
+  // A joint that gave moves its rest to where the bodies are. If it has then bent past its limit
+  // (layout.ts J_BREAK_BEND: the turn from the rest it started with to this one) it breaks, which
+  // is how a sustained overload tears a plastic joint: yield cuts its force back before the
+  // fracture test below sees more than a sudden jump
+  var rest = k.rest;
+  var bentOff = false;
+  if (yielded) {
+    rest = normalize(qmul(qconj(rotA(a)), bodies[b].rot));
+    if (k.rB.w < BIG) {
+      let d = qmul(qconj(k.restStart), rest);
+      bentOff = 2.0 * atan2(length(d.xyz), abs(d.w)) > k.rB.w;
+    }
+  }
   // Fracture: the joint stops acting for good (the CPU deletes it). A negative threshold (not in
   // the paper: GpuSolver3D.appendJoints) breaks on the linear force too, at the same limit
   let linear = frac < 0.0 && dot(lamLin.xyz, lamLin.xyz) > limit * limit;
-  if (limit < BIG && (dot(lamAng.xyz, lamAng.xyz) > limit * limit || linear)) {
+  if ((limit < BIG && (dot(lamAng.xyz, lamAng.xyz) > limit * limit || linear)) || bentOff) {
     penLin = vec4f(0.0);
     penAng = vec4f(0.0);
     lamLin = vec4f(0.0, 0.0, 0.0, frac);
@@ -537,7 +550,7 @@ fn dualJoint(j: u32) {
   joints[j].lamLin = lamLin;
   joints[j].lamAng = lamAng;
   if (yielded) {
-    joints[j].rest = normalize(qmul(qconj(rotA(a)), bodies[b].rot));
+    joints[j].rest = rest;
     joints[j].c0Ang = vec4f(0.0, 0.0, 0.0, k.c0Ang.w);
   }
 }

@@ -21,7 +21,7 @@ import { defaultParams, type Solver, type SolverParams } from '../ref/solver.ts'
 import {
   ARGS_ITEMS_3D, B_ANGVEL, B_INERTIAL_POS, B_INERTIAL_ROT, B_INITIAL_POS, B_INITIAL_ROT, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS,
   C_MANIFOLDS, CONTACT_WORDS, FLAG_FACE_BIAS, FLAG_MASS_PENALTY, FLAG_MATCH_NEAREST, FLAG_REUSE_CONTACTS, FLAG_START_AT_REST, J_C0_ANG, J_C0_LIN, J_LAM_ANG, K_LAM, K_PEN, K_RA, K_RB, M_GEO, MANIFOLD_WORDS, STICK_BIT,
-  J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, J_REST, J_YIELD, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_HULL, SHAPE_SAIL, SHAPE_SPHERE, T_JOINT, T_SPRING,
+  J_BREAK_BEND, J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, J_REST, J_REST_START, J_YIELD, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_HULL, SHAPE_SAIL, SHAPE_SPHERE, T_JOINT, T_SPRING,
   TOPOLOGY_ACCESSORS_3D,
 } from './layout.ts';
 import { hullOf, isSail, isSphere, type HullShape } from '../shapes.ts';
@@ -79,22 +79,34 @@ export interface JointSpec {
    * a perfectly plastic hinge, all on the GPU with no readback. The hinge then swings its load
    * with a torque of `yield` times the joint's torque arm. A force asked of it past `fracture`
    * breaks it instead; but one that gives is cut back to `yield` every iteration, so it seldom sees
-   * that much: to have a heavy load tear a plastic joint, break it on its pull (`linear`).
+   * that much (a `fracture` above `yield` catches only a sudden jump of the force): to have a load
+   * that keeps bending a plastic joint tear it, limit its bend (`breakBend`), or break it on its
+   * pull (`linear`: `fracture` is then in newtons for the pull).
    * Needs a rigid angle lock (leave `angular` out): a ball joint has none, and a finite stiffness is
    * a spring, not a hinge. Default: never yields.
    */
   yield?: number;
+  /**
+   * How far a plastic joint may bend before it breaks, an angle (rad, 0 to π): the turn from the
+   * rest it started with (its `rest`, or none) to the one it holds now, which each yield moves. It
+   * is tested when the joint yields, in the dual update (as is `fracture`, which a yielding joint
+   * seldom reaches), so a load that keeps bending a hinge tears it once it has bent this far.
+   * Needs a `yield`: a joint that cannot give cannot bend. Default: never.
+   */
+  breakBend?: number;
 }
 
 const finite = (x: number): number => (x === Infinity ? BIG : x === -Infinity ? -BIG : x);
 const groups = (n: number): number => Math.ceil(n / WORKGROUP_SIZE);
 const pow2AtLeast = (n: number): number => 2 ** Math.ceil(Math.log2(Math.max(n, 2)));
 
-/** A joint's record before anything is set: it never breaks or yields, and its rest is no turn. */
+/** A joint's record before anything is set: it never breaks or yields, and its rest (and the one it starts from) is no turn. */
 function freshJoint(o: Float32Array): void {
   o[J_LAM_LIN + 3] = BIG;
   o[J_YIELD] = BIG;
+  o[J_BREAK_BEND] = BIG;
   o[J_REST + 3] = 1;
+  o[J_REST_START + 3] = 1;
 }
 
 /** `q` (x, y, z, w) scaled to unit length, for a joint's rest; throws (naming `what`) unless it is four finite numbers, not all zero. */
@@ -886,7 +898,9 @@ export class GpuSolver3D {
       o.set(f.C0Lin, J_C0_LIN);
       o.set(f.C0Ang, J_C0_ANG);
       o[J_YIELD] = finite(f.yield);
+      o[J_BREAK_BEND] = finite(f.breakBend);
       o.set(f.rest ?? [0, 0, 0, 1], J_REST);
+      o.set(f.restStart ?? f.rest ?? [0, 0, 0, 1], J_REST_START);
       o.set(f.rA, J_RA);
       o.set(f.rB, J_RB);
     } else {
@@ -1136,6 +1150,10 @@ export class GpuSolver3D {
       const limit = j.fracture ?? fracture;
       if (!(limit >= 0)) throw new Error(`appendJoints: fracture is a force of at least 0 (a pull is limited with linear), not ${limit}`);
       if (j.rest && j.angular === 0) throw new Error('appendJoints: rest needs an angle lock to hold it: a ball joint (angular: 0) has none');
+      if (j.breakBend !== undefined) {
+        if (!(j.breakBend >= 0)) throw new Error(`appendJoints: breakBend is an angle of at least 0 (rad), not ${j.breakBend}`);
+        if (j.breakBend < Infinity && !(j.yield !== undefined && j.yield < Infinity)) throw new Error('appendJoints: breakBend limits how far a plastic joint bends: it needs a yield');
+      }
       if (j.yield === undefined) continue;
       if (!(j.yield >= 0)) throw new Error(`appendJoints: yield is a force of at least 0, not ${j.yield}`);
       if (j.angular !== undefined) throw new Error('appendJoints: yield needs a rigid angle lock (leave angular out): a ball joint has none to bend');
@@ -1149,8 +1167,12 @@ export class GpuSolver3D {
       const limit = finite(spec.fracture ?? fracture);
       o[J_LAM_LIN + 3] = (spec.linear ?? linear) ? -limit : limit;
       if (spec.yield !== undefined) o[J_YIELD] = finite(spec.yield);
+      if (spec.breakBend !== undefined) o[J_BREAK_BEND] = finite(spec.breakBend);
       const rest = rests[k];
-      if (rest) o.set(rest, J_REST);
+      if (rest) {
+        o.set(rest, J_REST);
+        o.set(rest, J_REST_START);
+      }
       o.set([rA[0], rA[1], rA[2]], J_RA);
       o.set([rB[0], rB[1], rB[2]], J_RB);
       const [sa, sb] = [this.bodies[a].size, this.bodies[b].size];

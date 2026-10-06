@@ -597,12 +597,12 @@ gpuTest('gravity pulls against the up axis (y-up by default, z when seeded from 
 
 // --- Per-joint thresholds, rest rotations, plastic joints ------------------------------------------
 
-/** What `readJoints` says of each slot's joint: broken, and the angle (degrees) of the rest it holds. */
+/** What `readJoints` says of each slot's joint: broken, its forces, and how far (degrees) it has bent from the rest it started with. */
 async function jointsOf(solver: GpuSolver3D, slots: number[]) {
   const raw = await solver.readJoints();
   return slots.map((slot) => {
-    const { broken, rest, linear, angular } = decodeJoint(raw, slot);
-    return { broken, linear, angular, bend: (2 * Math.acos(Math.min(1, Math.abs(rest[3]))) * 180) / Math.PI };
+    const { broken, bend, linear, angular } = decodeJoint(raw, slot);
+    return { broken, linear, angular, bend: (bend * 180) / Math.PI };
   });
 }
 
@@ -641,6 +641,10 @@ gpuTest('appendJoints: each joint carries its own break threshold, over the call
   assert.throws(() => solver.appendJoints([{ ...at(0) }, { ...at(1), fracture: -5 }]), /fracture is a force of at least 0/);
   assert.throws(() => solver.appendJoints([{ ...at(1) }], -5), /fracture is a force of at least 0/);
   assert.throws(() => solver.appendJoints([{ ...at(1), fracture: NaN }]), /fracture is a force of at least 0/);
+  // ...a bend limit is an angle of at least 0, and needs a joint that yields (else it could never bend)
+  assert.throws(() => solver.appendJoints([{ ...at(1), yield: 5, breakBend: -0.1 }]), /breakBend is an angle of at least 0/);
+  assert.throws(() => solver.appendJoints([{ ...at(1), breakBend: 0.5 }]), /breakBend limits how far a plastic joint bends: it needs a yield/);
+  assert.throws(() => solver.appendJoints([{ ...at(1), yield: Infinity, breakBend: 0.5 }]), /needs a yield/);
   assert.equal(solver.jointCount, count, 'no slot was taken');
   // The held joints read the pull they carry: the box's weight, 10 N
   assert.ok(Math.abs(states[1].linear - 10) < 1 && Math.abs(states[4].linear - 10) < 1, `carrying ${states[1].linear.toFixed(1)} N, ${states[4].linear.toFixed(1)} N`);
@@ -711,7 +715,7 @@ gpuTest('a joint\'s rest rotation holds two bodies turned apart (30° through fr
  * A cantilever on the GPU (z up): a fixed wall, four links of 1 m and a weight on the end, welded with
  * appendJoints. The weld at the wall is the one that yields and breaks; `weight` 0: none.
  */
-function cantileverOn(device: GPUDevice, weight: number, root: { yield?: number; fracture?: number; linear?: boolean }) {
+function cantileverOn(device: GPUDevice, weight: number, root: { yield?: number; fracture?: number; linear?: boolean; breakBend?: number }) {
   const ref = new Solver();
   const wall = new Rigid(ref, [1, 1, 1], 0, 0.5, [-0.5, 0, 5]);
   const links = [0, 1, 2, 3].map((i) => new Rigid(ref, [1, 0.3, 0.3], 1, 0.5, [i + 0.5, 0, 5]));
@@ -787,6 +791,118 @@ gpuTest('a plastic joint still breaks above its fracture: on its pull, and a fra
   brittle.solver.destroy();
 });
 
+/**
+ * Steps the solver, reading the joint in `slot` after each, until it breaks (up to `max` steps): the
+ * step it broke in (0: it did not), the most angular force it ever carried, and how far (rad) it had bent.
+ */
+async function untilBroken(solver: GpuSolver3D, slot: number, max: number) {
+  let seen = 0;
+  for (let step = 1; step <= max; step++) {
+    solver.step();
+    const state = decodeJoint(await solver.readJoints(), slot);
+    seen = Math.max(seen, state.angular);
+    if (state.broken) return { step, seen, bend: state.bend };
+  }
+  return { step: 0, seen, bend: decodeJoint(await solver.readJoints(), slot).bend };
+}
+
+// A hinge that gives has its force cut back to its yield every iteration, so a fracture above the
+// yield sees only a sudden jump: 15 kg asks 87 of a weld yielding at 60, and the dual never sees more
+// than 60. A bend limit is what a load that keeps bending it tears it with (docs/FINDINGS.md)
+gpuTest('breakBend: a plastic joint under a sustained overload bends, then breaks at its bend limit; a fracture above its yield never sees the load; a lighter load bends less and holds', async (device) => {
+  const limit = 0.6; // rad, 34.4°
+  const unlimited = cantileverOn(device, 15, { yield: 60, fracture: 120 });
+  const free = await untilBroken(unlimited.solver, unlimited.slots[0], 300);
+  assert.ok(free.step === 0 && free.seen <= 60 * 1.0001, `with no bend limit it holds, seeing a force of ${free.seen.toFixed(1)}`);
+  assert.ok(free.bend > 1.2, `swung to ${((free.bend * 180) / Math.PI).toFixed(0)}°, far past the limit`);
+  unlimited.solver.destroy();
+
+  // It breaks as the bend passes the limit (within the turn of an iteration), the force at the yield
+  const heavy = cantileverOn(device, 15, { yield: 60, fracture: 120, breakBend: limit });
+  const torn = await untilBroken(heavy.solver, heavy.slots[0], 300);
+  assert.ok(torn.step > 0, 'the overload tears it');
+  assert.ok(torn.bend > limit && torn.bend < limit + 0.01, `at ${((torn.bend * 180) / Math.PI).toFixed(2)}° of bend, the limit being ${((limit * 180) / Math.PI).toFixed(2)}°`);
+  assert.ok(torn.seen <= 60 * 1.0001, `a force of ${torn.seen.toFixed(1)}, below its fracture of 120`);
+  heavy.solver.destroy();
+
+  // 8 kg asks 47: it gives a little when it lands, bends less than the limit and holds
+  const light = cantileverOn(device, 8, { yield: 60, fracture: 120, breakBend: limit });
+  const held = await untilBroken(light.solver, light.slots[0], 300);
+  assert.ok(held.step === 0 && held.bend > 0 && held.bend < limit / 2, `bent ${((held.bend * 180) / Math.PI).toFixed(1)}° and holds`);
+  light.solver.destroy();
+});
+
+// The reference is the oracle for what a joint does (single-step diffs; long runs diverge, f32 and
+// colouring): so the sustained overload runs on both, from one scene, and the step a joint breaks in
+// and the bend it has then are compared. Measured: the same step (or one apart) and 0.2° of bend
+gpuTest('a plastic cantilever under a sustained overload breaks at its bend limit on the GPU in the step the reference does (the limit and the rest it started with travel through writeJoint)', async (device) => {
+  const limit = 0.6;
+  for (const [weight, breaks] of [[8, false], [12, true], [15, true], [20, true]] as const) {
+    const ref = new Solver();
+    let [prev, anchor] = [new Rigid(ref, [1, 1, 1], 0, 0.5, [-0.5, 0, 5]), [0.5, 0, 0]];
+    let root!: Joint;
+    for (let i = 0; i < 4; i++) {
+      const link = new Rigid(ref, [1, 0.3, 0.3], 1, 0.5, [i + 0.5, 0, 5]);
+      const joint = new Joint(ref, prev, link, anchor, [-0.5, 0, 0], Infinity, Infinity, i === 0 ? 120 : Infinity);
+      if (i === 0) {
+        joint.yield = 60;
+        joint.breakBend = limit;
+        root = joint;
+      }
+      [prev, anchor] = [link, [0.5, 0, 0]];
+    }
+    new Joint(ref, prev, new Rigid(ref, [0.6, 0.6, 0.6], weight / 0.216, 0.5, [4.3, 0, 5]), anchor, [-0.3, 0, 0], Infinity, Infinity);
+    const gpu = new GpuSolver3D(device, ref, { spatialSort: false });
+    let [cpuStep, gpuStep, gpuBend] = [0, 0, 0];
+    for (let step = 1; step <= 150; step++) {
+      ref.step();
+      gpu.step();
+      if (!cpuStep && root.broken) cpuStep = step;
+      const state = decodeJoint(await gpu.readJoints(), 0);
+      if (!gpuStep && state.broken) gpuStep = step;
+      gpuBend = state.bend;
+    }
+    const where = `${weight} kg`;
+    assert.equal(cpuStep > 0, breaks, `${where}: the reference ${breaks ? 'breaks' : 'holds'} (step ${cpuStep})`);
+    assert.equal(gpuStep > 0, breaks, `${where}: the GPU ${breaks ? 'breaks' : 'holds'} (step ${gpuStep})`);
+    if (breaks) assert.ok(Math.abs(cpuStep - gpuStep) <= 3, `${where}: broke in step ${gpuStep} on the GPU, ${cpuStep} in the reference`);
+    for (const [name, bend] of [['reference', root.bend], ['GPU', gpuBend]] as const) {
+      assert.ok(breaks ? bend > limit && bend < limit + 0.01 : bend > 0 && bend < limit / 2, `${where}: the ${name} has bent ${((bend * 180) / Math.PI).toFixed(2)}°`);
+    }
+    assert.ok(Math.abs(gpuBend - root.bend) < 0.01, `${where}: bent ${((gpuBend * 180) / Math.PI).toFixed(2)}° on the GPU, ${((root.bend * 180) / Math.PI).toFixed(2)}° in the reference`);
+    gpu.destroy();
+  }
+});
+
+// What a joint starts with is the rest its bend is measured from (J_REST_START): a joint made with
+// a rest, appendJoints' `rest`, has bent from it, not from no turn
+gpuTest('a plastic joint made with a rest measures its bend from that rest, and breaks on that bend (appendJoints keeps the rest it started with)', async (device) => {
+  const h = (25 * Math.PI) / 360;
+  const start = [Math.sin(h), 0, 0, Math.cos(h)];
+  // B turned 25° about x from A and held there by the rest, spinning about y: it gives a little
+  const run = async (breakBend: number | undefined) => {
+    const ref = new Solver();
+    ref.gravity = 0;
+    new Rigid(ref, [1, 1, 1], 0, 0.5, [0, 0, 5]);
+    const b = new Rigid(ref, [1, 1, 1], 10, 0.5, [0.5 + 0.5 * Math.cos(2 * h), -0.5 * Math.sin(2 * h), 5]);
+    b.positionAng.set(start);
+    b.velocityAng.set([0, 10, 0]);
+    const solver = new GpuSolver3D(device, ref, { spatialSort: false });
+    solver.params.gravity = 0;
+    const [slot] = solver.appendJoints([{ a: 0, b: 1, rA: [0.5, 0, 0], rB: [-0.5, 0, 0], rest: start, yield: 30, breakBend }]);
+    for (let k = 0; k < 3; k++) solver.step();
+    const state = decodeJoint(await solver.readJoints(), slot);
+    solver.destroy();
+    return state;
+  };
+  const free = await run(undefined);
+  assert.ok(!free.broken && free.bend > 0.02 && free.bend < 0.25, `it has given ${((free.bend * 180) / Math.PI).toFixed(1)}° from its rest (it is turned 25° from none)`);
+  const within = await run(free.bend * 1.5);
+  assert.ok(!within.broken, 'within a limit above that bend it holds (measured from no turn, the 25° would have broken it)');
+  const past = await run(free.bend / 2);
+  assert.ok(past.broken, 'past a limit below it breaks');
+});
+
 // A joint given an error it can't correct within its yield takes it as the bend. The step's
 // reference error (C0, Eq. 18) moves with the rest: kept, it would pull the new rest's error back
 // each step, and the bodies spun away (measured, docs/FINDINGS.md)
@@ -819,15 +935,22 @@ gpuTest('a plastic joint whose bodies start off its rest takes the offset as its
 // one, as after a long load): the force asked is 54 on the first iteration and settles at 82. The
 // reference is the oracle for what a joint does past its yield and its fracture, and in which
 // order, and for how the penalty ramps while it gives; the last case holds a turned pair by its rest.
-gpuTest('seeded single step: plastic, breaking and rest joints match the CPU reference (yield, fracture, the rest it moves)', async (device) => {
-  const cases: { name: string; yield: number; fracture: number; rest?: number[] }[] = [
+// A joint that gives is 3.285° bent (0.0573 rad) from the rest it started with after the step: the
+// bend limits 0.065 and 0.05 either side of it say whether it holds or breaks, as the reference's do.
+gpuTest('seeded single step: plastic, breaking and rest joints match the CPU reference (yield, fracture, bend limit, the rest it moves)', async (device) => {
+  const cases: { name: string; yield: number; fracture: number; rest?: number[]; breakBend?: number; breaks?: boolean; bend?: [number, number] }[] = [
     { name: 'rigid', yield: Infinity, fracture: Infinity },
     { name: 'yields', yield: 30, fracture: Infinity },
     { name: 'fracture below the force asked, yield below it too', yield: 30, fracture: 40 },
     { name: 'yield above the force asked', yield: 200, fracture: Infinity },
     { name: 'yields between yield and fracture', yield: 30, fracture: 200 },
+    { name: 'yields within its bend limit', yield: 30, fracture: 200, breakBend: 0.065, breaks: false, bend: [0.05, 0.065] },
+    { name: 'yields past its bend limit: breaks', yield: 30, fracture: 200, breakBend: 0.05, breaks: true },
+    { name: 'a bend limit on a joint that does not yield', yield: 200, fracture: Infinity, breakBend: 0, breaks: false },
     // B starts turned 25° about x from A's frame and the rest says so (no error, no yield)
     { name: 'rest', yield: Infinity, fracture: Infinity, rest: [Math.sin((25 * Math.PI) / 360), 0, 0, Math.cos((25 * Math.PI) / 360)] },
+    // ...and one that gives, from that rest: it has bent a few degrees from it, not the 25° it is turned from the identity
+    { name: 'yields from a rest it started with: the bend is from that rest', yield: 30, fracture: 200, breakBend: 0.2, breaks: false, bend: [0.01, 0.2], rest: [Math.sin((25 * Math.PI) / 360), 0, 0, Math.cos((25 * Math.PI) / 360)] },
   ];
   for (const c of cases) {
     const ref = new Solver();
@@ -841,6 +964,7 @@ gpuTest('seeded single step: plastic, breaking and rest joints match the CPU ref
     b.velocityAng.set([0, 10, 0]);
     const joint = new Joint(ref, a, b, [0.5, 0, 0], [-0.5, 0, 0], Infinity, Infinity, c.fracture);
     joint.yield = c.yield;
+    joint.breakBend = c.breakBend ?? Infinity;
     if (c.rest) joint.rest = Float64Array.from(c.rest);
     joint.penaltyAng.fill(100);
     joint.penaltyLin.fill(1e4);
@@ -856,6 +980,10 @@ gpuTest('seeded single step: plastic, breaking and rest joints match the CPU ref
     const state = decodeJoint(joints, 0);
     const where = `${c.name}`;
     assert.equal(state.broken, joint.broken, `${where}: broken`);
+    if (c.breaks !== undefined) assert.equal(joint.broken, c.breaks, `${where}: the reference's own decision`);
+    if (c.bend) assert.ok(joint.bend > c.bend[0] && joint.bend < c.bend[1], `${where}: the reference's own bend, ${joint.bend}`);
+    // How far it has bent, from the rest it started with: also of a joint that broke on it
+    assert.ok(Math.abs(state.bend - joint.bend) < 1e-5, `${where}: bend ${state.bend} vs ${joint.bend}`);
     if (!joint.broken) {
       assert.ok(Math.abs(state.angular - Math.sqrt(lengthSq(joint.lambdaAng))) < 0.02 * Math.max(1, state.angular), `${where}: |λ_ang| ${state.angular} vs ${Math.sqrt(lengthSq(joint.lambdaAng))}`);
       // The rest it holds: the reference's (null: the identity), either sign

@@ -2,7 +2,8 @@
 // per slot (layout.ts says what each field holds). This decodes one slot's record into what
 // users ask of it: how hard the joint is working, whether it has broken, how it has bent.
 
-import { J_LAM_ANG, J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_REST, JOINT_FLOATS } from './layout.ts';
+import { qangle } from '../ref/math.ts';
+import { J_LAM_ANG, J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_REST, J_REST_START, JOINT_FLOATS } from './layout.ts';
 
 /** A joint as of a readback (the last iteration of the last step). */
 export interface JointState {
@@ -21,6 +22,17 @@ export interface JointState {
   broken: boolean;
   /** The relative rotation its angle lock holds now: rotB = rotA·rest (x, y, z, w). A plastic joint moves it. */
   rest: [number, number, number, number];
+  /**
+   * How far it has bent (rad, 0 to π): the turn from the rest it started with to the one it holds
+   * now. Exactly 0 for a joint that never yielded; the number `breakBend` limits.
+   */
+  bend: number;
+}
+
+/** How far the joint in slot `slot` of a `readJoints()` result has bent (rad): see JointState.bend. */
+export function jointBend(joints: ArrayLike<number>, slot: number): number {
+  const o = slot * JOINT_FLOATS;
+  return qangle(joints, joints, o + J_REST_START, o + J_REST);
 }
 
 /**
@@ -29,10 +41,11 @@ export interface JointState {
  */
 export function decodeJoint(joints: ArrayLike<number>, slot: number, into?: JointState): JointState {
   const o = slot * JOINT_FLOATS;
-  const state = into ?? { linear: 0, angular: 0, broken: false, rest: [0, 0, 0, 1] };
+  const state = into ?? { linear: 0, angular: 0, broken: false, rest: [0, 0, 0, 1], bend: 0 };
   state.linear = Math.hypot(joints[o + J_LAM_LIN], joints[o + J_LAM_LIN + 1], joints[o + J_LAM_LIN + 2]);
   state.angular = Math.hypot(joints[o + J_LAM_ANG], joints[o + J_LAM_ANG + 1], joints[o + J_LAM_ANG + 2]);
   state.broken = joints[o + J_PEN_LIN + 3] === 0 && joints[o + J_PEN_ANG + 3] === 0;
   for (let i = 0; i < 4; i++) state.rest[i] = joints[o + J_REST + i];
+  state.bend = jointBend(joints, slot);
   return state;
 }

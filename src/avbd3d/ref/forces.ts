@@ -19,6 +19,7 @@ import {
   mulv,
   neg3,
   outer,
+  qangle,
   qmul,
   qnormalize,
   qsub,
@@ -111,6 +112,19 @@ export class Joint extends Force {
    * Infinity: it never yields.
    */
   yield = Infinity;
+  /**
+   * The rest the joint was made with, which `bend` is measured from: a yield moves `rest` away
+   * from it. null: the rest the joint holds when it first yields (set then), so a joint that has
+   * not yielded has not bent. A scene that makes a joint already bent sets `rest` to the bent
+   * turn and this to the straight one.
+   */
+  restStart: Quat | null = null;
+  /**
+   * Past this bend (rad, see `bend`) a plastic joint breaks, in the dual update of the iteration
+   * it yields in: the way a sustained overload tears it, since yielding cuts its force back
+   * before the fracture test sees more than a sudden jump. Infinity: it never breaks on its bend.
+   */
+  breakBend = Infinity;
 
   constructor(
     solver: Solver,
@@ -162,6 +176,11 @@ export class Joint extends Force {
     const rotA = this.bodyA ? this.bodyA.positionAng : IDENTITY;
     qnormalize(qRest, qmul(qRest, conjugate(qRest, rotA), this.bodyB.positionAng));
     (this.rest ??= quat()).set(qRest);
+  }
+
+  /** How far the joint has bent (rad, 0 to π): the turn from the rest it started with to the one it holds. */
+  get bend(): number {
+    return this.restStart ? qangle(this.restStart, this.rest ?? IDENTITY) : 0;
   }
 
   initialize(): boolean {
@@ -261,10 +280,10 @@ export class Joint extends Force {
     }
 
     // Angular constraint
+    let yielded = false;
     if (lengthSq(this.penaltyAng) > 0) {
       diagonal(K, this.penaltyAng[0], this.penaltyAng[1], this.penaltyAng[2]);
       this.evaluateAng(C);
-      let yielded = false;
       if (this.stiffnessAng === Infinity) {
         addScaled3(C, C, this.C0Ang, -alpha);
         mulv(F, K, C);
@@ -273,6 +292,7 @@ export class Joint extends Force {
         // rest (its error and the step's reference error with it) and the force is cut back
         const force2 = lengthSq(this.lambdaAng);
         if (force2 > this.yield * this.yield && force2 <= this.fracture * this.fracture) {
+          this.restStart ??= this.rest ? Float64Array.from(this.rest) : quat();
           this.holdCurrentRotation();
           this.C0Ang.fill(0);
           scale3(this.lambdaAng, this.lambdaAng, this.yield / Math.sqrt(force2));
@@ -286,8 +306,12 @@ export class Joint extends Force {
       }
     }
 
-    // Fracture
-    if (lengthSq(this.lambdaAng) > this.fracture * this.fracture || (this.fractureLinear && lengthSq(this.lambdaLin) > this.fracture * this.fracture)) {
+    // Fracture, or a joint that gave and has bent past its limit
+    if (
+      lengthSq(this.lambdaAng) > this.fracture * this.fracture ||
+      (this.fractureLinear && lengthSq(this.lambdaLin) > this.fracture * this.fracture) ||
+      (yielded && this.bend > this.breakBend)
+    ) {
       this.penaltyLin.fill(0);
       this.penaltyAng.fill(0);
       this.lambdaLin.fill(0);
