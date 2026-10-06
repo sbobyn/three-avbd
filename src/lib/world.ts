@@ -128,7 +128,9 @@ export interface JointOptions {
   /**
    * A fixed joint that bends: past this angular force (measured as `breakForce` is, so below it)
    * the joint gives, carries no more than this, and keeps the bend: a hinge that stays bent once
-   * the load is gone, a beam that sags under a weight for good. None: it never yields.
+   * the load is gone, a beam that sags under a weight for good. None: it never yields. A joint
+   * that gives is cut back every iteration, so `breakForce` on its torque seldom sees more than
+   * this: to have a heavy load tear it too, add `breakOnPull`.
    */
   yieldForce?: number;
 }

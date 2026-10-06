@@ -865,7 +865,8 @@ gpuTest('seeded single step: plastic, breaking and rest joints match the CPU ref
       for (let k = 0; k < 3; k++) d = Math.max(d, Math.abs(bodies[i * BODY_FLOATS + k] - body.positionLin[k]));
       for (let k = 0; k < 4; k++) d = Math.max(d, Math.abs(bodies[i * BODY_FLOATS + 4 + k] - body.positionAng[k]));
     });
-    assert.ok(d < 2e-4, `${where}: pose diff ${d}`);
+    // Measured ≤ 9.1e-8 (docs/FINDINGS.md)
+    assert.ok(d < 1e-5, `${where}: pose diff ${d}`);
     gpu.destroy();
   }
 });

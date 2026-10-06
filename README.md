@@ -60,9 +60,12 @@ await world.read();
   fixed body as a moving platform or door, carrying what it touches), `body.set({ position, velocity, ... })`,
   `body.setFixed()`, `body.remove()` (its slot is
   reused). Adds, changes and removals go to the GPU together at the next step.
-- **Joints**: `addJoint(a, b, { anchorA, anchorB, type: 'fixed' | 'ball', breakForce, breakOnPull })`,
+- **Joints**: `addJoint(a, b, { anchorA, anchorB, type: 'fixed' | 'ball', breakForce, breakOnPull, rest, yieldForce })`,
   `addSpring(a, b, { stiffness, rest })`, `joint.remove()`, and `world.onBreak(joint => ...)` at
-  each readback.
+  each readback. A fixed joint can hold two bodies turned apart (`rest: 'current'`, or a
+  rotation) and bend for good under load (`yieldForce`: a plastic hinge, on the GPU with no
+  readback); `world.readJoints()` then `joint.force` and `joint.bend` say what it carries and how
+  far it has given.
 - **Drawing**: `BodyMesh` takes any node material, geometry (scaled to each body's size) and
   a set of bodies (a shape, a list or a test), with `setColor(body, color)` per body.
 - **Raycasts**: `await world.raycast(origin, direction)` gives the first body hit, the point and
@@ -75,7 +78,8 @@ await world.read();
 - **Headless**: `World.create({ device })` runs without a renderer (Node with Dawn, workers).
 - **Advanced**: `three-avbd/advanced` exposes the solver underneath (`world.solver`) and the
   layout of its body, joint and contact buffers and counters, for your own compute passes and
-  readbacks.
+  readbacks. `appendJoints` takes each joint's own break threshold, rest rotation and yield. (0.3
+  grew the joint record to 36 floats: stride by `JOINT_FLOATS`.)
 
 The design and what's planned: [docs/API.md](docs/API.md). A runnable example:
 [examples/basic.ts](examples/basic.ts) (`pnpm dev`, then `/examples/basic.html`).
@@ -86,6 +90,9 @@ The design and what's planned: [docs/API.md](docs/API.md). A runnable example:
   Smash, Breakable Wall, Chain Mail, Ragdolls on Cloth (Fig. 14), Heavy Pendulum (a 50,000:1
   mass ratio), a Flag in the Wind (pressure drag and skin friction on bodies marked as sails),
   and scale tests: Jointed Drop, box piles and Box Columns (100,000 boxes).
+- **Plastic Beam**: a cantilever welded to a wall with a weight on its end. The welds are
+  plastic: they hold up to a moment, bend past it and keep the bend (take the weight off and the
+  beam stays bent), and the wall's weld tears under a heavy enough weight.
 - **Starry Night** pours 20,000 spheres into a glass-fronted box and they come to rest as the
   painting. **Mona Lisa Tower** drops 50,000 bricks that stack into the Mona Lisa. Both lean
   on the solver being deterministic: the scene runs once off screen to find where each body

@@ -1,6 +1,6 @@
 # three-avbd: library API
 
-Status: v0.2 (npm `three-avbd`; see `PLAN.md` stages 9 and 10).
+Status: v0.3 (npm `three-avbd`; see `PLAN.md` stages 9 to 11).
 
 ## Goal
 
@@ -16,8 +16,11 @@ published.
 - **`three-avbd`**: the stable surface described below (`World`, body and joint handles,
   `BodyMesh`).
 - **`three-avbd/advanced`**: the escape hatch. It exports `GpuSolver3D` (with the reference
-  `Solver`, `Rigid` and `sphere` it's seeded from), the body and joint buffer layout, the contact and manifold record layout and the counters, hull shapes (`hull`, `convexHull`, `hullFromTriangles`), and the device and buffers of a `World`, for people writing their own compute
+  `Solver`, `Rigid` and `sphere` it's seeded from), the body and joint buffer layout, the contact and manifold record layout and the counters, hull shapes (`hull`, `convexHull`, `hullFromTriangles`), a decoder for a joint read back (`decodeJoint`), and the device and buffers of a `World`, for people writing their own compute
   passes over the bodies (the voxel city's blast shader). No stability promise in 0.x.
+  **Breaking in 0.3:** a joint record is `JOINT_FLOATS` = 36 floats, not 32 (it gained the rest
+  rotation, `J_REST`, and a yield word, `J_YIELD`): code reading the raw joint buffer (`readJoints`)
+  must stride by the exported constant.
 - Built by `tsc` from `src/lib/` into `build/` (the site builds to `dist/`). The package `files` list is `build` only,
   so demos, benchmarks, fixtures and the reference ports stay out of the tarball.
 
@@ -128,16 +131,51 @@ renderer.setAnimationLoop(() => {
 
 ### Joints
 
-- `addJoint(a, b, { anchorA?, anchorB?, type?, breakForce?, breakOnPull? })` returns a `Joint`:
-  `type` 'fixed' (rigid, the default) or 'ball' (held at the anchors, free to turn: the joint
-  with no angular stiffness). `breakForce` is the paper's torque-based fracture; `breakOnPull`
-  also breaks on linear force (the new negative-threshold mode). A ball joint carries no torque,
-  so it breaks only on pull.
+- `addJoint(a, b, { anchorA?, anchorB?, type?, breakForce?, breakOnPull?, rest?, yieldForce? })`
+  returns a `Joint`: `type` 'fixed' (rigid, the default) or 'ball' (held at the anchors, free to
+  turn: the joint with no angular stiffness). `breakForce` is the paper's torque-based fracture;
+  `breakOnPull` also breaks on linear force (the new negative-threshold mode). A ball joint carries
+  no torque, so it breaks only on pull. Every joint carries its own thresholds: the world uploads
+  them all in one `appendJoints` call.
+- A rest rotation (0.3): a fixed joint's angle lock holds the two bodies' rotations equal, which
+  twists two bodies placed turned apart toward each other (30° apart became 27°, 22° and 16° after
+  10, 30 and 60 steps). `rest` is the turn to hold instead: b's orientation in a's frame as a
+  quaternion `[x, y, z, w]`, so the joint holds `b = a·rest` whatever frames the bodies have, or
+  `'current'` for the turn they have when the joint is added (by the rotations the world knows: as
+  last read, or as set). The identity is the default, and the old joint. The error is taken the
+  short way round, so either sign of either quaternion holds.
+- Plastic joints (0.3): `yieldForce` makes a fixed joint bend. Past that angular force (the number
+  `breakForce` limits, so below it) the joint gives: in the solver's dual update its rest moves to
+  where the bodies are and the force it carries is cut back to `yieldForce`, a perfectly plastic
+  hinge that carries no more and keeps the bend. It swings a load with a torque of `yieldForce`
+  times the joint's torque arm, |size_a + size_b|², and holds wherever the load stops, with nothing
+  springing back once the load is gone. All on the GPU, no readback. `joint.bend` says how far it
+  has bent (rad). Notes: a load put on all at once overshoots to about twice its static demand
+  before it settles, so give the yield that room; and a hinge that gives is cut back every
+  iteration, so `breakForce` on its torque catches only what arrives all at once: to have a heavy
+  load tear a plastic joint, use `breakOnPull`, which measures the weight it carries (the Plastic
+  Beam demo: a weld that bends under a weight and tears off its wall under more). Fixed joints
+  only (a ball joint has no angle lock to bend, and either option throws there); there is no
+  linear plasticity.
+- What a joint carries (0.3): `await world.readJoints()` (or `world.read()`, which reads the joints
+  whenever one can break or yield) refreshes `joint.force`, `{ linear, angular }`: |λ_lin|, the
+  force (N) holding its anchors together (a hanging 1 kg box: 9.81), and |λ_ang|, the angular
+  force of its angle lock, the number `breakForce` and `yieldForce` limit (its torque is that times
+  the torque arm). Both are of the last iteration of the last step. A joint that breaks has its
+  stiffness zeroed on the GPU (`J_PEN_LIN + 3` and `J_PEN_ANG + 3`), which is how `read()` sees it
+  and what `joint.broken` and `onBreak` report; its forces then read zero. Reading the raw
+  records yourself: `decodeJoint(await world.solver.readJoints(), slot)` from `three-avbd/advanced`
+  gives `{ linear, angular, broken, rest }` for a slot.
 - `addSpring(a, b, { anchorA?, anchorB?, stiffness, rest? })` (0.2): the solver's springs, added
   at runtime (`GpuSolver3D.appendSprings`); `rest` defaults to the anchors' distance when added.
 - `joint.remove()` (`releaseJoints`, whose slots are reused). `joint.broken` and
   `world.onBreak(cb)` report breaks seen at a readback (a broken joint's penalties are zeroed on
   the GPU); the world then releases it, so its bodies collide again.
+- In the solver (`three-avbd/advanced`, 0.3): `appendJoints(joints, fracture?, linear?)` takes
+  joints `{ a, b, rA, rB, angular?, fracture?, linear?, rest?, yield? }`: a joint's own `fracture`
+  and `linear` override the call's (which stay, as defaults), `rest` is the turn to hold as above
+  (`rotB = rotA·rest`, so `rest = rotA⁻¹·rotB` takes it from two bodies as they are) and `yield`
+  the plastic threshold (a rigid angle lock only: left out `angular`).
 
 ### Drawing: `BodyMesh`
 
@@ -178,7 +216,8 @@ renderer.setAnimationLoop(() => {
 
 - GPU tests (headless Dawn, `tests-gpu/lib.gpu.test.ts`) that use only the public API: a box
   comes to rest on the ground, a joint that breaks on pull lets go and reports it while an
-  unbreakable one holds, and removed bodies' slots are reused.
+  unbreakable one holds, and removed bodies' slots are reused. (0.3: a rest holds a turn through
+  tumbling, a plastic cantilever bends and stays bent, and a joint's forces read back.)
 - `BodyMesh` needs a renderer, so it's checked in the browser: `examples/basic.html` runs in the
   dev server (pyramid, raining spheres removed as new ones come, a breakable chain).
 - `pnpm build:lib` then `pnpm pack`: installed into a blank Vite project, it typechecks with

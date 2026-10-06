@@ -2,6 +2,114 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-10-06 — Joints that hold a turn and bend for good: a rest rotation, yield, per-joint thresholds
+
+Why: three-destruction (`three-destruction/avbd`) builds falling building sections and hinges on
+the GPU joints, and 0.2.2 made it work around three things. `appendJoints` took one break
+threshold per call (so it grouped joints by force and made one upload each). The angle lock
+forced the two bodies' rotations equal, so a hull's principal frame, up to 45° from its
+neighbour's, was twisted into line: it held each link with three ball joints instead of one fixed
+joint. And a joint always sprang back to its rest pose (hinges faked a bent rest by removing and
+re-adding a spring from readbacks).
+
+What (`GpuSolver3D.appendJoints`, `World.addJoint`, the reference `Joint`; layout in `layout.ts`):
+- A joint's own `fracture` and `linear` over the call's.
+- A rest rotation per joint (`rest`, `J_REST`): the angle lock holds rotB = rotA·rest, with the
+  error 2·vec((rotA·rest)·rotB⁻¹) times the torque arm, taken in the hemisphere with w >= 0 (q and
+  −q are one rotation). The identity, the default, is the demo's joint.
+- Yield (`yield`, `J_YIELD`, in the spare w of C0's angular vec4), on a rigid angle lock only: in
+  the dual update a force asked of it past `yield` but not past `fracture` moves its rest to
+  `rotA⁻¹·rotB`, zeroes the step's reference error C0 and cuts |λ_ang| back to `yield`; the
+  penalty is not ramped while it gives (the force is at its bound, as a clamped one's).
+- The joint record is 36 floats (`JOINT_FLOATS`, 32 before): breaking for raw readers through
+  `three-avbd/advanced`. The warm start and the dual store back only the fields they change.
+- Skipped: linear (positional) plasticity. The linear rows stay hard, and break on `linear`.
+
+### The default twists, the rest holds (GPU, Dawn on the M4 Max)
+Two unit boxes in free fall, spinning, B turned 30° about a skew axis from A, joined at a shared
+face, the angle between them after 10, 30 and 60 steps:
+
+| | 10 | 30 | 60 |
+|---|---|---|---|
+| default (identity rest), A turned or not | 27.07° | 22.07° | 16.28° |
+| `rest = rotA⁻¹·rotB`, either sign of B's quaternion | 30.00° | 30.00° | 30.00° |
+
+The default's numbers are three-destruction's (27°, 22°, 16°) to the digit, so the identity rest
+changes nothing (the CPU reference with it set to the identity is bit-identical on Breakable, and
+the seeded parity tests are unchanged). Without the short way round, a rest and B's quaternion of
+opposite sign drift to 29.5°, 29.6°, 29.7°: the error then points the long way, and the lock
+pushes the bodies off the turn it holds.
+
+### What a plastic hinge does: it carries `yield`, and swings a load as a hinge
+CPU reference (f64), a cantilever of four 1 m links with a weight on the end, 10 iterations,
+dt 1/60, the weld at the wall yielding at |λ_ang| = 60 (torque arm 7.38, so 443 N·m). A rigid-
+plastic hinge swings a load W until W g L sin φ = M φ (L = 4.3 m out, M = torqueArm × yield);
+the simulated furthest swing against that:
+
+| yield | weight | load / hinge moment | simulated | ideal |
+|---|---|---|---|---|
+| 60 | 12 kg | 1.17 | 64.3° | 54.1° |
+| 60 | 15 kg | 1.46 | 89.6° | 82.8° |
+| 60 | 20 kg | 1.94 | 111.0° | 106.6° |
+| 100 | 20 kg | 1.17 | 64.4° | 54.1° |
+| 100 | 30 kg | 1.75 | 103.3° | 98.9° |
+| 30 | 6 kg | 1.17 | 65.9° | 54.1° |
+
+The swing overshoots the ideal by 4–12° (the beam's own mass and the solver's damping), so the
+hinge does carry about `yield`: `tests/joints.test.ts` holds it to 12°. |λ_ang| never passes
+`yield` (60.0 over a 600-step run). On the GPU the same beam turns 11.9°, 43.0°, 80.0°, 106.0° at
+0.5, 1, 1.5 and 2 s against the CPU's 11.9°, 43.0°, 80.2°, 106.7°, and settles at 108.8° (CPU
+109.9°); a seeded single step of a joint asked for a lot at once matches the reference to 9e-8
+(yield, fracture, the rest it moves; `tests-gpu/avbd3d-gpu.gpu.test.ts`).
+
+### Fracture above a yield: what the dual sees
+The dual tests fracture on the force asked, |k·C* + λ|, before the cut-back; but a hinge that
+gives is cut back to `yield` every iteration, so it sees little more than yield plus one
+iteration's slip. Same beam, yield 60, the largest force seen over a run against the static
+demand of the load (W g L / torque arm):
+
+| weight | 2 kg | 5 | 10 | 15 | 20 | 30 | 40 | 60 |
+|---|---|---|---|---|---|---|---|---|
+| static demand | 12 | 29 | 58 | 87 | 117 | 175 | 233 | 350 |
+| seen by the dual | 30 | 61 | 63 | 69 | 74 | 79 | 81 | 86 |
+
+So an angular fracture just above the yield tears only what arrives all at once, and a heavy
+static load makes the hinge swing rather than tear. To make a load break a plastic joint use its
+pull (`linear`: |λ_lin| is the weight it carries and stays hard): the Plastic Beam's wall weld
+(bends at 700 N·m, tears at 400 N) pulled up to 139 N under 8 kg (bent, held), 255 N under 14 kg
+(a folded beam, held) and ~550 N under 25 kg (CPU: torn at 20 kg and up, not at 14).
+
+A load put on all at once overshoots to about twice its static demand before the solver settles:
+5 kg asking 29 reached 61 and gave 1.7° with a yield of 60; 2 kg stayed at 30 and held.
+
+### Why C0 moves with the rest (and the penalty does not ramp)
+The step's reference error C0 (Eq. 18) is computed once, at the start of the step. A joint that
+gives in a step it began with a large error, the rest moved but C0 kept, had the stale C0 pull
+the new rest's error back: two bodies 20° off their rest, a yield of 0.05, no gravity, ran away,
+B at 28°, 36°, 60°, 99° after 1, 2, 5, 10 steps and 139° after 120. With C0 zeroed the offset
+becomes the bend (B at 19.9°, 19.9°, 19.6°, 19.6°; a rigid joint instead corrects it slowly,
+19.8° to 6.0° over 120 steps). In steady flow C0 is already ~0 (the rest sits where the bodies
+ended the last step), so this only matters at the first yield, but there it is the difference
+between a joint and a runaway.
+
+Ramping the penalty while a row gives (β|C| an iteration) made the 20 kg beam swing 116° against
+111° (ideal 107°) with an angular penalty of 1265 against 301 after 400 steps (30 kg: 138° against
+131°, 1992 against 394): a hinge that stiffens as it flows. A row at its bound isn't ramped, as
+the paper's clamped forces aren't.
+
+### The Plastic Beam demo
+A cantilever of eight links, every weld plastic past 700 N·m, the wall's weld tearing at 400 N of
+pull. 2 kg: 0.3° of bend, holds. 8 kg: 21° at the wall and about 43° at the tip (GPU, 6 s; CPU
+21°); cut the weight loose at run time and the bend stays (`Sim3D.cut`). 25 kg: the wall's weld
+tears at about 1.2 s and the beam falls. From 10 kg up the beam folds along its length instead.
+
+### Not measured
+The cost of the larger record and the extra quaternion product in the angle lock on joint-heavy
+scenes. The A/B ran on battery power: the same code varied between 14 and 22 ms a step on a
+24,000-body, 71,500-joint lattice from one run to the next, so no figure is recorded. The warm
+start and dual now write 6 and 4 vec4 of the 9 where they wrote the whole record (8); re-run
+`pnpm bench3d:gpu "Jointed drop 34k (71k joints),Chain mail 1.6k"` against main on AC.
+
 ## 2026-09-27 — Bodies lost to NaN at high mass ratios: negative pivots in the f32 primal solve
 
 three-destruction's urban demo lost bodies when fragments of a few grams were crushed under
