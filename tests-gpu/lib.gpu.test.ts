@@ -1,7 +1,7 @@
 // The library (src/lib): only its public API, as a user would drive it, headless on Dawn.
 
 import assert from 'node:assert/strict';
-import { type ContactEvent, convexHull, type Quat, type Vec3, World } from '../src/lib/index.ts';
+import { type ContactEvent, convexHull, type Joint, type JointOptions, type Quat, type Vec3, World } from '../src/lib/index.ts';
 import { gpuTest } from './device.ts';
 
 const steps = (world: World, n: number) => {
@@ -563,7 +563,14 @@ gpuTest('three-avbd: addJoint refuses a negative breakForce, and warns (once) wh
   assert.throws(() => world.addJoint(hook, box, { breakForce: NaN }), /breakForce is a force of at least 0/);
 
   const said = warnings(() => {
-    for (const [yieldForce, breakForce] of [[100, 100], [100, 50], [100, 200], [Infinity, 50], [100, Infinity]]) world.addJoint(hook, box, { yieldForce, breakForce });
+    // The first two never yield; the others do (or have no yield to speak of), and break as they should
+    for (const options of [
+      { yieldForce: 100, breakForce: 100 },
+      { yieldForce: 100, breakForce: 50 },
+      { yieldForce: 100, breakForce: 200, breakOnPull: true },
+      { yieldForce: Infinity, breakForce: 50 },
+      { yieldForce: 100, breakForce: Infinity },
+    ]) world.addJoint(hook, box, options);
     world.addJoint(hook, box, { yieldForce: 100 });
     world.addJoint(hook, box, { breakForce: 50 });
   });
@@ -572,4 +579,94 @@ gpuTest('three-avbd: addJoint refuses a negative breakForce, and warns (once) wh
   // Once per world, and a joint set up as it should be says nothing
   assert.deepEqual(warnings(() => void world.addJoint(hook, box, { yieldForce: 10, breakForce: 100, breakOnPull: true })), []);
   world.destroy();
+});
+
+/**
+ * A cantilever along x (y up): a fixed wall, four links of 1 m welded end to end and a weight of `kg`
+ * on the end. The weld at the wall (the first) has `root`'s options, the others none.
+ */
+function cantilever(world: World, kg: number, root: JointOptions) {
+  const wall = world.addBox({ size: [1, 1, 1], position: [-0.5, 5, 0], fixed: true })!;
+  const links = [0, 1, 2, 3].map((i) => world.addBox({ size: [1, 0.3, 0.3], position: [i + 0.5, 5, 0] })!);
+  const weight = world.addBox({ size: [0.6, 0.6, 0.6], density: kg / 0.216, position: [4.3, 5, 0] })!;
+  const welds = [wall, ...links].slice(0, 4).map((a, i) => world.addJoint(a, links[i], { anchorA: [0.5, 0, 0], anchorB: [-0.5, 0, 0], ...(i === 0 ? root : {}) }));
+  world.addJoint(links[3], weight, { anchorA: [0.5, 0, 0], anchorB: [-0.3, 0, 0] });
+  return { links, weight, welds };
+}
+
+// A joint that gives is cut back to its yield every iteration, so a breakForce above the yield sees
+// only a sudden jump: 15 kg asks 87 of a weld yielding at 60 and the joint swings to 90° and holds.
+// breakBend is how a load that keeps bending it tears it (docs/FINDINGS.md)
+gpuTest('three-avbd: a joint with a breakBend breaks under a sustained overload once it has bent that far (onBreak says so); without it the same joint holds; a lighter load bends it less and it holds', async (device) => {
+  const limit = 0.6; // rad, 34.4°
+  const run = async (kg: number, root: JointOptions) => {
+    const world = await World.create({ device, maxBodies: 16 });
+    let beam!: ReturnType<typeof cantilever>;
+    const said = warnings(() => void (beam = cantilever(world, kg, { yieldForce: 60, breakForce: 120, ...root })));
+    const broke: Joint[] = [];
+    world.onBreak((j) => broke.push(j));
+    for (let k = 0; k < 15; k++) {
+      steps(world, 10);
+      await world.read();
+    }
+    return { world, ...beam, broke, said, root: beam.welds[0] };
+  };
+  // A fracture above the yield (120 over 60) is never reached: it swings to 90° and holds
+  const free = await run(15, {});
+  assert.equal(free.said.length, 1, 'and the setup says it is a joint that can only break on a sudden jump');
+  assert.match(free.said[0], /sudden jump/);
+  assert.deepEqual(free.broke, [], 'it holds');
+  assert.ok(free.root.holding && free.root.bend > 1.2, `bent ${((free.root.bend * 180) / Math.PI).toFixed(0)}° and holds`);
+  assert.ok(free.root.force.angular <= 60 * 1.0001, `with a force of ${free.root.force.angular.toFixed(1)}, the yield, and never the 120 that breaks it`);
+  free.world.destroy();
+
+  // The bend limit is all that can break this one (no breakForce): the world must look for it
+  const heavy = await run(15, { breakBend: limit, breakForce: Infinity });
+  assert.deepEqual(heavy.broke, [heavy.root], 'onBreak told of the weld at the wall, once');
+  assert.ok(heavy.root.broken && !heavy.root.holding);
+  assert.ok(heavy.root.bend > limit && heavy.root.bend < limit + 0.01, `broke at ${((heavy.root.bend * 180) / Math.PI).toFixed(2)}° of bend, the limit being ${((limit * 180) / Math.PI).toFixed(2)}°`);
+  assert.ok(heavy.welds.slice(1).every((w) => w.holding), 'the other welds hold');
+  assert.ok(heavy.weight.position[1] < 3, `and the beam fell: the weight is at y ${heavy.weight.position[1].toFixed(1)}`);
+  heavy.world.destroy();
+
+  // 8 kg asks 47: it gives a little on landing, bends less than the limit and holds
+  const light = await run(8, { breakBend: limit });
+  assert.deepEqual(light.said, [], 'with a breakBend, a breakForce above the yield is nothing to warn of');
+  assert.deepEqual(light.broke, []);
+  assert.ok(light.root.holding && light.root.bend > 0 && light.root.bend < limit / 2, `bent ${((light.root.bend * 180) / Math.PI).toFixed(1)}° and holds`);
+  assert.equal(light.root.breakBend, limit);
+  light.world.destroy();
+});
+
+gpuTest('three-avbd: addJoint refuses a breakBend that is not an angle or that no joint could reach, and warns (once) when breakForce above yieldForce can only catch a sudden jump', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  const hook = world.addBox({ size: [1, 1, 1], position: [0, 5, 0], fixed: true })!;
+  const box = world.addBox({ size: [1, 1, 1], position: [0, 4, 0] })!;
+  for (const breakBend of [-0.1, NaN]) assert.throws(() => world.addJoint(hook, box, { yieldForce: 60, breakBend }), /breakBend is an angle of at least 0/);
+  assert.throws(() => world.addJoint(hook, box, { breakBend: 0.5 }), /breakBend limits how far a plastic joint bends: it needs a yieldForce/);
+  assert.throws(() => world.addJoint(hook, box, { yieldForce: Infinity, breakBend: 0.5 }), /needs a yieldForce/);
+  assert.throws(() => world.addJoint(hook, box, { type: 'ball', yieldForce: 60, breakBend: 0.5 }), /ball joint/);
+  assert.throws(() => world.addJoint(hook, box, { type: 'ball', breakBend: 0.5 }), /ball joint/);
+  // Nothing was queued, and a limit that is never reached is not a mistake
+  assert.equal(world.addJoint(hook, box, { breakBend: Infinity }).breakBend, Infinity);
+  assert.equal(world.addJoint(hook, box, { yieldForce: 60, breakBend: 0 }).breakBend, 0);
+  world.step();
+
+  // A breakForce above a yield, with nothing to break a load that keeps bending the joint: it
+  // can only break on a sudden jump of its torque. Once per world, however many joints
+  const options = { yieldForce: 60, breakForce: 120 };
+  const said = warnings(() => {
+    world.addJoint(hook, box, options);
+    world.addJoint(hook, box, options);
+  });
+  assert.equal(said.length, 1, said.join(' | '));
+  assert.match(said[0], /breakForce \(120\) is above yieldForce \(60\).*sudden jump.*breakBend.*breakOnPull.*newtons/);
+  world.destroy();
+  // ...none of it when the joint has a way to tear under a sustained load
+  for (const more of [{ breakBend: 0.6 }, { breakOnPull: true }]) {
+    const other = await World.create({ device, maxBodies: 4 });
+    const [a, b] = [other.addBox({ size: [1, 1, 1], fixed: true })!, other.addBox({ size: [1, 1, 1], position: [0, 1, 0] })!];
+    assert.deepEqual(warnings(() => void other.addJoint(a, b, { ...options, ...more })), [], JSON.stringify(more));
+    other.destroy();
+  }
 });
