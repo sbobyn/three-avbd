@@ -560,8 +560,11 @@ export function plasticBeam(solver: Solver, weight = 8, bend = 0, links = 8, mom
     const link = setVisual(new Rigid(solver, [len, 0.5, 0.5], 2, 0.5, along(len * (i + 0.5))), { color: 0xe39a45 });
     link.positionAng.set(turn);
     const joint = weld(prev, link, anchor, [-len / 2, 0, 0], i === 0 ? breakForce : Infinity);
-    // The wall's weld holds the bend: the beam's turn from the wall's
-    if (i === 0 && bend !== 0) joint.rest = Float64Array.from(turn);
+    // The wall's weld holds the bend: the beam's turn from the wall's. It started straight, so that turn is how far the weld has bent
+    if (i === 0 && bend !== 0) {
+      joint.rest = Float64Array.from(turn);
+      joint.restStart = quat();
+    }
     prev = link;
     anchor = [len / 2, 0, 0];
   }

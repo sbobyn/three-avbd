@@ -1055,6 +1055,32 @@ gpuTest('seeded single step: a joint without a rest takes the short way round on
   }
 });
 
+// The HUD's maxBend is how far a joint has bent from the rest it started with (J_REST_START): a
+// joint made with a 30° rest that never gives has not bent
+gpuTest('the GPU sim\'s maxBend reads how far a joint has bent, not the turn of the rest it holds', async (device) => {
+  const turn = (angle: number, axis: number[]) => {
+    const l = Math.hypot(...axis);
+    const h = (angle * Math.PI) / 360;
+    return quat(...axis.map((x) => (x / l) * Math.sin(h)), Math.cos(h));
+  };
+  const ref = new Solver();
+  const qr = turn(30, [0.3, 0.8, 0.5]);
+  const a = new Rigid(ref, [1, 1, 1], 1, 0.5, [0, 0, 10]);
+  const pb = rotate(vec3(), qr, [0.5, 0, 0]);
+  const b = new Rigid(ref, [1, 1, 1], 1, 0.5, [0.5 + pb[0], pb[1], 10 + pb[2]]);
+  b.positionAng.set(qr);
+  a.velocityAng.set([1, 2, 3]);
+  b.velocityAng.set([1, 2, 3]);
+  const joint = new Joint(ref, a, b, [0.5, 0, 0], [-0.5, 0, 0], Infinity, Infinity);
+  joint.rest = Float64Array.from(qr);
+  const sim = createGpuSim3D(device, 'Ground', {}, undefined, undefined, ref);
+  for (let k = 0; k < 30; k++) sim.step();
+  await sim.sync();
+  assert.equal(sim.stats().joints, 1);
+  assert.equal(sim.stats().maxBend, 0, 'a joint made with a 30° rest has not bent');
+  sim.destroy();
+});
+
 // The demo's cantilever (bench-scenes.ts plasticBeam), through the reference's Joint into the GPU's
 // records: yield, rest and the linear fracture all travel in writeJoint
 gpuTest('Plastic Beam on the GPU: a light weight holds, a medium one bends the beam for good (cut loose, it stays bent), a heavy one tears it off the wall', async (device) => {

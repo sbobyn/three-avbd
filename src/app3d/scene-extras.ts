@@ -123,7 +123,7 @@ const PANELS: Record<string, (ctx: ExtrasContext) => PanelSpec> = {
         ['Medium', 8],
         ['Heavy', 25],
       ]),
-      { kind: 'readout', label: 'Bent at the wall', value: () => `${((ctx.stats().maxBend * 180) / Math.PI).toFixed(0)}°` },
+      { kind: 'readout', label: 'Most bent weld', value: () => `${((ctx.stats().maxBend * 180) / Math.PI).toFixed(0)}°` },
       { kind: 'readout', label: 'Welds intact', value: () => ctx.stats().joints.toLocaleString('en') },
       { kind: 'action', label: 'Take the weight off', run: () => ctx.cut() },
       speed(ctx),

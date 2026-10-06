@@ -9,7 +9,8 @@ import { sphere } from '../shapes.ts';
 import type { Emitter3D, SceneOptions } from '../bench-scenes.ts';
 import { CANNONBALL, DRAG_STIFFNESS, type LabelView3D, type PickResult3D, type RopeView3D, type Sim3D, type SimStats3D, type SpringView3D, sceneByName3D } from '../sim.ts';
 import { clothsOf, cutsOf, labelsOf, ropesOf, type Visual, visualOf } from '../visuals.ts';
-import { B_ANGVEL, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, J_REST, JOINT_FLOATS, T_JOINT } from './layout.ts';
+import { jointBend } from './joints.ts';
+import { B_ANGVEL, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, JOINT_FLOATS, T_JOINT } from './layout.ts';
 import { type GpuParams3D, GpuSolver3D, REF_UP, type StepProfile } from './solver.ts';
 
 /** Steps between asynchronous readbacks of body poses and stats. */
@@ -186,7 +187,7 @@ export class GpuSim3D implements Sim3D {
     return e;
   }
 
-  /** Live joint count, the largest hard ball-socket anchor separation (as the CPU HUD) and the largest rest turn. */
+  /** Live joint count, the largest hard ball-socket anchor separation (as the CPU HUD) and the largest bend (from the rest a joint started with). */
   private jointStats(b: Float32Array, j: Float32Array): { joints: number; maxJointError: number; maxBend: number } {
     const info = this.solver.jointInfo();
     const world = (i: number, r: ArrayLike<number>): number[] => {
@@ -202,7 +203,7 @@ export class GpuSim3D implements Sim3D {
       // Joints only, as the CPU HUD counts them (springs live in the same records)
       if (info[c * 4] !== T_JOINT || (stiffLin === 0 && j[o + J_PEN_ANG + 3] === 0)) continue;
       joints++;
-      maxBend = Math.max(maxBend, 2 * Math.acos(Math.min(1, Math.abs(j[o + J_REST + 3]))));
+      maxBend = Math.max(maxBend, jointBend(j, c));
       if (c === this.dragSlot || stiffLin < 1e30) continue;
       const a = info[c * 4 + 1];
       const pa = a >= 0 ? world(a, j.subarray(o + J_RA, o + J_RA + 3)) : [...j.subarray(o + J_RA, o + J_RA + 3)];

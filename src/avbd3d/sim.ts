@@ -18,7 +18,7 @@ export interface SimStats3D {
   contacts: number;
   kineticEnergy: number;
   maxJointError: number;
-  /** The largest turn a joint's angle lock holds as its rest (rad): how far a plastic joint has bent. */
+  /** How far the most bent joint has bent (rad): the turn from the rest a plastic joint started with to the one it holds now. */
   maxBend: number;
 }
 
@@ -161,7 +161,7 @@ export class RefSim3D implements Sim3D {
       if (f instanceof Joint) {
         joints++;
         if (f !== this.drag && f.stiffnessLin === Infinity) maxJointError = Math.max(maxJointError, Math.sqrt(lengthSq(f.evaluateLin(c))));
-        if (f.rest) maxBend = Math.max(maxBend, 2 * Math.acos(Math.min(1, Math.abs(f.rest[3]))));
+        maxBend = Math.max(maxBend, f.bend);
       } else if (f instanceof Manifold) contacts += f.numContacts;
     }
     let kineticEnergy = 0;

@@ -9,7 +9,7 @@ import { Joint } from '../src/avbd3d/ref/forces.ts';
 import { conjugate, lengthSq, qmul, quat, rotate, vec3 } from '../src/avbd3d/ref/math.ts';
 import { sceneByName } from '../src/avbd3d/ref/scenes.ts';
 import { Solver } from '../src/avbd3d/ref/solver.ts';
-import { createSim3D } from '../src/avbd3d/sim.ts';
+import { createSim3D, RefSim3D } from '../src/avbd3d/sim.ts';
 import { decodeJoint } from '../src/avbd3d/gpu/joints.ts';
 import { J_LAM_ANG, J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_REST, J_REST_START, JOINT_FLOATS } from '../src/avbd3d/gpu/layout.ts';
 
@@ -394,6 +394,22 @@ test('decodeJoint reads a record: the forces carried, whether it broke, the rest
   joints[o + J_PEN_LIN + 3] = 0;
   assert.equal(decodeJoint(joints, 1).broken, true);
   assert.equal(decodeJoint(joints, 0).broken, true, 'an empty record');
+});
+
+// --- The HUD's bend ----------------------------------------------------------------------------
+
+test('SimStats3D.maxBend is how far a joint has bent from the rest it started with, not the turn of the rest it holds', () => {
+  // A joint made with a 30° rest, never yielding, has bent not at all (the stat read the rest's turn: 30°)
+  const { solver } = pair(30, 'turn');
+  const sim = new RefSim3D(solver);
+  for (let i = 0; i < 30; i++) sim.step();
+  assert.equal(sim.stats().maxBend, 0);
+  // A weld that gives bends: the stat is the most bent joint's bend, 33° for 10 kg on a yield of 60
+  const beam = cantilever(10, { yield: 60 });
+  const bent = new RefSim3D(beam.solver);
+  for (let i = 0; i < 300; i++) bent.step();
+  assert.equal(bent.stats().maxBend, beam.root.bend);
+  assert.ok(Math.abs(deg(bent.stats().maxBend) - 33.2) < 1, `${deg(bent.stats().maxBend)}°`);
 });
 
 // --- The demo scene -------------------------------------------------------------------------
