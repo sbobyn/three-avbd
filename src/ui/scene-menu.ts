@@ -41,7 +41,7 @@ const KINDS: Record<Dimension, Record<string, string[]>> = {
     'Just for fun': ['Starry Night (20k)', 'Mona Lisa Tower (50k)'],
     'Scale tests (GPU)': ['Jointed Drop (34k)', 'Box Pile (4k)', 'Box Pile (32k)', 'Box Columns (100k)'],
     'Contacts & friction': ['Pyramid', 'Stack', 'Stack Ratio', 'Dynamic Friction', 'Static Friction'],
-    'Joints & springs': ['Rope', 'Heavy Rope', 'Bridge', 'Breakable', 'Spring', 'Spring Ratio', 'Soft Body'],
+    'Joints & springs': ['Rope', 'Heavy Rope', 'Bridge', 'Breakable', 'Plastic Beam', 'Spring', 'Spring Ratio', 'Soft Body'],
     'Build your own': ['Custom'],
   },
   '2d': {

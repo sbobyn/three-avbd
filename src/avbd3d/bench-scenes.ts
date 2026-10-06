@@ -8,7 +8,7 @@ import { cross, length, qmul, qnormalize, quat, rotate, rotateInv, sub3, vec3 } 
 import type { GpuParams3D, GpuSolverOptions } from './gpu/solver.ts';
 import type { Solver } from './ref/solver.ts';
 import { sail, sphere } from './shapes.ts';
-import { addCloth, addLabel, addRope, EYE, hsl, RING, setVisual } from './visuals.ts';
+import { addCloth, addCut, addLabel, addRope, EYE, hsl, RING, setVisual } from './visuals.ts';
 
 /**
  * A ground slab sized to hold `extent` metres of content with room for debris to scatter (the
@@ -524,6 +524,54 @@ export function heavyPendulum(solver: Solver, links = 50, ratio = 50000): void {
   addLabel(solver, [weight], `${ratio.toLocaleString('en')}× a link`);
 }
 
+/**
+ * A cantilever: a beam of `links` links of 1 × 0.5 × 0.5 m welded end to end and to a wall, with a
+ * block of `weight` kg welded on its free end. Every weld is plastic and breakable: it holds up to
+ * `moment` N·m, gives past that (the beam bends where the load on it is greatest, at the wall
+ * first, and keeps the bend when the weight is gone). The wall's weld, where a cantilever fails,
+ * tears when asked for more than `breakForce` N, the weight it carries; the others only bend.
+ * `bend` starts the beam already bent that many degrees about the wall, as if it had carried a
+ * weight: the wall's weld holds the bend, so it stays with nothing on the end.
+ */
+export function plasticBeam(solver: Solver, weight = 8, bend = 0, links = 8, moment = 700, breakForce = 400): void {
+  solver.clear();
+  ground(solver, 12);
+  const len = 1;
+  const z0 = 9.5;
+  const phi = (bend * Math.PI) / 180;
+  // A turn of phi about y tips the beam's +x end down; the beam's own frames carry it
+  const turn = [0, Math.sin(phi / 2), 0, Math.cos(phi / 2)];
+  const along = (d: number) => [d * Math.cos(phi), 0, z0 - d * Math.sin(phi)];
+  const wallZ = (z0 + 0.5) / 2 + 0.25;
+  const wall = setVisual(new Rigid(solver, [1, 2, z0 - 0.5 + 1], 0, 0.5, [-0.5, 0, wallZ]), { color: 0x8d949c });
+  // Welds are plastic past `moment`, in the units their angular force is measured in (the torque
+  // arm is the scale of their angular constraint), and tear on the force they carry
+  const weld = (a: Rigid, b: Rigid, anchorA: number[], anchorB: number[], tears: number): Joint => {
+    const joint = new Joint(solver, a, b, anchorA, anchorB, Infinity, Infinity, tears);
+    joint.fractureLinear = true;
+    joint.yield = moment / joint.torqueArm;
+    return joint;
+  };
+  let prev = wall;
+  let anchor = [0.5, 0, z0 - wallZ];
+  for (let i = 0; i < links; i++) {
+    const link = setVisual(new Rigid(solver, [len, 0.5, 0.5], 2, 0.5, along(len * (i + 0.5))), { color: 0xe39a45 });
+    link.positionAng.set(turn);
+    const joint = weld(prev, link, anchor, [-len / 2, 0, 0], i === 0 ? breakForce : Infinity);
+    // The wall's weld holds the bend: the beam's turn from the wall's
+    if (i === 0 && bend !== 0) joint.rest = Float64Array.from(turn);
+    prev = link;
+    anchor = [len / 2, 0, 0];
+  }
+  if (weight > 0) {
+    const size = 1;
+    const block = setVisual(new Rigid(solver, [size, size, size], weight / size ** 3, 0.5, along(len * links + size / 2)), { color: 0x3a3d42 });
+    block.positionAng.set(turn);
+    addCut(solver, [new Joint(solver, prev, block, anchor, [-size / 2, 0, 0], Infinity, Infinity, Infinity)]);
+    addLabel(solver, [block], `${weight} kg`);
+  }
+}
+
 /** Orbit camera framing for a scene (z up; azimuth in degrees, 90 = looking along -y). */
 export interface CameraView {
   distance: number;
@@ -668,4 +716,11 @@ export const gpuScenes3D: Scene3D[] = [
   { name: 'Box Pile (32k)', build: (s) => boxPile(s, 40, 20), gpuOnly: true, camera: { distance: 110, target: [0, 0, 6], elevation: 0.45 } },
   { name: 'Jointed Drop (34k)', build: (s) => jointedDrop(s), gpuOnly: true, camera: { distance: 55, target: [0, 0, 4], azimuth: -120, elevation: 0.5 } },
   { name: 'Box Columns (100k)', build: (s) => boxColumns(s, 100, 10), gpuOnly: true, camera: { distance: 190, target: [0, 0, 5], elevation: 0.5 } },
+  {
+    // Plastic welds (ref Joint.yield, rest): the reference runs it too, so it isn't GPU-only
+    name: 'Plastic Beam',
+    build: (s, o) => plasticBeam(s, o?.weight, o?.bend),
+    options: { weight: 8, bend: 0 },
+    camera: { distance: 24, target: [3.5, 0, 5.5], azimuth: -90, elevation: 0.1 },
+  },
 ];

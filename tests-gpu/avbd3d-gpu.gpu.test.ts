@@ -869,3 +869,49 @@ gpuTest('seeded single step: plastic, breaking and rest joints match the CPU ref
     gpu.destroy();
   }
 });
+
+// The demo's cantilever (bench-scenes.ts plasticBeam), through the reference's Joint into the GPU's
+// records: yield, rest and the linear fracture all travel in writeJoint
+gpuTest('Plastic Beam on the GPU: a light weight holds, a medium one bends the beam for good (cut loose, it stays bent), a heavy one tears it off the wall', async (device) => {
+  const run = async (weight: number, seconds: number) => {
+    const sim = createGpuSim3D(device, 'Plastic Beam', {}, undefined, { weight });
+    for (let k = 0; k < seconds * 60; k++) sim.step();
+    await sim.sync();
+    return sim;
+  };
+  const degrees = (rad: number) => (rad * 180) / Math.PI;
+  const light = await run(2, 6);
+  assert.ok(degrees(light.stats().maxBend) < 1 && light.stats().joints === 9, `a light weight: no bend (${degrees(light.stats().maxBend).toFixed(2)}°)`);
+  light.destroy();
+
+  const medium = await run(8, 6);
+  const bent = degrees(medium.stats().maxBend);
+  assert.ok(bent > 12 && bent < 40 && medium.stats().joints === 9, `a medium one bends it: ${bent.toFixed(1)}°`);
+  const tip = () => Array.from(at(medium, 9)); // the last link: the ground, the wall, eight links, the weight
+  const before = tip();
+  medium.cut();
+  for (let k = 0; k < 4 * 60; k++) medium.step();
+  await medium.sync();
+  assert.equal(medium.stats().joints, 8, 'the weight is cut loose');
+  assert.ok(Math.abs(degrees(medium.stats().maxBend) - bent) < 0.5, `and the beam stays as it was: ${degrees(medium.stats().maxBend).toFixed(1)}°`);
+  assert.ok(Math.hypot(...tip().map((x, k) => x - before[k])) < 0.4, 'its end has not moved but for the sag the weight made');
+  medium.destroy();
+
+  const heavy = await run(25, 6);
+  assert.equal(heavy.stats().joints, 8, 'a heavy one tears the weld at the wall, and only that');
+  heavy.destroy();
+
+  // Made already bent, the wall's weld holds the bend it was given (the rest travels through writeJoint)
+  const made = await (async () => {
+    const sim = createGpuSim3D(device, 'Plastic Beam', {}, undefined, { weight: 0, bend: 21 });
+    for (let k = 0; k < 4 * 60; k++) sim.step();
+    await sim.sync();
+    return sim;
+  })();
+  assert.ok(Math.abs(degrees(made.stats().maxBend) - 21) < 0.5, `${degrees(made.stats().maxBend).toFixed(1)}°`);
+  // The last link's centre, 7.5 m out along the beam turned 21° about its root (the weld's anchor at 9.5 m)
+  const end = at(made, 9);
+  const [c, s] = [Math.cos((21 * Math.PI) / 180), Math.sin((21 * Math.PI) / 180)];
+  assert.ok(Math.abs(end[0] - 7.5 * c) < 0.3 && Math.abs(end[2] - (9.5 - 7.5 * s)) < 0.3, `a beam turned 21° about its root ends where it was put: ${Array.from(end)}`);
+  made.destroy();
+});

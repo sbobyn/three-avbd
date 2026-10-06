@@ -24,6 +24,8 @@ export interface ExtrasContext {
   /** Set several options and rebuild as if newly chosen (camera and settings reset). */
   apply(options: SceneOptions): void;
   stats(): SimStats3D;
+  /** Cut loose what the scene offers to cut (Sim3D.cut). */
+  cut(): void;
   bodyCount(): number;
   /** What this device can run (null without a GPU). */
   budget(): DeviceBudget | null;
@@ -113,6 +115,21 @@ const PANELS: Record<string, (ctx: ExtrasContext) => PanelSpec> = {
       replay(ctx, 'Drop again'),
     ],
   }),
+  'Plastic Beam': withCannonball((ctx) => ({
+    title: 'Plastic beam',
+    items: [
+      option(ctx, 'weight', 'Weight on the end', [
+        ['Light', 2],
+        ['Medium', 8],
+        ['Heavy', 25],
+      ]),
+      { kind: 'readout', label: 'Bent at the wall', value: () => `${((ctx.stats().maxBend * 180) / Math.PI).toFixed(0)}°` },
+      { kind: 'readout', label: 'Welds intact', value: () => ctx.stats().joints.toLocaleString('en') },
+      { kind: 'action', label: 'Take the weight off', run: () => ctx.cut() },
+      speed(ctx),
+      replay(ctx, 'Load it again'),
+    ],
+  })),
   'Heavy Pendulum': (ctx) => ({
     title: 'Mass ratio',
     items: [

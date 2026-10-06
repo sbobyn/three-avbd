@@ -4,6 +4,7 @@
 // maps them to its own body order.
 
 import type { Rigid } from './ref/body.ts';
+import type { Joint } from './ref/forces.ts';
 import type { Solver } from './ref/solver.ts';
 
 export interface Visual {
@@ -127,6 +128,19 @@ export function addLabel(solver: Solver, bodies: Rigid[], text: string): void {
 }
 
 export const labelsOf = (solver: Solver): Label[] => (labels.get(solver) ?? []).filter((l) => l.bodies.every((b) => solver.bodies.includes(b)));
+
+/**
+ * Joints the viewer can cut loose on request (Sim3D.cut): a weight taken off a beam, to see what
+ * the beam does without it. The scene names them; a cut is the solvers' ordinary joint removal.
+ */
+const cuts = new WeakMap<Solver, Joint[]>();
+
+export function addCut(solver: Solver, joints: Joint[]): void {
+  const live = (cuts.get(solver) ?? []).filter((j) => solver.forces.includes(j));
+  cuts.set(solver, [...live, ...joints]);
+}
+
+export const cutsOf = (solver: Solver): Joint[] => (cuts.get(solver) ?? []).filter((j) => solver.forces.includes(j));
 
 /** An HSL colour (h, s, l in [0, 1]) as 0xRRGGBB. */
 export function hsl(h: number, s: number, l: number): number {

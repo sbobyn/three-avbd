@@ -11,13 +11,15 @@ import { Manifold } from './ref/manifold.ts';
 import { addScaled3, lengthSq, transform, vec3 } from './ref/math.ts';
 import { scenes } from './ref/scenes.ts';
 import { Solver, type SolverParams } from './ref/solver.ts';
-import { addLabel, clothsOf, labelsOf, type RopeStyle, ropesOf, setVisual, type Visual, visualOf } from './visuals.ts';
+import { addLabel, clothsOf, cutsOf, labelsOf, type RopeStyle, ropesOf, setVisual, type Visual, visualOf } from './visuals.ts';
 
 export interface SimStats3D {
   joints: number;
   contacts: number;
   kineticEnergy: number;
   maxJointError: number;
+  /** The largest turn a joint's angle lock holds as its rest (rad): how far a plastic joint has bent. */
+  maxBend: number;
 }
 
 export interface PickResult3D {
@@ -73,6 +75,8 @@ export interface Sim3D {
   ropes(): RopeView3D[];
   labels(): LabelView3D[];
   stats(): SimStats3D;
+  /** Cut loose the joints the scene offers for it (visuals.ts addCut): a weight taken off its beam. */
+  cut(): void;
   /** Ray-cast the dynamic bodies; `dir` must be unit length. */
   pick(origin: ArrayLike<number>, dir: ArrayLike<number>): PickResult3D | null;
   addBox(size: ArrayLike<number>, density: number, friction: number, position: ArrayLike<number>, velocity: ArrayLike<number>): void;
@@ -151,11 +155,13 @@ export class RefSim3D implements Sim3D {
     let joints = 0;
     let contacts = 0;
     let maxJointError = 0;
+    let maxBend = 0;
     const c = vec3();
     for (const f of this.solver.forces) {
       if (f instanceof Joint) {
         joints++;
         if (f !== this.drag && f.stiffnessLin === Infinity) maxJointError = Math.max(maxJointError, Math.sqrt(lengthSq(f.evaluateLin(c))));
+        if (f.rest) maxBend = Math.max(maxBend, 2 * Math.acos(Math.min(1, Math.abs(f.rest[3]))));
       } else if (f instanceof Manifold) contacts += f.numContacts;
     }
     let kineticEnergy = 0;
@@ -164,7 +170,11 @@ export class RefSim3D implements Sim3D {
       const w = b.velocityAng;
       kineticEnergy += 0.5 * b.mass * lengthSq(b.velocityLin) + 0.5 * (b.moment[0] * w[0] * w[0] + b.moment[1] * w[1] * w[1] + b.moment[2] * w[2] * w[2]);
     }
-    return { joints, contacts, kineticEnergy, maxJointError };
+    return { joints, contacts, kineticEnergy, maxJointError, maxBend };
+  }
+
+  cut(): void {
+    for (const joint of cutsOf(this.solver)) joint.destroy();
   }
 
   pick(origin: ArrayLike<number>, dir: ArrayLike<number>): PickResult3D | null {

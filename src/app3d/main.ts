@@ -457,6 +457,7 @@ const extras: ExtrasContext = {
     state.sceneOptions[state.scene] = { ...state.sceneOptions[state.scene], ...options };
     loadScene();
   },
+  cut: () => sim.cut(),
   bodyCount: () => sim.bodyCount,
   budget: () => budget,
   look: (view) => flyTo(view),

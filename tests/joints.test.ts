@@ -9,6 +9,7 @@ import { Joint } from '../src/avbd3d/ref/forces.ts';
 import { conjugate, lengthSq, qmul, quat, rotate, vec3 } from '../src/avbd3d/ref/math.ts';
 import { sceneByName } from '../src/avbd3d/ref/scenes.ts';
 import { Solver } from '../src/avbd3d/ref/solver.ts';
+import { createSim3D } from '../src/avbd3d/sim.ts';
 import { decodeJoint } from '../src/avbd3d/gpu/joints.ts';
 import { J_LAM_ANG, J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_REST, JOINT_FLOATS } from '../src/avbd3d/gpu/layout.ts';
 
@@ -273,4 +274,41 @@ test('decodeJoint reads a record: the forces carried, whether it broke, the rest
   joints[o + J_PEN_LIN + 3] = 0;
   assert.equal(decodeJoint(joints, 1).broken, true);
   assert.equal(decodeJoint(joints, 0).broken, true, 'an empty record');
+});
+
+// --- The demo scene -------------------------------------------------------------------------
+
+// 'Plastic Beam' (bench-scenes.ts): an 8-link cantilever welded to a wall, plastic past 700 N·m, its
+// wall weld tearing at 400 N, a weight on the end. The reference runs it as the GPU does
+test('Plastic Beam: a light weight holds, a medium one bends the beam for good (cut loose, it stays bent), a heavy one tears it off the wall', () => {
+  const run = (weight: number, seconds: number) => {
+    const sim = createSim3D('Plastic Beam', {}, { weight });
+    for (let i = 0; i < seconds * 60; i++) sim.step();
+    return sim;
+  };
+  const degrees = (rad: number) => (rad * 180) / Math.PI;
+  const light = run(2, 6);
+  assert.ok(degrees(light.stats().maxBend) < 1 && light.stats().joints === 9, 'a light weight: no bend');
+
+  const medium = run(8, 6);
+  const bent = degrees(medium.stats().maxBend);
+  assert.ok(bent > 12 && bent < 40 && medium.stats().joints === 9, `a medium one bends it: ${bent.toFixed(1)}°`);
+  const tip = (sim: typeof medium) => Array.from(sim.position(sim.bodyCount - 2));
+  const [before] = [tip(medium)];
+  medium.cut();
+  for (let i = 0; i < 4 * 60; i++) medium.step();
+  assert.equal(medium.stats().joints, 8, 'the weight is cut loose');
+  assert.ok(Math.abs(degrees(medium.stats().maxBend) - bent) < 0.5, `and the beam stays as it was: ${degrees(medium.stats().maxBend).toFixed(1)}°`);
+  assert.ok(Math.hypot(...tip(medium).map((x, k) => x - before[k])) < 0.4, 'its end has not moved but for the sag the weight made');
+
+  const heavy = run(25, 6);
+  assert.equal(heavy.stats().joints, 8, 'a heavy one tears the weld at the wall, and only that');
+
+  // Made already bent (what the scene offers after a weight comes off), the wall's weld holds the bend it was given
+  const made = createSim3D('Plastic Beam', {}, { weight: 0, bend: 21 });
+  for (let i = 0; i < 4 * 60; i++) made.step();
+  assert.ok(Math.abs(degrees(made.stats().maxBend) - 21) < 0.5, `${degrees(made.stats().maxBend).toFixed(1)}°`);
+  // The last link's centre, 7.5 m out along the beam turned 21° about its root (the weld's anchor at 9.5 m)
+  const end = made.position(made.bodyCount - 1);
+  assert.ok(Math.abs(end[0] - 7.5 * Math.cos((21 * Math.PI) / 180)) < 0.3 && Math.abs(end[2] - (9.5 - 7.5 * Math.sin((21 * Math.PI) / 180))) < 0.3, `${Array.from(end)}`);
 });
