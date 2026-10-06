@@ -542,8 +542,10 @@ export function plasticBeam(solver: Solver, weight = 8, bend = 0, links = 8, mom
   // A turn of phi about y tips the beam's +x end down; the beam's own frames carry it
   const turn = [0, Math.sin(phi / 2), 0, Math.cos(phi / 2)];
   const along = (d: number) => [d * Math.cos(phi), 0, z0 - d * Math.sin(phi)];
-  const wallZ = (z0 + 0.5) / 2 + 0.25;
-  const wall = setVisual(new Rigid(solver, [1, 2, z0 - 0.5 + 1], 0, 0.5, [-0.5, 0, wallZ]), { color: 0x8d949c });
+  // The wall stands on the ground (its top face at z = 0.5) and rises a metre above the beam
+  const wallHeight = z0 + 1 - 0.5;
+  const wallZ = 0.5 + wallHeight / 2;
+  const wall = setVisual(new Rigid(solver, [1, 2, wallHeight], 0, 0.5, [-0.5, 0, wallZ]), { color: 0x8d949c });
   // Welds are plastic past `moment`, in the units their angular force is measured in (the torque
   // arm is the scale of their angular constraint), and tear on the force they carry
   const weld = (a: Rigid, b: Rigid, anchorA: number[], anchorB: number[], tears: number): Joint => {
