@@ -24,16 +24,51 @@ export const B_INERTIAL_ROT = 28;
 export const B_VEL = 32;
 export const B_ANGVEL = 36;
 
-/** Floats per joint record (joints and springs): 8 vec4. */
-export const JOINT_FLOATS = 32;
+/**
+ * Floats per joint record (joints and springs): 10 vec4 (32 floats before 0.3, which added the
+ * rest rotation and the rest it started with: anything reading the raw joint buffer strides by this).
+ *
+ * What a joint's fields hold, as `readJoints` returns them after a step (the values of its last
+ * iteration; the next step's warm start scales the multipliers by alpha * gamma):
+ * - penalty (xyz, per row) and stiffness (w): a hard row has stiffness BIG (>= HARD), a free
+ *   one (a ball joint's angle lock) 0. A joint that broke has both stiffnesses and every penalty
+ *   and multiplier zeroed (fracture and torque arm stay), which is how a broken joint reads:
+ *   stiffness 0 at J_PEN_LIN + 3 and J_PEN_ANG + 3.
+ * - multipliers λ (xyz): the force a hard row carries: |λ_lin| is the force (N) holding the
+ *   anchors together, and |λ_ang| the angular force, the one `fracture` and `yield` limit. The
+ *   torque it is, is the torque arm (J_LAM_ANG + 3) times it; the angular Jacobian is
+ *   ±torqueArm·I.
+ * - the rest (J_REST) the angle lock holds now and the one it started with (J_REST_START): how far
+ *   a plastic joint has bent is the turn from one to the other (decodeJoint's `bend`).
+ */
+export const JOINT_FLOATS = 40;
 export const J_PEN_LIN = 0; // xyz, w: stiffness (joint lin; spring: its stiffness)
 export const J_PEN_ANG = 4; // xyz, w: angular stiffness
-export const J_LAM_LIN = 8; // xyz, w: fracture threshold on |lambdaAng|
+export const J_LAM_LIN = 8; // xyz, w: fracture threshold on |lambdaAng| (negative: on |lambdaLin| too)
 export const J_LAM_ANG = 12; // xyz, w: torque arm
 export const J_C0_LIN = 16;
-export const J_C0_ANG = 20;
+export const J_C0_ANG = 20; // xyz, w: yield threshold on |lambdaAng| (BIG: never)
 export const J_RA = 24; // xyz (world point for world joints), w: spring rest length
-export const J_RB = 28;
+export const J_RB = 28; // xyz, w: bend limit (see J_BREAK_BEND)
+/**
+ * The relative rotation the angle lock holds, B's orientation in A's frame as a quaternion
+ * (x, y, z, w): it holds rotB = rotA·rest. The identity (0, 0, 0, 1) is the demo's joint, which
+ * holds the two rotations equal. A plastic joint moves it (see J_YIELD).
+ */
+export const J_REST = 32;
+/**
+ * The rest the joint was made with (as J_REST, which a plastic joint moves away from it): how far
+ * it has bent is the angle of the turn between the two, 2·atan2(|vec|, |w|) of restStart⁻¹·rest.
+ */
+export const J_REST_START = 36;
+/** The word holding a joint's yield threshold (BIG: never): past it |λ_ang| is cut back and the rest moves. */
+export const J_YIELD = J_C0_ANG + 3;
+/**
+ * The word holding a plastic joint's bend limit, an angle in radians (BIG: never): it breaks, as
+ * by fracture, when it yields and has then bent past it. (Only a joint that yields can bend, so a
+ * limit on a joint that cannot is never reached.)
+ */
+export const J_BREAK_BEND = J_RB + 3;
 
 /**
  * Contacts come in pairs' manifolds: a 32-byte pair record (bodies, first contact, contact
@@ -140,12 +175,14 @@ struct Body {
 struct Joint {
   penLin: vec4f,  // xyz, w: linear stiffness (>= HARD: hard); spring: its stiffness
   penAng: vec4f,  // xyz, w: angular stiffness
-  lamLin: vec4f,  // xyz, w: fracture threshold on |lamAng|
+  lamLin: vec4f,  // xyz, w: fracture threshold on |lamAng| (negative: on |lamLin| too)
   lamAng: vec4f,  // xyz, w: torque arm
   c0Lin: vec4f,   // C(x-)
-  c0Ang: vec4f,
+  c0Ang: vec4f,   // xyz: C(x-), w: yield threshold on |lamAng| (BIG: never yields)
   rA: vec4f,      // xyz: anchor on A (world point when A is the world), w: spring rest length
-  rB: vec4f,      // xyz: anchor on B
+  rB: vec4f,      // xyz: anchor on B, w: bend limit in radians (BIG: a plastic joint never breaks on it)
+  rest: vec4f,    // the relative rotation the angle lock holds: rotB = rotA·rest (quaternion x, y, z, w)
+  restStart: vec4f, // the rest it was made with: its bend is the turn from this to rest
 }
 
 struct Manifold {

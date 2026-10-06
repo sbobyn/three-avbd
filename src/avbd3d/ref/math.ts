@@ -88,6 +88,23 @@ export function qsub(out: V3, a: ArrayLike<number>, b: ArrayLike<number>): V3 {
   return set3(out, qs[0] * 2, qs[1] * 2, qs[2] * 2);
 }
 
+/**
+ * The angle (rad, 0 to π) of the turn from orientation a to b, a⁻¹·b, whatever sign each quaternion
+ * has (q and −q are one rotation): 2·atan2(|vec|, |w|), which is exact for small turns where an acos
+ * of the dot is not, and exactly 0 for equal quaternions. `ao` and `bo` are where each starts in its
+ * array (a joint record holds two). Not in maths.h.
+ */
+export function qangle(a: ArrayLike<number>, b: ArrayLike<number>, ao = 0, bo = 0): number {
+  if (a[ao] === b[bo] && a[ao + 1] === b[bo + 1] && a[ao + 2] === b[bo + 2] && a[ao + 3] === b[bo + 3]) return 0;
+  const ax = -a[ao], ay = -a[ao + 1], az = -a[ao + 2], aw = a[ao + 3];
+  const bx = b[bo], by = b[bo + 1], bz = b[bo + 2], bw = b[bo + 3];
+  const x = aw * bx + ax * bw + ay * bz - az * by;
+  const y = aw * by - ax * bz + ay * bw + az * bx;
+  const z = aw * bz + ax * by - ay * bx + az * bw;
+  const w = aw * bw - ax * bx - ay * by - az * bz;
+  return 2 * Math.atan2(Math.sqrt(x * x + y * y + z * z), Math.abs(w));
+}
+
 /** The demo's `quat + float3`: integrate a rotation vector, normalize(a + (b, 0)·a·½). */
 export function qaddv(out: Quat, a: ArrayLike<number>, b: ArrayLike<number>): Quat {
   set4(qs2, b[0], b[1], b[2], 0);

@@ -3,12 +3,13 @@
 // is refreshed asynchronously every few steps; rendering reads the GPU body buffer directly.
 
 import { Rigid } from '../ref/body.ts';
-import { Spring } from '../ref/forces.ts';
+import { Joint, Spring } from '../ref/forces.ts';
 import { Solver } from '../ref/solver.ts';
 import { sphere } from '../shapes.ts';
 import type { Emitter3D, SceneOptions } from '../bench-scenes.ts';
 import { CANNONBALL, DRAG_STIFFNESS, type LabelView3D, type PickResult3D, type RopeView3D, type Sim3D, type SimStats3D, type SpringView3D, sceneByName3D } from '../sim.ts';
-import { clothsOf, labelsOf, ropesOf, type Visual, visualOf } from '../visuals.ts';
+import { clothsOf, cutsOf, labelsOf, ropesOf, type Visual, visualOf } from '../visuals.ts';
+import { jointBend } from './joints.ts';
 import { B_ANGVEL, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, JOINT_FLOATS, T_JOINT } from './layout.ts';
 import { type GpuParams3D, GpuSolver3D, REF_UP, type StepProfile } from './solver.ts';
 
@@ -33,6 +34,8 @@ export interface GpuLooks3D {
   cloths: number[][][];
   ropes: RopeView3D[];
   labels: LabelView3D[];
+  /** Joint slots the scene offers to cut (GpuSim3D.cut). */
+  cuts?: number[];
 }
 
 /** No paint for this body (GpuSim3D.setPaint). */
@@ -42,7 +45,7 @@ export class GpuSim3D implements Sim3D {
   readonly label = 'WebGPU';
   readonly solver: GpuSolver3D;
   private bodies: Float32Array = new Float32Array(0);
-  private cachedStats: GpuStats3D = { joints: 0, contacts: 0, kineticEnergy: 0, maxJointError: 0, colors: 0, clashes: 0 };
+  private cachedStats: GpuStats3D = { joints: 0, contacts: 0, kineticEnergy: 0, maxJointError: 0, maxBend: 0, colors: 0, clashes: 0 };
   private steps = 0;
   private reading = false;
   private dragSlot = -1;
@@ -155,6 +158,7 @@ export class GpuSim3D implements Sim3D {
         this.cachedStats = {
           joints: jointStats.joints,
           maxJointError: jointStats.maxJointError,
+          maxBend: jointStats.maxBend,
           contacts: counters.contacts,
           colors: counters.colors,
           clashes: counters.clashes,
@@ -183,8 +187,8 @@ export class GpuSim3D implements Sim3D {
     return e;
   }
 
-  /** Live joint count and the largest hard ball-socket anchor separation (as the CPU HUD). */
-  private jointStats(b: Float32Array, j: Float32Array): { joints: number; maxJointError: number } {
+  /** Live joint count, the largest hard ball-socket anchor separation (as the CPU HUD) and the largest bend (from the rest a joint started with). */
+  private jointStats(b: Float32Array, j: Float32Array): { joints: number; maxJointError: number; maxBend: number } {
     const info = this.solver.jointInfo();
     const world = (i: number, r: ArrayLike<number>): number[] => {
       const o = i * BODY_FLOATS;
@@ -192,19 +196,21 @@ export class GpuSim3D implements Sim3D {
     };
     let joints = 0;
     let maxJointError = 0;
+    let maxBend = 0;
     for (let c = 0; c < this.solver.jointCount; c++) {
       const o = c * JOINT_FLOATS;
       const stiffLin = j[o + J_PEN_LIN + 3];
       // Joints only, as the CPU HUD counts them (springs live in the same records)
       if (info[c * 4] !== T_JOINT || (stiffLin === 0 && j[o + J_PEN_ANG + 3] === 0)) continue;
       joints++;
+      maxBend = Math.max(maxBend, jointBend(j, c));
       if (c === this.dragSlot || stiffLin < 1e30) continue;
       const a = info[c * 4 + 1];
       const pa = a >= 0 ? world(a, j.subarray(o + J_RA, o + J_RA + 3)) : [...j.subarray(o + J_RA, o + J_RA + 3)];
       const pb = world(info[c * 4 + 2], j.subarray(o + J_RB, o + J_RB + 3));
       maxJointError = Math.max(maxJointError, Math.hypot(pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]));
     }
-    return { joints, maxJointError };
+    return { joints, maxJointError, maxBend };
   }
 
   position(i: number): ArrayLike<number> {
@@ -243,6 +249,10 @@ export class GpuSim3D implements Sim3D {
   }
   stats(): GpuStats3D {
     return { ...this.cachedStats, gpuStepMs: this.profile?.total };
+  }
+
+  cut(): void {
+    if (this.looks.cuts?.length) this.solver.releaseJoints(this.looks.cuts);
   }
 
   private radii = new Float32Array(0);
@@ -392,5 +402,8 @@ export function createGpuSim3D(
   const cloths = clothsOf(ref).map((grid) => grid.map((row) => row.map((b) => index.get(b)!)));
   const ropes = ropesOf(ref).map((r) => ({ ...r, links: r.links.map((b) => index.get(b)!) }));
   const labels = labelsOf(ref).map((l) => ({ bodies: l.bodies.map((b) => index.get(b)!), text: l.text }));
-  return new GpuSim3D(solver, { visuals, level, springs, cloths, ropes, labels }, emitter, scene.capacity !== undefined);
+  // A joint's slot is its place among the reference's joints and springs
+  const slots = ref.forces.filter((f) => f instanceof Joint || f instanceof Spring);
+  const cuts = cutsOf(ref).map((j) => slots.indexOf(j));
+  return new GpuSim3D(solver, { visuals, level, springs, cloths, ropes, labels, cuts }, emitter, scene.capacity !== undefined);
 }

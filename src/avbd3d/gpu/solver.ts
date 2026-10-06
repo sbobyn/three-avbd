@@ -21,7 +21,7 @@ import { defaultParams, type Solver, type SolverParams } from '../ref/solver.ts'
 import {
   ARGS_ITEMS_3D, B_ANGVEL, B_INERTIAL_POS, B_INERTIAL_ROT, B_INITIAL_POS, B_INITIAL_ROT, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS,
   C_MANIFOLDS, CONTACT_WORDS, FLAG_FACE_BIAS, FLAG_MASS_PENALTY, FLAG_MATCH_NEAREST, FLAG_REUSE_CONTACTS, FLAG_START_AT_REST, J_C0_ANG, J_C0_LIN, J_LAM_ANG, K_LAM, K_PEN, K_RA, K_RB, M_GEO, MANIFOLD_WORDS, STICK_BIT,
-  J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_HULL, SHAPE_SAIL, SHAPE_SPHERE, T_JOINT, T_SPRING,
+  J_BREAK_BEND, J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, J_REST, J_REST_START, J_YIELD, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_HULL, SHAPE_SAIL, SHAPE_SPHERE, T_JOINT, T_SPRING,
   TOPOLOGY_ACCESSORS_3D,
 } from './layout.ts';
 import { hullOf, isSail, isSphere, type HullShape } from '../shapes.ts';
@@ -50,9 +50,84 @@ export interface GpuContact {
   normal: number[];
 }
 
+/** A joint for `GpuSolver3D.appendJoints`. */
+export interface JointSpec {
+  /**
+   * The two bodies (indices), joined at `rA` in a's frame and `rB` in b's. Each is the index of a
+   * body the solver has (an integer below `bodyCount`): anything else is refused.
+   */
+  a: number;
+  b: number;
+  rA: ArrayLike<number>;
+  rB: ArrayLike<number>;
+  /** The angle lock's stiffness: rigid when left out, 0 a ball joint (free to turn). */
+  angular?: number;
+  /**
+   * The force at which this joint breaks (|λ_ang|; with `linear`, |λ_lin| too), at least 0: the
+   * sign is the solver's flag for `linear`, so a negative one is refused. Default: the call's.
+   */
+  fracture?: number;
+  /** Whether it also breaks on its linear force: the negative threshold. Default: the call's. */
+  linear?: boolean;
+  /**
+   * The relative rotation the angle lock holds, b's orientation in a's frame (x, y, z, w): it
+   * holds rotB = rotA·rest, whatever the bodies' own frames. Default: the identity, which
+   * holds the two rotations equal. Take it from the bodies as they are with `rest = rotA⁻¹·rotB`.
+   * Not for a ball joint (`angular: 0`), which has no angle lock to hold it: refused.
+   */
+  rest?: ArrayLike<number>;
+  /**
+   * The angular force |λ_ang| past which a rigid angle lock yields (in the units of `fracture`):
+   * in the dual update the bend becomes the new rest and the force it carries is cut back to this,
+   * a perfectly plastic hinge, all on the GPU with no readback. The hinge then swings its load
+   * with a torque of `yield` times the joint's torque arm. A force asked of it past `fracture`
+   * breaks it instead; but one that gives is cut back to `yield` every iteration, so it seldom sees
+   * that much (a `fracture` above `yield` catches only a sudden jump of the force): to have a load
+   * that keeps bending a plastic joint tear it, limit its bend (`breakBend`), or break it on its
+   * pull (`linear`: `fracture` is then in newtons for the pull).
+   * Needs a rigid angle lock (leave `angular` out): a ball joint has none, and a finite stiffness is
+   * a spring, not a hinge. Default: never yields.
+   */
+  yield?: number;
+  /**
+   * How far a plastic joint may bend before it breaks, an angle (rad, 0 to π): the turn from the
+   * rest it started with (its `rest`, or none) to the one it holds now, which each yield moves. It
+   * is tested when the joint yields, in the dual update (as is `fracture`, which a yielding joint
+   * seldom reaches), so a load that keeps bending a hinge tears it once it has bent this far.
+   * A bend is at most π, so a larger limit could never be reached and is refused (Infinity is
+   * never). Needs a `yield`: a joint that cannot give cannot bend. Default: never.
+   */
+  breakBend?: number;
+}
+
 const finite = (x: number): number => (x === Infinity ? BIG : x === -Infinity ? -BIG : x);
 const groups = (n: number): number => Math.ceil(n / WORKGROUP_SIZE);
 const pow2AtLeast = (n: number): number => 2 ** Math.ceil(Math.log2(Math.max(n, 2)));
+
+/** A joint's record before anything is set: it never breaks or yields, and its rest (and the one it starts from) is no turn. */
+function freshJoint(o: Float32Array): void {
+  o[J_LAM_LIN + 3] = BIG;
+  o[J_YIELD] = BIG;
+  o[J_BREAK_BEND] = BIG;
+  o[J_REST + 3] = 1;
+  o[J_REST_START + 3] = 1;
+}
+
+/** `q` (x, y, z, w) scaled to unit length, for a joint's rest; throws (naming `what`) unless it is four finite numbers, not all zero. */
+export function unitRotation(q: ArrayLike<number>, what: string): [number, number, number, number] {
+  const l = q.length === 4 ? Math.hypot(q[0], q[1], q[2], q[3]) : NaN;
+  if (!(l > 0) || !Number.isFinite(l)) throw new Error(`${what}: a rotation is four finite numbers (x, y, z, w), not all zero`);
+  return [q[0] / l, q[1] / l, q[2] / l, q[3] / l];
+}
+
+/**
+ * Throws (naming `what`) unless `angle` can be a joint's bend limit: 0 to π radians, or Infinity
+ * for never. A joint's bend is the angle of a turn, at most π, so a larger limit could never be
+ * reached: it is refused rather than taken for never.
+ */
+export function checkBreakBend(angle: number, what: string): void {
+  if (angle !== Infinity && !(angle >= 0 && angle <= Math.PI)) throw new Error(`${what}: breakBend is an angle from 0 to π (rad), not ${angle}`);
+}
 
 /** Byte size of a body buffer holding `n` bodies. */
 export const bodyBufferSize = (n: number): number => Math.max(n, 1) * BODY_FLOATS * 4;
@@ -830,11 +905,15 @@ export class GpuSolver3D {
       o.set(f.penaltyAng, J_PEN_ANG);
       o[J_PEN_ANG + 3] = finite(f.broken ? 0 : f.stiffnessAng);
       o.set(f.lambdaLin, J_LAM_LIN);
-      o[J_LAM_LIN + 3] = finite(f.fracture);
+      o[J_LAM_LIN + 3] = f.fractureLinear ? -finite(f.fracture) : finite(f.fracture);
       o.set(f.lambdaAng, J_LAM_ANG);
       o[J_LAM_ANG + 3] = f.torqueArm;
       o.set(f.C0Lin, J_C0_LIN);
       o.set(f.C0Ang, J_C0_ANG);
+      o[J_YIELD] = finite(f.yield);
+      o[J_BREAK_BEND] = finite(f.breakBend);
+      o.set(f.rest ?? [0, 0, 0, 1], J_REST);
+      o.set(f.restStart ?? f.rest ?? [0, 0, 0, 1], J_REST_START);
       o.set(f.rA, J_RA);
       o.set(f.rB, J_RB);
     } else {
@@ -1050,9 +1129,9 @@ export class GpuSolver3D {
     if (slot >= this.jointCapacity) this.allocateJoints(this.jointCapacity * 2);
     this.jointCount++;
     const o = new Float32Array(JOINT_FLOATS);
+    freshJoint(o);
     o[J_PEN_LIN + 3] = finite(stiffnessLin);
     o[J_PEN_ANG + 3] = finite(stiffnessAng);
-    o[J_LAM_LIN + 3] = BIG;
     o.set([rA[0], rA[1], rA[2]], J_RA);
     o.set([rB[0], rB[1], rB[2]], J_RB);
     // Torque arm as in the reference Joint constructor
@@ -1071,14 +1150,49 @@ export class GpuSolver3D {
    * joint): each holds `rA` on its first body to `rB` on its second, rigidly (or with `angular`
    * 0, as a ball joint: free to turn), until the angular force it carries passes `fracture`
    * (with `linear`, or the linear force: not in the paper, which breaks joints on torque alone).
-   * Returns their slots.
+   * `fracture` and `linear` are the call's defaults: a joint's own, in its spec, override them,
+   * so one call can hold joints of any strength. A spec's `rest` makes the angle lock hold a
+   * turn between its bodies, its `yield` lets it bend and keep the bend, and its `breakBend`
+   * breaks it once it has bent so far (see JointSpec). A spec it cannot take (a body the solver
+   * does not have, a rest that is not a rotation, a threshold out of range, ...) throws before any
+   * slot is taken: the solver is left as it was. Returns their slots.
    */
-  appendJoints(joints: { a: number; b: number; rA: ArrayLike<number>; rB: ArrayLike<number>; angular?: number }[], fracture: number, linear = false): number[] {
+  appendJoints(joints: JointSpec[], fracture = Infinity, linear = false): number[] {
+    // Checked before any slot is taken, so a bad spec leaves the solver as it was (appendConstraints
+    // takes the freed slots and counts the new ones before it reads a spec's bodies: they are checked here)
+    const rests = joints.map((j) => (j.rest ? unitRotation(j.rest, 'appendJoints: rest') : null));
+    const bodies = this.bodyCount;
+    for (const [k, j] of joints.entries()) {
+      for (const [end, index] of [['a', j.a], ['b', j.b]] as const) {
+        if (!(Number.isInteger(index) && index >= 0 && index < bodies)) throw new Error(`appendJoints: spec ${k}: ${end} must be the index of a body in the solver (an integer below ${bodies}), not ${index}`);
+      }
+      // A threshold's sign is the flag for breaking on the linear force too: that is `linear`'s to say
+      const limit = j.fracture ?? fracture;
+      if (!(limit >= 0)) throw new Error(`appendJoints: fracture is a force of at least 0 (a pull is limited with linear), not ${limit}`);
+      if (j.rest && j.angular === 0) throw new Error('appendJoints: rest needs an angle lock to hold it: a ball joint (angular: 0) has none');
+      if (j.breakBend !== undefined) {
+        checkBreakBend(j.breakBend, 'appendJoints');
+        if (j.breakBend < Infinity && !(j.yield !== undefined && j.yield < Infinity)) throw new Error('appendJoints: breakBend limits how far a plastic joint bends: it needs a yield');
+      }
+      if (j.yield === undefined) continue;
+      if (!(j.yield >= 0)) throw new Error(`appendJoints: yield is a force of at least 0, not ${j.yield}`);
+      if (j.angular !== undefined) throw new Error('appendJoints: yield needs a rigid angle lock (leave angular out): a ball joint has none to bend');
+    }
     return this.appendConstraints(joints.length, (k, o) => {
-      const { a, b, rA, rB, angular } = joints[k];
+      const spec = joints[k];
+      const { a, b, rA, rB, angular } = spec;
+      freshJoint(o);
       o[J_PEN_LIN + 3] = BIG;
       o[J_PEN_ANG + 3] = angular === undefined ? BIG : finite(angular);
-      o[J_LAM_LIN + 3] = linear ? -finite(fracture) : finite(fracture);
+      const limit = finite(spec.fracture ?? fracture);
+      o[J_LAM_LIN + 3] = (spec.linear ?? linear) ? -limit : limit;
+      if (spec.yield !== undefined) o[J_YIELD] = finite(spec.yield);
+      if (spec.breakBend !== undefined) o[J_BREAK_BEND] = finite(spec.breakBend);
+      const rest = rests[k];
+      if (rest) {
+        o.set(rest, J_REST);
+        o.set(rest, J_REST_START);
+      }
       o.set([rA[0], rA[1], rA[2]], J_RA);
       o.set([rB[0], rB[1], rB[2]], J_RB);
       const [sa, sb] = [this.bodies[a].size, this.bodies[b].size];
