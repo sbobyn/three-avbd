@@ -103,12 +103,22 @@ pull. 2 kg: 0.3° of bend, holds. 8 kg: 21° at the wall and about 43° at the t
 21°); cut the weight loose at run time and the bend stays (`Sim3D.cut`). 25 kg: the wall's weld
 tears at about 1.2 s and the beam falls. From 10 kg up the beam folds along its length instead.
 
-### Not measured
-The cost of the larger record and the extra quaternion product in the angle lock on joint-heavy
-scenes. The A/B ran on battery power: the same code varied between 14 and 22 ms a step on a
-24,000-body, 71,500-joint lattice from one run to the next, so no figure is recorded. The warm
-start and dual now write 6 and 4 vec4 of the 9 where they wrote the whole record (8); re-run
-`pnpm bench3d:gpu "Jointed drop 34k (71k joints),Chain mail 1.6k"` against main on AC.
+### Cost: within the noise
+The joint record is 144 bytes where it was 128, and the angle lock multiplies the rest in.
+Measured against main (a copy of its tree on the same Dawn device, M4 Max, the two run
+alternately). The machine's own spread dwarfs any difference: on battery the same code varied
+14 to 22 ms a step on the lattice below, and charging at 8% it still spread 6.6 to 11.6 ms on
+the Jointed drop. Fastest and median wall ms per step:
+- `pnpm bench3d:gpu`, "Jointed drop 34k (71k joints)", 10 runs each: main 6.64 / 9.47, here
+  6.82 / 8.91 (the GPU phases' fastest: 6.03 and 6.09). Chain mail 1.6k, 4 runs each: 1.14 / 1.21
+  and 1.15 / 1.24. Jointed drop 6k: 3.17 / 3.42 and 3.16 / 3.49.
+- A 24,000-body lattice of 71,500 joints, 10 iterations, 8 runs each, fastest: ball joints 4.89
+  on main and 5.03 here; rigid joints (the angle lock live) 7.09 and 7.36.
+- Main with only the 144-byte record (6 runs of the Jointed drop) tied with both, at 6.57.
+
+So no cost shows beyond a few percent, under that spread. The warm start and the dual store
+back 6 and 4 of the record's 9 vec4 where they stored all 8. Re-run on a quiet machine before
+quoting a number.
 
 ## 2026-09-27 — Bodies lost to NaN at high mass ratios: negative pivots in the f32 primal solve
 
