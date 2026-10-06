@@ -127,8 +127,8 @@ export interface JointOptions {
   /**
    * Also break on the joint's pull: `breakForce` then limits |λ_lin| as well, the force holding
    * its two anchors together, in **newtons** (a 1 kg box hanging from it pulls 9.81). It is one
-   * number for both, so it is chosen for the pull (a joint carrying a weight is the case for it) and the
-   * angular force breaks it at that same value.
+   * number for both: choose it for the pull (a joint carrying a weight is what this is for), and
+   * the angular force then breaks the joint at that same value.
    */
   breakOnPull?: boolean;
   /**
@@ -954,8 +954,8 @@ export class World {
       this.refilters.clear();
     }
     if (this.pendingJoints.length) {
-      // Off the queue first, so that if the solver throws (addJoint checks what it would refuse, so
-      // this is a failure of the solver's own) nothing is left queued to throw again at every flush
+      // Off the queue first, so that if the solver throws (addJoint checks what the solver would
+      // refuse, so this is the solver's own failure) nothing is left queued to throw at every flush
       const pending = this.pendingJoints;
       this.pendingJoints = [];
       try {

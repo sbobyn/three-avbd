@@ -1139,8 +1139,8 @@ export class GpuSolver3D {
    * (with `linear`, or the linear force: not in the paper, which breaks joints on torque alone).
    * `fracture` and `linear` are the call's defaults: a joint's own, in its spec, override them,
    * so one call can hold joints of any strength. A spec's `rest` makes the angle lock hold a
-   * turn between its bodies, and its `yield` lets it bend and keep the bend (see JointSpec).
-   * Returns their slots.
+   * turn between its bodies, its `yield` lets it bend and keep the bend, and its `breakBend`
+   * breaks it once it has bent so far (see JointSpec). Returns their slots.
    */
   appendJoints(joints: JointSpec[], fracture = Infinity, linear = false): number[] {
     // Checked before any slot is taken, so a bad spec leaves the solver as it was
