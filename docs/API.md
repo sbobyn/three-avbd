@@ -169,10 +169,12 @@ renderer.setAnimationLoop(() => {
   load that goes on bending a plastic joint tears it with its bend limit, `breakBend` (rad, 0 to
   π, needs a `yieldForce`): the joint breaks as it yields and has then bent that far, a lighter
   load that bends it less leaves it holding (15 kg on a weld yielding at 60 and limited to 0.6 rad
-  breaks at 34.5° in 59 steps; 8 kg bends it 8° and it holds). A weight a joint carries can tear
-  it instead with `breakOnPull`, whose threshold is in newtons (the Plastic Beam demo: a weld that
-  bends under a weight and tears off its wall under more). Fixed joints only (a ball joint has no
-  angle lock to bend, and any of these options throws there); there is no linear plasticity.
+  breaks at 34.5° in 59 steps; 8 kg bends it 8° and it holds). A bend is at most π, so a larger
+  limit could never be reached: `addJoint` throws for it (`Infinity`, like no `breakBend`, is
+  never). A weight a joint carries can tear it instead with `breakOnPull`, whose threshold is in
+  newtons (the Plastic Beam demo: a weld that bends under a weight and tears off its wall under
+  more). Fixed joints only (a ball joint has no angle lock to bend, and any of these options
+  throws there); there is no linear plasticity.
 - What a joint carries (0.3): `await world.readJoints()` (or `world.read()`, which reads the joints
   whenever one can break or yield) refreshes `joint.force`, `{ linear, angular }`: |λ_lin|, the
   force (N) holding its anchors together (a hanging 1 kg box: 9.81), and |λ_ang|, the angular
@@ -193,12 +195,13 @@ renderer.setAnimationLoop(() => {
   `fracture` and `linear` override the call's (which stay, as defaults), `rest` is the turn to
   hold as above (`rotB = rotA·rest`, so `rest = rotA⁻¹·rotB` takes it from two bodies as they
   are, and it is the rest the joint's bend is measured from), `yield` the plastic threshold (a
-  rigid angle lock only: left out `angular`) and `breakBend` the bend limit (rad; needs a
-  `yield`). A call it cannot take is
+  rigid angle lock only: left out `angular`) and `breakBend` the bend limit (rad, 0 to π, or
+  `Infinity`: never; needs a `yield`). A call it cannot take is
   refused whole, before any slot is: a `rest` that is not a rotation or is on a ball joint
   (`angular: 0`, which has no angle lock to hold it), a negative or NaN `fracture` (the sign is the
   solver's flag for `linear`: say that, not a negative force), a bad or misplaced `yield`, a
-  `breakBend` that is negative or has no `yield` to bend. `World.addJoint` checks the same at the
+  `breakBend` that is negative, NaN or above π (a bend is at most π, so that limit could never be
+  reached) or has no `yield` to bend. `World.addJoint` checks the same at the
   call (so nothing the solver would refuse is ever queued, and a flush that fails in the solver
   anyway lets go of the joints it did not place rather than leaving them to throw again at every
   later flush) and says once per world, with `console.warn`, when `yieldForce` is not below

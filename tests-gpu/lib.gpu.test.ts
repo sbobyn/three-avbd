@@ -642,7 +642,10 @@ gpuTest('three-avbd: addJoint refuses a breakBend that is not an angle or that n
   const world = await World.create({ device, maxBodies: 16 });
   const hook = world.addBox({ size: [1, 1, 1], position: [0, 5, 0], fixed: true })!;
   const box = world.addBox({ size: [1, 1, 1], position: [0, 4, 0] })!;
-  for (const breakBend of [-0.1, NaN]) assert.throws(() => world.addJoint(hook, box, { yieldForce: 60, breakBend }), /breakBend is an angle of at least 0/);
+  // An angle from 0 to π: a joint cannot bend more than π, so a larger limit could never be reached
+  for (const breakBend of [-0.1, NaN, -Infinity, Math.PI + 0.001, 4, 100]) {
+    assert.throws(() => world.addJoint(hook, box, { yieldForce: 60, breakBend }), /addJoint: breakBend is an angle from 0 to π \(rad\)/, `breakBend ${breakBend}`);
+  }
   assert.throws(() => world.addJoint(hook, box, { breakBend: 0.5 }), /breakBend limits how far a plastic joint bends: it needs a yieldForce/);
   assert.throws(() => world.addJoint(hook, box, { yieldForce: Infinity, breakBend: 0.5 }), /needs a yieldForce/);
   assert.throws(() => world.addJoint(hook, box, { type: 'ball', yieldForce: 60, breakBend: 0.5 }), /ball joint/);
@@ -650,6 +653,7 @@ gpuTest('three-avbd: addJoint refuses a breakBend that is not an angle or that n
   // Nothing was queued, and a limit that is never reached is not a mistake
   assert.equal(world.addJoint(hook, box, { breakBend: Infinity }).breakBend, Infinity);
   assert.equal(world.addJoint(hook, box, { yieldForce: 60, breakBend: 0 }).breakBend, 0);
+  assert.equal(world.addJoint(hook, box, { yieldForce: 60, breakBend: Math.PI }).breakBend, Math.PI, 'π is the most a joint can bend');
   world.step();
 
   // A breakForce above a yield, with nothing to break a load that keeps bending the joint: it

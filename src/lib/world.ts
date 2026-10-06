@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { B_ANGVEL, B_POS, B_ROT, B_VEL, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
 import { decodeJoint, type JointState } from '../avbd3d/gpu/joints.ts';
-import { GpuSolver3D, gpuParams3D, unitRotation } from '../avbd3d/gpu/solver.ts';
+import { checkBreakBend, GpuSolver3D, gpuParams3D, unitRotation } from '../avbd3d/gpu/solver.ts';
 import { Rigid } from '../avbd3d/ref/body.ts';
 import { Solver } from '../avbd3d/ref/solver.ts';
 import { convexHull, hull, type HullShape, sphere } from '../avbd3d/shapes.ts';
@@ -156,7 +156,9 @@ export interface JointOptions {
    * was made with to the one it holds now, which `Joint.bend` says. It is how a sustained
    * overload tears a joint that yields, which `breakForce` can't (see there): a load that keeps
    * bending it takes it past the limit, and it breaks then (a lighter one bends it less, and it
-   * holds). Needs `yieldForce`: a joint that can't give can't bend. None: it never breaks on its bend.
+   * holds). A bend is at most π, so a larger limit could never be reached and `addJoint` throws
+   * for it. Needs `yieldForce`: a joint that can't give can't bend. None (or Infinity): it never
+   * breaks on its bend.
    */
   breakBend?: number;
 }
@@ -734,7 +736,7 @@ export class World {
     }
     if (yieldForce !== undefined && !(yieldForce >= 0)) throw new Error(`addJoint: yieldForce is a force of at least 0, not ${yieldForce}`);
     if (breakBend !== undefined) {
-      if (!(breakBend >= 0)) throw new Error(`addJoint: breakBend is an angle of at least 0 (rad), not ${breakBend}`);
+      checkBreakBend(breakBend, 'addJoint');
       if (breakBend < Infinity && !(yieldForce !== undefined && yieldForce < Infinity)) throw new Error('addJoint: breakBend limits how far a plastic joint bends: it needs a yieldForce');
     }
     const breakForce = options.breakForce ?? Infinity;

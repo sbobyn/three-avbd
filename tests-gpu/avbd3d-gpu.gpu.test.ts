@@ -641,11 +641,16 @@ gpuTest('appendJoints: each joint carries its own break threshold, over the call
   assert.throws(() => solver.appendJoints([{ ...at(0) }, { ...at(1), fracture: -5 }]), /fracture is a force of at least 0/);
   assert.throws(() => solver.appendJoints([{ ...at(1) }], -5), /fracture is a force of at least 0/);
   assert.throws(() => solver.appendJoints([{ ...at(1), fracture: NaN }]), /fracture is a force of at least 0/);
-  // ...a bend limit is an angle of at least 0, and needs a joint that yields (else it could never bend)
-  assert.throws(() => solver.appendJoints([{ ...at(1), yield: 5, breakBend: -0.1 }]), /breakBend is an angle of at least 0/);
+  // ...a bend limit is an angle from 0 to π (a joint cannot bend more than π, so a larger limit could never be
+  // reached), and needs a joint that yields (else it could never bend)
+  for (const breakBend of [-0.1, NaN, -Infinity, Math.PI + 0.001, 4, 100]) {
+    assert.throws(() => solver.appendJoints([{ ...at(1), yield: 5, breakBend }]), /appendJoints: breakBend is an angle from 0 to π \(rad\)/, `breakBend ${breakBend}`);
+  }
   assert.throws(() => solver.appendJoints([{ ...at(1), breakBend: 0.5 }]), /breakBend limits how far a plastic joint bends: it needs a yield/);
   assert.throws(() => solver.appendJoints([{ ...at(1), yield: Infinity, breakBend: 0.5 }]), /needs a yield/);
   assert.equal(solver.jointCount, count, 'no slot was taken');
+  // π is the most a joint can bend, 0 breaks it at its first give, and Infinity says never: all three are taken
+  assert.equal(solver.appendJoints([{ ...at(1), yield: 5, breakBend: Math.PI }, { ...at(1), yield: 5, breakBend: 0 }, { ...at(1), yield: 5, breakBend: Infinity }]).length, 3);
   // The held joints read the pull they carry: the box's weight, 10 N
   assert.ok(Math.abs(states[1].linear - 10) < 1 && Math.abs(states[4].linear - 10) < 1, `carrying ${states[1].linear.toFixed(1)} N, ${states[4].linear.toFixed(1)} N`);
   solver.destroy();

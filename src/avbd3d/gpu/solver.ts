@@ -91,7 +91,8 @@ export interface JointSpec {
    * rest it started with (its `rest`, or none) to the one it holds now, which each yield moves. It
    * is tested when the joint yields, in the dual update (as is `fracture`, which a yielding joint
    * seldom reaches), so a load that keeps bending a hinge tears it once it has bent this far.
-   * Needs a `yield`: a joint that cannot give cannot bend. Default: never.
+   * A bend is at most π, so a larger limit could never be reached and is refused (Infinity is
+   * never). Needs a `yield`: a joint that cannot give cannot bend. Default: never.
    */
   breakBend?: number;
 }
@@ -114,6 +115,15 @@ export function unitRotation(q: ArrayLike<number>, what: string): [number, numbe
   const l = q.length === 4 ? Math.hypot(q[0], q[1], q[2], q[3]) : NaN;
   if (!(l > 0) || !Number.isFinite(l)) throw new Error(`${what}: a rotation is four finite numbers (x, y, z, w), not all zero`);
   return [q[0] / l, q[1] / l, q[2] / l, q[3] / l];
+}
+
+/**
+ * Throws (naming `what`) unless `angle` can be a joint's bend limit: 0 to π radians, or Infinity
+ * for never. A joint's bend is the angle of a turn, at most π, so a larger limit could never be
+ * reached: it is refused rather than taken for never.
+ */
+export function checkBreakBend(angle: number, what: string): void {
+  if (angle !== Infinity && !(angle >= 0 && angle <= Math.PI)) throw new Error(`${what}: breakBend is an angle from 0 to π (rad), not ${angle}`);
 }
 
 /** Byte size of a body buffer holding `n` bodies. */
@@ -1151,7 +1161,7 @@ export class GpuSolver3D {
       if (!(limit >= 0)) throw new Error(`appendJoints: fracture is a force of at least 0 (a pull is limited with linear), not ${limit}`);
       if (j.rest && j.angular === 0) throw new Error('appendJoints: rest needs an angle lock to hold it: a ball joint (angular: 0) has none');
       if (j.breakBend !== undefined) {
-        if (!(j.breakBend >= 0)) throw new Error(`appendJoints: breakBend is an angle of at least 0 (rad), not ${j.breakBend}`);
+        checkBreakBend(j.breakBend, 'appendJoints');
         if (j.breakBend < Infinity && !(j.yield !== undefined && j.yield < Infinity)) throw new Error('appendJoints: breakBend limits how far a plastic joint bends: it needs a yield');
       }
       if (j.yield === undefined) continue;
