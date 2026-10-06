@@ -333,3 +333,100 @@ gpuTest('three-avbd: contact events: a reporting box landing begins once (how ha
   assert.strictEqual(world.droppedContactEvents, 0);
   world.destroy();
 });
+
+/** The angle (degrees) of the turn between two orientations (x, y, z, w). */
+function between(a: ArrayLike<number>, b: ArrayLike<number>): number {
+  const w = Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]);
+  return (2 * Math.acos(Math.min(1, w)) * 180) / Math.PI;
+}
+
+gpuTest('three-avbd: a joint with rest: \'current\' (or a rotation) holds the turn its bodies had when it was added, where the default twists them', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  // Two cubes in free fall, spinning, B turned 30° about y from A and touching it at a shared face
+  const pairs = (rest: 'current' | number[] | undefined, x: number) => {
+    const h = Math.PI / 12;
+    const turned: [number, number, number, number] = [0, Math.sin(h), 0, Math.cos(h)];
+    const a = world.addBox({ size: [1, 1, 1], position: [x, 20, 0], angularVelocity: [1, 2, 3] })!;
+    // B's centre: A's anchor (0.5, 0, 0) plus B's own half-width turned 30° about y
+    const b = world.addBox({ size: [1, 1, 1], position: [x + 0.5 + 0.5 * Math.cos(2 * h), 20, -0.5 * Math.sin(2 * h)], rotation: turned, angularVelocity: [1, 2, 3] })!;
+    const joint = world.addJoint(a, b, { anchorA: [0.5, 0, 0], anchorB: [-0.5, 0, 0], rest: rest as 'current' });
+    return { a, b, joint };
+  };
+  const current = pairs('current', 0);
+  const given = pairs([0, Math.sin(Math.PI / 12), 0, Math.cos(Math.PI / 12)], 10);
+  const twisted = pairs(undefined, 20);
+  for (let k = 0; k < 60; k++) world.step();
+  await world.read();
+  for (const [name, p] of [['current', current], ['a given rotation', given]] as const) {
+    const turn = between(p.a.rotation, p.b.rotation);
+    assert.ok(Math.abs(turn - 30) < 0.1, `${name}: ${turn.toFixed(3)}°`);
+  }
+  assert.ok(between(twisted.a.rotation, twisted.b.rotation) < 20, `the default twists them toward equal: ${between(twisted.a.rotation, twisted.b.rotation).toFixed(1)}°`);
+  // The convention: b = a·rest (the product, a first), whatever the two have tumbled to
+  const [qa, qr] = [current.a.rotation, current.joint.restRotation!];
+  const product = [
+    qa[3] * qr[0] + qa[0] * qr[3] + qa[1] * qr[2] - qa[2] * qr[1],
+    qa[3] * qr[1] - qa[0] * qr[2] + qa[1] * qr[3] + qa[2] * qr[0],
+    qa[3] * qr[2] + qa[0] * qr[1] - qa[1] * qr[0] + qa[2] * qr[3],
+    qa[3] * qr[3] - qa[0] * qr[0] - qa[1] * qr[1] - qa[2] * qr[2],
+  ];
+  assert.ok(between(product, current.b.rotation) < 0.1, `b is a·rest: ${between(product, current.b.rotation).toFixed(3)}° off`);
+  assert.ok(Math.abs(between(current.joint.restRotation!, [0, Math.sin(Math.PI / 12), 0, Math.cos(Math.PI / 12)])) < 1e-4, 'the handle says the turn it holds');
+  assert.equal(twisted.joint.restRotation, null);
+  // A ball joint has no angle lock to hold a turn or to bend
+  assert.throws(() => world.addJoint(current.a, current.b, { type: 'ball', rest: 'current' }), /ball joint/);
+  assert.throws(() => world.addJoint(current.a, current.b, { type: 'ball', yieldForce: 5 }), /ball joint/);
+  assert.throws(() => world.addJoint(current.a, current.b, { yieldForce: -1 }), /at least 0/);
+  world.destroy();
+});
+
+gpuTest('three-avbd: a joint with a yieldForce bends under a load and keeps the bend when it goes; Joint.force and Joint.bend read it', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  // A cantilever along x (y up): a fixed wall, four links of 1 m welded end to end, a 12 kg weight on the end
+  const wall = world.addBox({ size: [1, 1, 1], position: [-0.5, 5, 0], fixed: true })!;
+  const links = [0, 1, 2, 3].map((i) => world.addBox({ size: [1, 0.3, 0.3], position: [i + 0.5, 5, 0] })!);
+  const weight = world.addBox({ size: [0.6, 0.6, 0.6], density: 12 / 0.216, position: [4.3, 5, 0] })!;
+  const yieldForce = 60;
+  const welds = [wall, ...links].slice(0, 4).map((a, i) => world.addJoint(a, links[i], { anchorA: [0.5, 0, 0], anchorB: [-0.5, 0, 0], yieldForce: i === 0 ? yieldForce : undefined }));
+  const load = world.addJoint(links[3], weight, { anchorA: [0.5, 0, 0], anchorB: [-0.3, 0, 0] });
+  let carried = 0;
+  for (let k = 0; k < 600; k++) {
+    world.step();
+    if (k % 10 === 0) {
+      await world.read();
+      carried = Math.max(carried, welds[0].force.angular);
+    }
+  }
+  await world.read();
+  const turn = (q: ArrayLike<number>) => (2 * Math.atan2(-q[2], q[3]) * 180) / Math.PI;
+  const bent = turn(links[0].rotation);
+  assert.ok(bent > 25, `the wall's weld gave under the load: ${bent.toFixed(1)}°`);
+  assert.ok(Math.abs((welds[0].bend * 180) / Math.PI - bent) < 2, `Joint.bend says by how much: ${((welds[0].bend * 180) / Math.PI).toFixed(1)}°`);
+  assert.ok(carried <= yieldForce * 1.0001 && carried > 0.8 * yieldForce, `carrying no more than its yield: ${carried.toFixed(1)}`);
+  assert.equal(welds[1].bend, 0, 'the others never gave');
+  assert.ok(welds[0].holding && !welds[0].broken);
+  // The load is cut loose: the bend stays
+  load.remove();
+  weight.remove();
+  for (let k = 0; k < 300; k++) world.step();
+  await world.read();
+  assert.ok(Math.abs(turn(links[0].rotation) - bent) < 0.5, `bent ${bent.toFixed(1)}° with the load, ${turn(links[0].rotation).toFixed(1)}° without`);
+  world.destroy();
+});
+
+gpuTest('three-avbd: readJoints says what a joint carries: its pull (N), and joints that never break need not be watched', async (device) => {
+  const world = await World.create({ device, maxBodies: 16 });
+  const hook = world.addBox({ size: [1, 1, 1], position: [0, 5, 0], fixed: true })!;
+  const box = world.addBox({ size: [1, 1, 1], position: [0, 4, 0] })!;
+  const joint = world.addJoint(hook, box, { anchorA: [0, -0.5, 0], anchorB: [0, 0.5, 0] });
+  const spring = world.addSpring(hook, world.addBox({ size: [1, 1, 1], position: [4, 4, 0] })!, { stiffness: 100 });
+  assert.deepEqual(joint.force, { linear: 0, angular: 0 }, 'nothing read yet');
+  for (let k = 0; k < 120; k++) world.step();
+  await world.readJoints();
+  // A 1 kg box hangs 9.81 N on it, and no torque (it hangs straight)
+  assert.ok(Math.abs(joint.force.linear - 9.81) < 0.5, `pull ${joint.force.linear.toFixed(2)} N`);
+  assert.ok(joint.force.angular < 0.5, `torque ${joint.force.angular}`);
+  assert.equal(joint.bend, 0);
+  assert.deepEqual(spring.force, { linear: 0, angular: 0 }, 'a spring has no multipliers');
+  world.destroy();
+});

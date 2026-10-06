@@ -5,7 +5,8 @@
 // live in a buffer Three.js draws from directly (BodyMesh): no copies, no readback to draw.
 
 import * as THREE from 'three/webgpu';
-import { B_ANGVEL, B_POS, B_ROT, B_VEL, BODY_FLOATS, J_PEN_LIN, JOINT_FLOATS } from '../avbd3d/gpu/layout.ts';
+import { B_ANGVEL, B_POS, B_ROT, B_VEL, BODY_FLOATS, JOINT_FLOATS } from '../avbd3d/gpu/layout.ts';
+import { decodeJoint } from '../avbd3d/gpu/joints.ts';
 import { GpuSolver3D, gpuParams3D } from '../avbd3d/gpu/solver.ts';
 import { Rigid } from '../avbd3d/ref/body.ts';
 import { Solver } from '../avbd3d/ref/solver.ts';
@@ -117,6 +118,19 @@ export interface JointOptions {
    */
   breakForce?: number;
   breakOnPull?: boolean;
+  /**
+   * The turn a fixed joint holds between its bodies: b's orientation in a's frame (x, y, z, w),
+   * so it holds b = a·rest, whatever frames the bodies have. 'current': the turn they have when
+   * the joint is added (by their rotations as last read, or as set). Default: none, the bodies'
+   * rotations held equal (which twists two bodies placed turned apart until they match).
+   */
+  rest?: Quat | 'current';
+  /**
+   * A fixed joint that bends: past this angular force (measured as `breakForce` is, so below it)
+   * the joint gives, carries no more than this, and keeps the bend: a hinge that stays bent once
+   * the load is gone, a beam that sags under a weight for good. None: it never yields.
+   */
+  yieldForce?: number;
 }
 
 export interface SpringOptions {
@@ -166,6 +180,11 @@ function multiply(a: ArrayLike<number>, b: ArrayLike<number>): Quat {
     a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
     a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
   ];
+}
+
+/** The turn from a to b, a⁻¹·b: the rest of a joint holding two bodies as they are. */
+function relativeRotation(a: ArrayLike<number>, b: ArrayLike<number>): Quat {
+  return normalised(multiply([-a[0], -a[1], -a[2], a[3]], b));
 }
 
 /** v turned by the unit quaternion q (x, y, z, w). */
@@ -333,6 +352,21 @@ export class Body {
   }
 }
 
+/** What World makes a Joint from: a joint's options (with its rest turn worked out), or a spring's. */
+interface JointInit {
+  spring?: boolean;
+  anchorA?: Vec3;
+  anchorB?: Vec3;
+  type?: 'fixed' | 'ball';
+  breakForce?: number;
+  breakOnPull?: boolean;
+  restRotation?: Quat;
+  yieldForce?: number;
+  stiffness?: number;
+  /** A spring's rest length. */
+  restLength?: number;
+}
+
 export class Joint {
   readonly world: World;
   readonly a: Body;
@@ -342,15 +376,21 @@ export class Joint {
   readonly anchorB: Vec3;
   readonly breakForce: number;
   readonly breakOnPull: boolean;
+  /** The turn a fixed joint holds when added (JointOptions.rest): b = a·restRotation. null: none. */
+  readonly restRotation: Quat | null;
+  /** The angular force past which a fixed joint yields (JointOptions.yieldForce). */
+  readonly yieldForce: number;
   /** A spring's stiffness (N/m) and rest length (m). */
   readonly stiffness: number;
   readonly rest: number;
   /** @internal The solver's joint slot (-1 until the next step adds it). */
   slot = -1;
   private state: 'held' | 'broken' | 'removed' = 'held';
+  private carried = { linear: 0, angular: 0 };
+  private bent = 0;
 
   /** @internal Made by World.addJoint and addSpring. */
-  constructor(world: World, a: Body, b: Body, options: JointOptions & Partial<SpringOptions> & { spring?: boolean }) {
+  constructor(world: World, a: Body, b: Body, options: JointInit) {
     this.world = world;
     this.a = a;
     this.b = b;
@@ -359,8 +399,37 @@ export class Joint {
     this.anchorB = options.anchorB ?? [0, 0, 0];
     this.breakForce = options.spring ? Infinity : (options.breakForce ?? Infinity);
     this.breakOnPull = options.breakOnPull ?? false;
+    this.restRotation = options.restRotation ?? null;
+    this.yieldForce = options.yieldForce ?? Infinity;
     this.stiffness = options.stiffness ?? Infinity;
-    this.rest = options.rest ?? 0;
+    this.rest = options.restLength ?? 0;
+  }
+
+  /**
+   * What the joint carries, as of the last readback that read joints (World.readJoints; World.read
+   * does when any joint can break or yield): `linear`, the force (N) holding its anchors together,
+   * and `angular`, the angular force of a fixed joint, the number `breakForce` and `yieldForce`
+   * limit. Zero before the first such readback, once it breaks, and for ball joints and springs
+   * (a ball joint has no angle lock; a spring's force is its stiffness times its stretch).
+   */
+  get force(): { linear: number; angular: number } {
+    return { ...this.carried };
+  }
+
+  /**
+   * How far a plastic joint has bent for good (rad): the turn between the rest it holds now and
+   * the one it started with, as of the last readback that read joints. Zero for a joint that
+   * never yielded.
+   */
+  get bend(): number {
+    return this.bent;
+  }
+
+  /** @internal The decoded record of a readback. */
+  update(linear: number, angular: number, rest: ArrayLike<number>): void {
+    this.carried = { linear, angular };
+    const from = this.restRotation ?? [0, 0, 0, 1];
+    this.bent = 2 * Math.acos(Math.min(1, Math.abs(from[0] * rest[0] + from[1] * rest[1] + from[2] * rest[2] + from[3] * rest[3])));
   }
 
   /** It broke (seen at a readback: World.read). */
@@ -448,6 +517,8 @@ export class World {
   private steps = 0;
   private owed = 0;
   private reading: Promise<void> | null = null;
+  /** The next read reads the joints (readJoints). */
+  private jointsWanted = false;
   private adapting = false;
   private liveVersion = 0;
 
@@ -601,10 +672,21 @@ export class World {
 
   // --- Joints ----------------------------------------------------------------------------------
 
-  /** Join two bodies at their anchors, rigidly or (type 'ball') free to turn, until (optionally) it breaks. */
+  /**
+   * Join two bodies at their anchors, rigidly or (type 'ball') free to turn, until (optionally) it
+   * breaks. A rigid joint holds the bodies' rotations equal unless told another turn to hold
+   * (`rest`), and can bend for good under load (`yieldForce`).
+   */
   addJoint(a: Body, b: Body, options: JointOptions = {}): Joint {
     this.checkPair(a, b, 'addJoint');
-    const joint = new Joint(this, a, b, options);
+    const { rest, yieldForce, ...others } = options;
+    if (options.type === 'ball' && (rest !== undefined || yieldForce !== undefined)) {
+      throw new Error("addJoint: a ball joint has no angle lock to hold a turn or to bend: 'rest' and 'yieldForce' are for fixed joints");
+    }
+    if (yieldForce !== undefined && !(yieldForce >= 0)) throw new Error(`addJoint: yieldForce is a force of at least 0, not ${yieldForce}`);
+    // The turn to hold: as given, or as the bodies are (by the poses the world knows)
+    const restRotation = rest === 'current' ? relativeRotation(a.rotation, b.rotation) : rest ? normalised(rest) : undefined;
+    const joint = new Joint(this, a, b, { ...others, restRotation, yieldForce });
     this.pendingJoints.push(joint);
     return joint;
   }
@@ -622,7 +704,7 @@ export class World {
     };
     const [pa, pb] = [at(a, anchorA), at(b, anchorB)];
     const rest = options.rest ?? Math.hypot(pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]);
-    const spring = new Joint(this, a, b, { ...options, anchorA, anchorB, rest, spring: true });
+    const spring = new Joint(this, a, b, { anchorA, anchorB, stiffness: options.stiffness, restLength: rest, spring: true });
     this.pendingJoints.push(spring);
     return spring;
   }
@@ -798,26 +880,33 @@ export class World {
       this.refilters.clear();
     }
     if (this.pendingJoints.length) {
-      // One upload per kind of joint and fracture
-      const groups = new Map<string, Joint[]>();
-      for (const j of this.pendingJoints) {
-        const key = `${j.type} ${j.breakForce} ${j.breakOnPull}`;
-        groups.set(key, [...(groups.get(key) ?? []), j]);
-      }
-      for (const list of groups.values()) {
-        const slots =
-          list[0].type === 'spring'
-            ? this.solver.appendSprings(list.map((j) => ({ a: j.a.index, b: j.b.index, rA: j.anchorA, rB: j.anchorB, stiffness: j.stiffness, rest: j.rest })))
-            : this.solver.appendJoints(
-                list.map((j) => ({ a: j.a.index, b: j.b.index, rA: j.anchorA, rB: j.anchorB, angular: j.type === 'ball' ? 0 : undefined })),
-                list[0].breakForce,
-                list[0].breakOnPull,
-              );
+      // One upload for the joints, one for the springs: each joint carries its own thresholds
+      const springs = this.pendingJoints.filter((j) => j.type === 'spring');
+      const joints = this.pendingJoints.filter((j) => j.type !== 'spring');
+      const placed = (list: Joint[], slots: number[]) =>
         list.forEach((j, k) => {
           j.slot = slots[k];
           this.joints.add(j);
         });
+      if (joints.length) {
+        placed(
+          joints,
+          this.solver.appendJoints(
+            joints.map((j) => ({
+              a: j.a.index,
+              b: j.b.index,
+              rA: j.anchorA,
+              rB: j.anchorB,
+              angular: j.type === 'ball' ? 0 : undefined,
+              fracture: j.breakForce,
+              linear: j.breakOnPull,
+              rest: j.restRotation ?? undefined,
+              yield: j.yieldForce < Infinity ? j.yieldForce : undefined,
+            })),
+          ),
+        );
       }
+      if (springs.length) placed(springs, this.solver.appendSprings(springs.map((j) => ({ a: j.a.index, b: j.b.index, rA: j.anchorA, rB: j.anchorB, stiffness: j.stiffness, rest: j.rest }))));
       this.pendingJoints = [];
     }
   }
@@ -912,22 +1001,31 @@ export class World {
    * Read the bodies' poses and velocities back from the GPU (and see which joints broke): after
    * it resolves, Body.position and the rest are as of now. `bodies`: only these (a body's record
    * is 160 bytes; all of them, at 100k bodies, 16 MB), the rest keeping their last readback. One
-   * read at a time: a call while one is running waits for it.
+   * read at a time: a call while one is running waits for it. The joints are read too, when any
+   * can break or yield: then Joint.force and Joint.bend are fresh (else, readJoints).
    */
   read(bodies?: Body[]): Promise<void> {
     if (this.reading) return this.reading;
     this.flush();
     const writes = this.writes;
-    const breakable = [...this.joints].filter((j) => j.breakForce < Infinity);
+    // Joints whose state changes by itself (they break, they bend), or that were asked for
+    const watched = this.jointsWanted || [...this.joints].some((j) => j.breakForce < Infinity || j.yieldForce < Infinity);
+    this.jointsWanted = false;
     this.reading = (async () => {
       const [, joints, contacts] = await Promise.all([
         this.readBodies(bodies, writes),
-        breakable.length ? this.solver.readJoints() : Promise.resolve(null),
+        watched ? this.solver.readJoints() : Promise.resolve(null),
         this.contactWatch?.read() ?? Promise.resolve(null),
       ]);
       if (joints) {
         // A broken joint's penalties are zeroed (wgsl-solve.ts dualJoint): let it go properly
-        const broken = breakable.filter((j) => this.joints.has(j) && j.slot * JOINT_FLOATS < joints.length && joints[j.slot * JOINT_FLOATS + J_PEN_LIN + 3] === 0);
+        const broken: Joint[] = [];
+        for (const j of this.joints) {
+          if (j.type === 'spring' || j.slot * JOINT_FLOATS >= joints.length) continue;
+          const state = decodeJoint(joints, j.slot);
+          j.update(state.linear, state.angular, state.rest);
+          if (state.broken && j.breakForce < Infinity) broken.push(j);
+        }
         if (broken.length) {
           for (const j of broken) {
             this.joints.delete(j);
@@ -957,6 +1055,18 @@ export class World {
       }
     })().finally(() => (this.reading = null));
     return this.reading;
+  }
+
+  /**
+   * Read the joints back from the GPU, so Joint.force and Joint.bend are as of now (and any that
+   * broke are seen, as in `read`): the bodies aren't read. `read` does this itself when any joint
+   * can break or yield; this is for watching how hard the others work.
+   */
+  async readJoints(): Promise<void> {
+    // A read already running may not include the joints: let it finish, then read with them
+    while (this.reading) await this.reading;
+    this.jointsWanted = true;
+    await this.read([]);
   }
 
   /** Which bodies the automatic readback (readbackEvery) reads: these only, or (null) all. */
