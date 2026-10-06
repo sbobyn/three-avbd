@@ -656,6 +656,41 @@ gpuTest('appendJoints: each joint carries its own break threshold, over the call
   solver.destroy();
 });
 
+// appendConstraints took the freed slots and counted the new ones before it read the spec's bodies, so an
+// index that names no body threw a TypeError with them gone: a freed slot lost, the joint count up. The
+// bodies are checked with the rest of the spec, before anything is taken
+gpuTest('appendJoints: a body index that names no body is refused whole, leaving the joint count and the freed slots as they were', async (device) => {
+  const ref = new Solver();
+  const hooks = [0, 1].map((k) => new Rigid(ref, [1, 1, 1], 0, 0.5, [4 * k, 0, 5]));
+  const boxes = [0, 1].map((k) => new Rigid(ref, [1, 1, 1], 1, 0.5, [4 * k, 0, 4]));
+  const solver = new GpuSolver3D(device, ref, { spatialSort: false });
+  const at = (k: number) => ({ a: ref.bodies.indexOf(hooks[k]), b: ref.bodies.indexOf(boxes[k]), rA: [0, 0, -0.5], rB: [0, 0, 0.5] });
+  // Two joints hang the boxes, and the first is released: its slot is free for the next append
+  const [first] = solver.appendJoints([at(0), at(1)]);
+  solver.releaseJoints([first]);
+  const count = solver.jointCount;
+  const info = Array.from(solver.jointInfo());
+  const n = solver.bodyCount;
+  // An index past the bodies, below zero, a fraction, NaN, Infinity, none at all: each refused, as either end of a spec
+  // (one that comes after a good spec leaves that one untaken too)
+  for (const bad of [n, n + 100, -1, 0.5, NaN, Infinity, undefined as unknown as number]) {
+    assert.throws(() => solver.appendJoints([at(0), { ...at(1), b: bad }]), /appendJoints: spec 1: b must be the index of a body in the solver/, `b ${bad}`);
+    assert.throws(() => solver.appendJoints([{ ...at(1), a: bad }]), /appendJoints: spec 0: a must be the index of a body in the solver/, `a ${bad}`);
+  }
+  assert.equal(solver.jointCount, count, 'no slot was taken');
+  assert.deepEqual(Array.from(solver.jointInfo()), info, 'and no joint was written');
+  // The freed slot is still free: the next append takes it, and the joint works
+  assert.deepEqual(solver.appendJoints([at(0)]), [first], 'the freed slot was not used up');
+  assert.equal(solver.jointCount, count);
+  for (let k = 0; k < 60; k++) solver.step();
+  const bodies = await solver.readBodies();
+  for (const k of [0, 1]) {
+    const z = bodies[ref.bodies.indexOf(boxes[k]) * BODY_FLOATS + 2];
+    assert.ok(Math.abs(z - 4) < 0.1, `box ${k} hangs from its joint: z ${z.toFixed(2)}`);
+  }
+  solver.destroy();
+});
+
 /** Two unit boxes in free fall, B turned 30° from A, both spinning, joined at a face by one fixed joint with this `rest` (or not). */
 async function turnedPair(device: GPUDevice, options: { rest: boolean; flip?: boolean; aTurned?: boolean }): Promise<number[]> {
   const mul = (a: number[], b: number[]) => [

@@ -52,7 +52,10 @@ export interface GpuContact {
 
 /** A joint for `GpuSolver3D.appendJoints`. */
 export interface JointSpec {
-  /** The two bodies (indices), joined at `rA` in a's frame and `rB` in b's. */
+  /**
+   * The two bodies (indices), joined at `rA` in a's frame and `rB` in b's. Each is the index of a
+   * body the solver has (an integer below `bodyCount`): anything else is refused.
+   */
   a: number;
   b: number;
   rA: ArrayLike<number>;
@@ -1150,12 +1153,19 @@ export class GpuSolver3D {
    * `fracture` and `linear` are the call's defaults: a joint's own, in its spec, override them,
    * so one call can hold joints of any strength. A spec's `rest` makes the angle lock hold a
    * turn between its bodies, its `yield` lets it bend and keep the bend, and its `breakBend`
-   * breaks it once it has bent so far (see JointSpec). Returns their slots.
+   * breaks it once it has bent so far (see JointSpec). A spec it cannot take (a body the solver
+   * does not have, a rest that is not a rotation, a threshold out of range, ...) throws before any
+   * slot is taken: the solver is left as it was. Returns their slots.
    */
   appendJoints(joints: JointSpec[], fracture = Infinity, linear = false): number[] {
-    // Checked before any slot is taken, so a bad spec leaves the solver as it was
+    // Checked before any slot is taken, so a bad spec leaves the solver as it was (appendConstraints
+    // takes the freed slots and counts the new ones before it reads a spec's bodies: they are checked here)
     const rests = joints.map((j) => (j.rest ? unitRotation(j.rest, 'appendJoints: rest') : null));
-    for (const j of joints) {
+    const bodies = this.bodyCount;
+    for (const [k, j] of joints.entries()) {
+      for (const [end, index] of [['a', j.a], ['b', j.b]] as const) {
+        if (!(Number.isInteger(index) && index >= 0 && index < bodies)) throw new Error(`appendJoints: spec ${k}: ${end} must be the index of a body in the solver (an integer below ${bodies}), not ${index}`);
+      }
       // A threshold's sign is the flag for breaking on the linear force too: that is `linear`'s to say
       const limit = j.fracture ?? fracture;
       if (!(limit >= 0)) throw new Error(`appendJoints: fracture is a force of at least 0 (a pull is limited with linear), not ${limit}`);
