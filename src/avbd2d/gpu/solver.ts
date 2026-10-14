@@ -94,6 +94,15 @@ export class GpuSolver2D {
   private readonly paramsBuffer: GPUBuffer;
   private passBuffer: GPUBuffer | null = null;
   private passEntries = 0;
+  // A step's uploads are written into these and copied out by writeBuffer, so it allocates none
+  private readonly paramData = new ArrayBuffer(PARAM_WORDS * 4);
+  private readonly paramF32 = new Float32Array(this.paramData);
+  private readonly paramU32 = new Uint32Array(this.paramData);
+  private passData = new ArrayBuffer(0);
+  private passU32 = new Uint32Array(0);
+  private passF32 = new Float32Array(0);
+  /** The pass-constant bind group's one dynamic offset */
+  private readonly passOffset = new Uint32Array(1);
 
   /** Which contact buffer this step writes (the other holds last step's contacts). */
   private parity = 0;
@@ -482,9 +491,8 @@ export class GpuSolver2D {
   private writeParams(alpha: number, postStabilize: boolean): void {
     const p = this.params;
     const cap = this.bodyCapacity;
-    const buf = new ArrayBuffer(PARAM_WORDS * 4);
-    const f = new Float32Array(buf);
-    const u = new Uint32Array(buf);
+    const f = this.paramF32;
+    const u = this.paramU32;
     f[0] = p.dt;
     f[1] = p.gravity;
     f[2] = p.beta;
@@ -518,11 +526,15 @@ export class GpuSolver2D {
     u[26] = this.colorGroups;
     u[27] = 2 * cap + 65; // colorBodiesOffset
     u[28] = this.colorRounds;
-    this.device.queue.writeBuffer(this.paramsBuffer, 0, buf);
+    this.device.queue.writeBuffer(this.paramsBuffer, 0, this.paramData);
   }
 
-  /** Pass constants: per iteration, one entry per colour (primal), then one for the duals. */
-  private writePassConstants(totalIterations: number, alphaFor: (it: number) => number): void {
+  /**
+   * Pass constants: per iteration, one entry per colour (primal), then one for the duals. The
+   * alpha is 1 for the first `ones` iterations and 0 after them with post-stabilization, else
+   * `alpha` throughout.
+   */
+  private writePassConstants(totalIterations: number, postStabilize: boolean, ones: number, alpha: number): void {
     const perIteration = this.colorCap + 1;
     const entries = totalIterations * perIteration;
     if (entries > this.passEntries || !this.passGroup) {
@@ -531,17 +543,43 @@ export class GpuSolver2D {
       this.passEntries = entries;
       this.passGroup = this.device.createBindGroup({ layout: this.layouts.pass, entries: [{ binding: 0, resource: { buffer: this.passBuffer, size: 16 } }] });
     }
-    const data = new ArrayBuffer(entries * PASS_STRIDE);
-    const u32 = new Uint32Array(data);
-    const f32 = new Float32Array(data);
+    const bytes = entries * PASS_STRIDE;
+    if (bytes > this.passData.byteLength) {
+      this.passData = new ArrayBuffer(bytes);
+      this.passU32 = new Uint32Array(this.passData);
+      this.passF32 = new Float32Array(this.passData);
+    }
+    // Every entry uploaded is rewritten, and only its first two words are ever set
+    const u32 = this.passU32;
+    const f32 = this.passF32;
     for (let it = 0; it < totalIterations; it++) {
+      const a = postStabilize ? (it < ones ? 1 : 0) : alpha;
       for (let col = 0; col <= this.colorCap; col++) {
         const w = ((it * perIteration + col) * PASS_STRIDE) / 4;
         u32[w] = col;
-        f32[w + 1] = alphaFor(it);
+        f32[w + 1] = a;
       }
     }
-    this.device.queue.writeBuffer(this.passBuffer!, 0, data);
+    this.device.queue.writeBuffer(this.passBuffer!, 0, this.passData, 0, bytes);
+  }
+
+  /** Bind pass-constant entry `entry` (group 1 at a dynamic offset). */
+  private setPass(pass: GPUComputePassEncoder, entry: number): void {
+    this.passOffset[0] = entry * PASS_STRIDE;
+    pass.setBindGroup(1, this.passGroup!, this.passOffset, 0, 1);
+  }
+
+  private run(pass: GPUComputePassEncoder, name: string, group: GPUBindGroup, x: number): void {
+    if (x <= 0) return;
+    pass.setPipeline(this.pipes[name]);
+    pass.setBindGroup(0, group);
+    pass.dispatchWorkgroups(x);
+  }
+
+  private runIndirect(pass: GPUComputePassEncoder, name: string, group: GPUBindGroup, argsWord: number): void {
+    pass.setPipeline(this.pipes[name]);
+    pass.setBindGroup(0, group);
+    pass.dispatchWorkgroupsIndirect(this.argsBuffer, argsWord * 4);
   }
 
   step(): void {
@@ -551,7 +589,7 @@ export class GpuSolver2D {
     const alpha = p.vbd ? 0 : p.alpha;
     const totalIterations = p.iterations + (postStabilize ? 1 : 0);
     this.writeParams(alpha, postStabilize);
-    this.writePassConstants(totalIterations, (it) => (postStabilize ? (it < p.iterations ? 1 : 0) : alpha));
+    this.writePassConstants(totalIterations, postStabilize, p.iterations, alpha);
 
     const cur = this.parity;
     const cap = this.bodyCapacity;
@@ -577,57 +615,45 @@ export class GpuSolver2D {
       phase++;
     };
     const G = this.groups;
-    const run = (name: string, group: GPUBindGroup, x: number) => {
-      if (x <= 0) return;
-      pass.setPipeline(this.pipes[name]);
-      pass.setBindGroup(0, group);
-      pass.dispatchWorkgroups(x);
-    };
-    const runIndirect = (name: string, group: GPUBindGroup, argsWord: number) => {
-      pass.setPipeline(this.pipes[name]);
-      pass.setBindGroup(0, group);
-      pass.dispatchWorkgroupsIndirect(this.argsBuffer, argsWord * 4);
-    };
 
     // Collision: previous contacts into the hash table, grid, pairs, narrowphase
     beginPhase();
-    run('beginFrame', G.broad, 1);
-    run('argsPrev', G.args, 1);
-    runIndirect('hashInsert', G.contacts[cur], IA_PREV);
-    run('gridCount', G.broad, groups(N));
+    this.run(pass, 'beginFrame', G.broad, 1);
+    this.run(pass, 'argsPrev', G.args, 1);
+    this.runIndirect(pass, 'hashInsert', G.contacts[cur], IA_PREV);
+    this.run(pass, 'gridCount', G.broad, groups(N));
     this.gridScan.encode(pass);
-    run('gridScatter', G.broad, groups(N));
-    run('findPairs', G.broad, groups(N));
-    run('argsPairs', G.args, 1);
-    runIndirect('narrowphase', G.contacts[cur], IA_PAIRS);
-    run('argsContacts', G.args, 1);
+    this.run(pass, 'gridScatter', G.broad, groups(N));
+    this.run(pass, 'findPairs', G.broad, groups(N));
+    this.run(pass, 'argsPairs', G.args, 1);
+    this.runIndirect(pass, 'narrowphase', G.contacts[cur], IA_PAIRS);
+    this.run(pass, 'argsContacts', G.args, 1);
 
     // Adjacency
     beginPhase();
-    run('degreeJoints', G.topo[cur], groups(J));
-    runIndirect('degreeContacts', G.topo[cur], IA_CONTACTS);
+    this.run(pass, 'degreeJoints', G.topo[cur], groups(J));
+    this.runIndirect(pass, 'degreeContacts', G.topo[cur], IA_CONTACTS);
     this.adjScan!.encode(pass);
-    run('fillJoints', G.topo[cur], groups(J));
-    runIndirect('fillContacts', G.topo[cur], IA_CONTACTS);
-    run('sortAdjacency', G.topo[cur], groups(N));
+    this.run(pass, 'fillJoints', G.topo[cur], groups(J));
+    this.runIndirect(pass, 'fillContacts', G.topo[cur], IA_CONTACTS);
+    this.run(pass, 'sortAdjacency', G.topo[cur], groups(N));
 
     // Colouring
     beginPhase();
-    run('colorCompact', G.topo[cur], groups(N));
-    run('colorMark', G.topo[cur], groups(N));
-    for (let r = 0; r < this.colorRounds; r++) run(r % 2 === 0 ? 'colorRoundAB' : 'colorRoundBA', G.topo[cur], groups(N));
-    run('colorCount', G.topo[cur], this.colorGroups);
+    this.run(pass, 'colorCompact', G.topo[cur], groups(N));
+    this.run(pass, 'colorMark', G.topo[cur], groups(N));
+    for (let r = 0; r < this.colorRounds; r++) this.run(pass, r % 2 === 0 ? 'colorRoundAB' : 'colorRoundBA', G.topo[cur], groups(N));
+    this.run(pass, 'colorCount', G.topo[cur], this.colorGroups);
     this.colorHistScan.encode(pass);
-    run('colorStarts', G.topo[cur], 1);
-    run('argsColors', G.args, 1);
-    run('colorScatter', G.topo[cur], this.colorGroups);
+    this.run(pass, 'colorStarts', G.topo[cur], 1);
+    this.run(pass, 'argsColors', G.args, 1);
+    this.run(pass, 'colorScatter', G.topo[cur], this.colorGroups);
 
     // Solve
     beginPhase();
     const perIteration = this.colorCap + 1;
-    const setPass = (entry: number) => pass.setBindGroup(1, this.passGroup!, [entry * PASS_STRIDE]);
     pass.setBindGroup(0, G.solve[cur]);
-    setPass(0);
+    this.setPass(pass, 0);
     if (J > 0) {
       pass.setPipeline(this.pipes.warmStartJoints);
       pass.dispatchWorkgroups(groups(J));
@@ -638,13 +664,13 @@ export class GpuSolver2D {
       const scan = this.primalMode === 'scan';
       pass.setPipeline(scan ? this.pipes.primalScan : this.pipes.primal);
       for (let col = 0; col < this.colorCap; col++) {
-        setPass(it * perIteration + col);
+        this.setPass(pass, it * perIteration + col);
         if (scan) pass.dispatchWorkgroups(groups(N));
         else pass.dispatchWorkgroupsIndirect(this.argsBuffer, (IA_COLOR + 3 * col) * 4);
       }
       if (it < p.iterations) {
         // One dual pass over joints and contacts together
-        setPass(it * perIteration + this.colorCap);
+        this.setPass(pass, it * perIteration + this.colorCap);
         pass.setPipeline(this.pipes.dual);
         pass.dispatchWorkgroupsIndirect(this.argsBuffer, IA_CONSTRAINTS * 4);
       }
