@@ -1497,4 +1497,50 @@ with fusion enabled, with zero reported coloring clashes; disabling fusion
 restored the first 900 frames. The focused synthetic tests did not expose this
 real contact/joint transition. Earlier fusion timings describe the experimental
 path, not a replay-safe default. The exact fused-entry-point difference remains
-unresolved; keep the original per-color dispatch path for deterministic replay.
+unresolved; keep the original per-color dispatch path for deterministic replay. (Superseded in
+part by "STE-2538 fused tail" below: the divergence is confined to steps that count a colouring
+clash, and the zero clashes were a sampling gap.)
+
+### STE-2538 fused tail: the frame-816 cause (2026-10-17)
+
+What is established: the divergence is confined to steps whose colouring clashes. With a proper
+colouring the fused tail and the per-colour dispatches are bit-identical; gating fusion off on
+clash steps alone restores the play session (below). When bodies of one colour share a constraint
+(the Jones-Plassmann rounds or the cap ran out: such bodies stay pending and are counted as
+clashes, and those with no colour go to the last colour, a tail colour once the cap passes 16;
+read from `wgsl-topology.ts`, not tested here, since both files below colour through
+`fixedColors`), the colour's own dispatch runs its 8-body workgroups concurrently, while
+`primalSparse` runs the same chunks one after another in one workgroup. The exact order the
+per-colour path then follows is not pinned down: it is neither chunk-sequential nor Jacobi (the
+deferred-writes variant below gives a third result), and it is scheduling-dependent.
+
+- `tests-gpu/sparse-colors-contacts.gpu.test.ts`: fused equals per-colour bit for bit with
+  contacts in the tail (one body a colour, and one colour over five chunks), and in a control
+  below the tail.
+- `tests-gpu/sparse-colors-clash.diag.ts` (a diagnostic, not a test): equal for a proper tail
+  colouring over several chunks and for a clash inside one chunk; different from the first step
+  for 40 jointed bodies sharing one tail colour, in each of four runs. With all 40 sharing a
+  colour, two per-colour solvers on the same scene also differed from step 2 in one of four runs:
+  a clash across workgroups is scheduling-dependent in the default path too. (M4 Max, Dawn;
+  console output not saved.)
+- The play session (three-destruction, a local pack with fusion on): deferring a colour's writes
+  until all its chunks have read still stops at frame 816, with a different hash; falling back
+  to the per-colour dispatches on any step that counts a clash (`argsColors`:
+  `counters[C_CLASHES] == 0`) reproduces all 2,940 baseline hashes, in one replay
+  (three-destruction `docs/perf.md`, sbobyn/three-destruction#88).
+- The earlier "zero clashes": `beginFrame` clears `C_CLASHES` every step, and the destruction
+  engine copies the counters once a readback, so a clash in any other step is never seen.
+- That fallback kept every per-colour dispatch encoded (zero-sized in the tail when fused). For
+  colours this small, a zero-sized indirect dispatch cost about as much as a real one: 400
+  bodies, 64 colours (about 1-20 bodies each, a proper fixed colouring, so the fallback never
+  fired), 10 iterations, wall time a step from submit to done, per-colour 6.5-6.7 ms, fused
+  2.9 ms, fused with the fallback 6.7-7.0 ms (M4 Max, Dawn, a shared machine, load not
+  recorded; medians of 7 trials, two runs each). It was not kept.
+
+Fusion stays off by default. The per-colour path is the replay reference only while no clash
+spans workgroups. In the play session, three recordings with fusion off agree on all 2,940
+hashes (the baseline, its repeat, and the merged main on published 0.3.0), but that is not
+guaranteed. An exact
+fused path needs the clashing colour dispatched on its own without encoding the rest of the tail,
+or clashes given one defined order in both paths (which changes the default path's results on
+clash steps and makes them deterministic).
