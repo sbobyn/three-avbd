@@ -13,7 +13,7 @@ import { SDF_MAX_POINTS } from './sdf-layout.ts';
  * candidate, independent per-point normals.
  */
 /** sdfNarrowphaseWGSL for a pass whose pair results hold `maxPoints` points. */
-export const sdfNarrowphaseSource = (maxPoints: number = SDF_MAX_POINTS) => /* wgsl */ `
+export const sdfNarrowphaseSource = (maxPoints: number = SDF_MAX_POINTS, seedStride = 0) => /* wgsl */ `
 struct Params { counts: vec4u, values: vec4f, distances: vec4f, flags: vec4u, opt: vec4u }
 struct Body { position: vec4f, rotation: vec4f, velocity: vec4f, omega: vec4f, lo: vec4f, hi: vec4f, anchorRotation: vec4f }
 struct Point { x: vec4f, normal: vec4f, anchorA: vec4f, anchorB: vec4f, flags: vec4u, ellipsoidA: vec4f, ellipsoidB: vec4f }
@@ -24,6 +24,13 @@ struct Result { identity: vec4u, stats: vec4u, points: array<Point,${maxPoints}>
 @group(0) @binding(3) var<storage,read> pairs: array<vec4u>;
 @group(0) @binding(4) var<storage,read> previous: array<Result>;
 @group(0) @binding(5) var<storage,read_write> results: array<Result>;
+${seedStride ? `@group(0) @binding(6) var<storage,read_write> worldSeeds: array<vec4f>;
+var<private> seedBodyA: u32;
+var<private> seedBodyB: u32;
+@compute @workgroup_size(64) fn transformSeeds(@builtin(global_invocation_id) gid: vec3u) {
+  let body=bodies[gid.y];let header=atlas[bodyHeader(body)];
+  if(gid.x<header.w) { worldSeeds[gid.y*${seedStride}u+gid.x]=vec4f(worldPoint(body,bitcast<vec4f>(atlas[header.z+gid.x]).xyz),0); }
+}` : ''}
 var<private> work: Result;
 var<private> bodyA: Body;
 var<private> bodyB: Body;
@@ -46,7 +53,8 @@ fn objective(p: vec3f) -> f32 {
 fn objectiveGradient(p: vec3f) -> vec4f {
   work.stats.x++; let a=worldField(bodyA,p); let b=worldField(bodyB,p);
   let root=sqrt((a.phi-b.phi)*(a.phi-b.phi)+params.values.y); var value=0.5*(a.phi+b.phi+root);
-  let t=select(0.0,(a.phi-b.phi)/root,root>0.0);
+  // Hardmax (epsilon=0) uses the midpoint subgradient at an exact tie.
+  var t=0.0; if(root>0.0) { t=(a.phi-b.phi)/root; }
   var gradient=a.gradient*(0.5*(1.0+t))+b.gradient*(0.5*(1.0-t));
   for(var i=0u;i<work.identity.w;i++) {
     let dx=p-work.points[i].x.xyz; let len=length(dx);
@@ -123,7 +131,7 @@ fn seedPoint() -> vec3f {
   for(var b=0u;b<2u;b++) {
     var body=bodyA; if(b==1u) { body=bodyB; } let header=atlas[bodyHeader(body)];
     for(var i=0u;i<header.w;i++) {
-      let candidate=worldPoint(body,bitcast<vec4f>(atlas[header.z+i]).xyz);
+      let candidate=${seedStride ? `worldSeeds[select(seedBodyA,seedBodyB,b==1u)*${seedStride}u+i].xyz` : `worldPoint(body,bitcast<vec4f>(atlas[header.z+i]).xyz)`};
       if(inside(candidate)) { n++; if(randomU32()%n==0u) { p=candidate; } }
     }
   }
@@ -183,6 +191,7 @@ fn narrowphase(@builtin(global_invocation_id) invocation: vec3u) {
   let slot=invocation.x; if(slot>=params.counts.x) { return; }
   let pair=pairs[slot]; work.identity=vec4u(pair.xyz,0u); work.stats=vec4u(0);
   if(pair.x==0xffffffffu) { results[slot]=work; return; }
+  ${seedStride ? 'seedBodyA=pair.x;seedBodyB=pair.y;' : ''}
   bodyA=bodies[pair.x]; bodyB=bodies[pair.y]; let margin=vec3f(0.5*params.distances.x);
   // Rolling surfaces must refresh anchors rather than pinning last frame's material point: analytic
   // sphere, capsule, cylinder, cone and torus (atlas kinds 1-5). A pinned anchor sank rolling cylinders.
@@ -193,11 +202,11 @@ fn narrowphase(@builtin(global_invocation_id) invocation: vec3u) {
   rng=hash(pair.z^hash(params.counts.y)^hash(pair.x)^hash(pair.y+0x9e3779b9u));
   var cached=0u; var activeCount=0u;
   if(params.flags.y!=0u && pair.w!=0xffffffffu && pair.w<arrayLength(&previous)) {
-    let old=previous[pair.w];
-    if(all(old.identity.xyz==pair.xyz)) {
-      work.stats.z=old.stats.z;
-      for(var i=0u;i<min(old.identity.w,${maxPoints - 1}u);i++) {
-        let point=old.points[i];
+    // Read individual history entries; avoid a per-invocation copy of the entire contact array.
+    if(all(previous[pair.w].identity.xyz==pair.xyz)) {
+      work.stats.z=previous[pair.w].stats.z;
+      for(var i=0u;i<min(previous[pair.w].identity.w,${maxPoints - 1}u);i++) {
+        let point=previous[pair.w].points[i];
         if(point.flags.z>=0x40000000u) { continue; }
         if(cached>=params.counts.z) { break; }
         cached++; activeCount += point.flags.x;

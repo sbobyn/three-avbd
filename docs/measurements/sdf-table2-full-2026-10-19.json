@@ -1,0 +1,2312 @@
+{
+ "paper": "Giles & Andrews Table 2",
+ "three": "186",
+ "frames": 360,
+ "warmupFrames": 120,
+ "frameDt": 0.016,
+ "substeps": 4,
+ "solverIterations": 20,
+ "timestamps": true,
+ "adapter": {
+  "subgroupMatrixConfigs": []
+ },
+ "pauseMs": 50,
+ "protocol": "Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+ "rows": [
+  {
+   "cacheSize": 4,
+   "randomSamples": 1,
+   "collisionParams": {
+    "optimizer": 0,
+    "cacheSize": 4,
+    "randomSamples": 1,
+    "warmStart": true,
+    "curvatureSampling": true,
+    "skipConvexSamples": true,
+    "epsilon": 0.100000001,
+    "alpha": 0.00999999978,
+    "replacementThreshold": 0.00999999978,
+    "tolerance": 0.01,
+    "maxIterations": 50,
+    "stepSize": 0.100000001,
+    "margin": 0.0199999996,
+    "allowedPenetration": 0.00999999978
+   },
+   "paperCollisionMs": 1.8,
+   "wallMs": {
+    "mean": 41.20201202500007,
+    "p95": 43.41179199999897,
+    "upperMedian": 40.91837499999747
+   },
+   "gpuCollisionMs": {
+    "mean": 20.280661333333335,
+    "p95": 20.840448000000002,
+    "upperMedian": 20.185088
+   },
+   "gpuTotalMs": {
+    "mean": 28.093098666666666,
+    "p95": 29.360128,
+    "upperMedian": 28.049408000000003
+   },
+   "gpuFrames": [
+    {
+     "frame": 130,
+     "collision": 20.709376,
+     "total": 28.049408
+    },
+    {
+     "frame": 140,
+     "collision": 20.447232,
+     "total": 27.918336
+    },
+    {
+     "frame": 150,
+     "collision": 20.119552,
+     "total": 27.328512000000003
+    },
+    {
+     "frame": 160,
+     "collision": 20.054016,
+     "total": 27.262976
+    },
+    {
+     "frame": 170,
+     "collision": 20.119552,
+     "total": 27.8528
+    },
+    {
+     "frame": 180,
+     "collision": 20.054015999999997,
+     "total": 27.394048
+    },
+    {
+     "frame": 190,
+     "collision": 20.381695999999998,
+     "total": 28.114944
+    },
+    {
+     "frame": 200,
+     "collision": 20.250624,
+     "total": 27.8528
+    },
+    {
+     "frame": 210,
+     "collision": 21.692416,
+     "total": 29.884416
+    },
+    {
+     "frame": 220,
+     "collision": 20.054016,
+     "total": 27.656192
+    },
+    {
+     "frame": 230,
+     "collision": 19.98848,
+     "total": 27.787264
+    },
+    {
+     "frame": 240,
+     "collision": 19.922944,
+     "total": 27.394047999999998
+    },
+    {
+     "frame": 250,
+     "collision": 20.512768,
+     "total": 28.573696
+    },
+    {
+     "frame": 260,
+     "collision": 19.726336,
+     "total": 27.131904
+    },
+    {
+     "frame": 270,
+     "collision": 20.119552,
+     "total": 28.049408000000003
+    },
+    {
+     "frame": 280,
+     "collision": 20.054016,
+     "total": 27.525119999999998
+    },
+    {
+     "frame": 290,
+     "collision": 20.250624,
+     "total": 28.18048
+    },
+    {
+     "frame": 300,
+     "collision": 19.922944,
+     "total": 28.18048
+    },
+    {
+     "frame": 310,
+     "collision": 20.512768,
+     "total": 28.835839999999997
+    },
+    {
+     "frame": 320,
+     "collision": 20.250624000000002,
+     "total": 28.442624000000002
+    },
+    {
+     "frame": 330,
+     "collision": 20.840448000000002,
+     "total": 29.360128
+    },
+    {
+     "frame": 340,
+     "collision": 20.185088,
+     "total": 28.50816
+    },
+    {
+     "frame": 350,
+     "collision": 20.381696,
+     "total": 28.442624
+    },
+    {
+     "frame": 360,
+     "collision": 20.185088,
+     "total": 28.508160000000004
+    }
+   ],
+   "samples": [
+    {
+     "frame": 60,
+     "pairs": 41983,
+     "contacts": 14804
+    },
+    {
+     "frame": 120,
+     "pairs": 43103,
+     "contacts": 25959
+    },
+    {
+     "frame": 180,
+     "pairs": 43154,
+     "contacts": 30622
+    },
+    {
+     "frame": 240,
+     "pairs": 43333,
+     "contacts": 32160
+    },
+    {
+     "frame": 300,
+     "pairs": 43410,
+     "contacts": 33002
+    },
+    {
+     "frame": 360,
+     "pairs": 43437,
+     "contacts": 33117
+    }
+   ],
+   "overflow": 0
+  },
+  {
+   "cacheSize": 4,
+   "randomSamples": 2,
+   "collisionParams": {
+    "optimizer": 0,
+    "cacheSize": 4,
+    "randomSamples": 2,
+    "warmStart": true,
+    "curvatureSampling": true,
+    "skipConvexSamples": true,
+    "epsilon": 0.100000001,
+    "alpha": 0.00999999978,
+    "replacementThreshold": 0.00999999978,
+    "tolerance": 0.01,
+    "maxIterations": 50,
+    "stepSize": 0.100000001,
+    "margin": 0.0199999996,
+    "allowedPenetration": 0.00999999978
+   },
+   "paperCollisionMs": 2.4,
+   "wallMs": {
+    "mean": 60.312650716666276,
+    "p95": 72.73008400000981,
+    "upperMedian": 61.39875000000029
+   },
+   "gpuCollisionMs": {
+    "mean": 29.321898666666666,
+    "p95": 34.799616,
+    "upperMedian": 29.425663999999998
+   },
+   "gpuTotalMs": {
+    "mean": 45.503829333333336,
+    "p95": 56.295424,
+    "upperMedian": 46.661632
+   },
+   "gpuFrames": [
+    {
+     "frame": 130,
+     "collision": 26.476543999999997,
+     "total": 36.0448
+    },
+    {
+     "frame": 140,
+     "collision": 26.411008000000002,
+     "total": 36.24140800000001
+    },
+    {
+     "frame": 150,
+     "collision": 30.539776,
+     "total": 48.103424000000004
+    },
+    {
+     "frame": 160,
+     "collision": 29.425663999999998,
+     "total": 48.037887999999995
+    },
+    {
+     "frame": 170,
+     "collision": 32.44032,
+     "total": 52.62540800000001
+    },
+    {
+     "frame": 180,
+     "collision": 28.704768,
+     "total": 46.661632
+    },
+    {
+     "frame": 190,
+     "collision": 35.258368000000004,
+     "total": 52.232192
+    },
+    {
+     "frame": 200,
+     "collision": 30.015488,
+     "total": 48.693248
+    },
+    {
+     "frame": 210,
+     "collision": 29.884416,
+     "total": 43.25376
+    },
+    {
+     "frame": 220,
+     "collision": 28.049408,
+     "total": 52.363264
+    },
+    {
+     "frame": 230,
+     "collision": 29.753344,
+     "total": 45.416448
+    },
+    {
+     "frame": 240,
+     "collision": 34.799616,
+     "total": 59.899904
+    },
+    {
+     "frame": 250,
+     "collision": 30.670848,
+     "total": 47.775744
+    },
+    {
+     "frame": 260,
+     "collision": 28.180480000000003,
+     "total": 49.414144
+    },
+    {
+     "frame": 270,
+     "collision": 31.981568,
+     "total": 52.035584
+    },
+    {
+     "frame": 280,
+     "collision": 30.47424,
+     "total": 46.53056000000001
+    },
+    {
+     "frame": 290,
+     "collision": 28.049408,
+     "total": 44.2368
+    },
+    {
+     "frame": 300,
+     "collision": 31.326208,
+     "total": 56.295424
+    },
+    {
+     "frame": 310,
+     "collision": 27.000832000000003,
+     "total": 37.552127999999996
+    },
+    {
+     "frame": 320,
+     "collision": 27.066367999999997,
+     "total": 37.945344
+    },
+    {
+     "frame": 330,
+     "collision": 28.049408,
+     "total": 38.273024
+    },
+    {
+     "frame": 340,
+     "collision": 26.279936000000003,
+     "total": 37.093376
+    },
+    {
+     "frame": 350,
+     "collision": 26.607616,
+     "total": 38.141952
+    },
+    {
+     "frame": 360,
+     "collision": 26.279936,
+     "total": 37.224447999999995
+    }
+   ],
+   "samples": [
+    {
+     "frame": 60,
+     "pairs": 42065,
+     "contacts": 16139
+    },
+    {
+     "frame": 120,
+     "pairs": 43189,
+     "contacts": 29389
+    },
+    {
+     "frame": 180,
+     "pairs": 43162,
+     "contacts": 34880
+    },
+    {
+     "frame": 240,
+     "pairs": 43191,
+     "contacts": 36497
+    },
+    {
+     "frame": 300,
+     "pairs": 43233,
+     "contacts": 37445
+    },
+    {
+     "frame": 360,
+     "pairs": 43198,
+     "contacts": 37392
+    }
+   ],
+   "overflow": 0
+  },
+  {
+   "cacheSize": 4,
+   "randomSamples": 4,
+   "collisionParams": {
+    "optimizer": 0,
+    "cacheSize": 4,
+    "randomSamples": 4,
+    "warmStart": true,
+    "curvatureSampling": true,
+    "skipConvexSamples": true,
+    "epsilon": 0.100000001,
+    "alpha": 0.00999999978,
+    "replacementThreshold": 0.00999999978,
+    "tolerance": 0.01,
+    "maxIterations": 50,
+    "stepSize": 0.100000001,
+    "margin": 0.0199999996,
+    "allowedPenetration": 0.00999999978
+   },
+   "paperCollisionMs": 4.2,
+   "wallMs": {
+    "mean": 80.68375136666648,
+    "p95": 104.47891599999275,
+    "upperMedian": 82.66745899998932
+   },
+   "gpuCollisionMs": {
+    "mean": 42.88785066666668,
+    "p95": 50.003968,
+    "upperMedian": 43.58144
+   },
+   "gpuTotalMs": {
+    "mean": 63.10570666666666,
+    "p95": 82.11660800000001,
+    "upperMedian": 68.616192
+   },
+   "gpuFrames": [
+    {
+     "frame": 130,
+     "collision": 45.088767999999995,
+     "total": 72.351744
+    },
+    {
+     "frame": 140,
+     "collision": 41.353216,
+     "total": 54.39488
+    },
+    {
+     "frame": 150,
+     "collision": 37.814271999999995,
+     "total": 48.365568
+    },
+    {
+     "frame": 160,
+     "collision": 37.486592,
+     "total": 49.08646400000001
+    },
+    {
+     "frame": 170,
+     "collision": 38.076416,
+     "total": 51.970048000000006
+    },
+    {
+     "frame": 180,
+     "collision": 39.518208,
+     "total": 50.46272
+    },
+    {
+     "frame": 190,
+     "collision": 37.02784,
+     "total": 50.266112
+    },
+    {
+     "frame": 200,
+     "collision": 36.569088,
+     "total": 48.693248
+    },
+    {
+     "frame": 210,
+     "collision": 38.600704,
+     "total": 49.610752000000005
+    },
+    {
+     "frame": 220,
+     "collision": 37.289984,
+     "total": 49.676288
+    },
+    {
+     "frame": 230,
+     "collision": 37.486592,
+     "total": 50.135040000000004
+    },
+    {
+     "frame": 240,
+     "collision": 41.025535999999995,
+     "total": 54.132736
+    },
+    {
+     "frame": 250,
+     "collision": 44.2368,
+     "total": 69.53369599999999
+    },
+    {
+     "frame": 260,
+     "collision": 49.610752000000005,
+     "total": 74.44889599999999
+    },
+    {
+     "frame": 270,
+     "collision": 47.448064,
+     "total": 68.616192
+    },
+    {
+     "frame": 280,
+     "collision": 45.744127999999996,
+     "total": 69.271552
+    },
+    {
+     "frame": 290,
+     "collision": 47.448064,
+     "total": 76.414976
+    },
+    {
+     "frame": 300,
+     "collision": 46.661632000000004,
+     "total": 82.11660800000001
+    },
+    {
+     "frame": 310,
+     "collision": 42.5984,
+     "total": 64.88064
+    },
+    {
+     "frame": 320,
+     "collision": 43.58144,
+     "total": 71.499776
+    },
+    {
+     "frame": 330,
+     "collision": 50.003968,
+     "total": 84.344832
+    },
+    {
+     "frame": 340,
+     "collision": 45.613056,
+     "total": 71.10656
+    },
+    {
+     "frame": 350,
+     "collision": 52.559872,
+     "total": 79.364096
+    },
+    {
+     "frame": 360,
+     "collision": 46.465024,
+     "total": 73.793536
+    }
+   ],
+   "samples": [
+    {
+     "frame": 60,
+     "pairs": 41587,
+     "contacts": 18041
+    },
+    {
+     "frame": 120,
+     "pairs": 43176,
+     "contacts": 34311
+    },
+    {
+     "frame": 180,
+     "pairs": 43218,
+     "contacts": 41610
+    },
+    {
+     "frame": 240,
+     "pairs": 43234,
+     "contacts": 43944
+    },
+    {
+     "frame": 300,
+     "pairs": 43235,
+     "contacts": 44961
+    },
+    {
+     "frame": 360,
+     "pairs": 43274,
+     "contacts": 45533
+    }
+   ],
+   "overflow": 0
+  },
+  {
+   "cacheSize": 6,
+   "randomSamples": 1,
+   "collisionParams": {
+    "optimizer": 0,
+    "cacheSize": 6,
+    "randomSamples": 1,
+    "warmStart": true,
+    "curvatureSampling": true,
+    "skipConvexSamples": true,
+    "epsilon": 0.100000001,
+    "alpha": 0.00999999978,
+    "replacementThreshold": 0.00999999978,
+    "tolerance": 0.01,
+    "maxIterations": 50,
+    "stepSize": 0.100000001,
+    "margin": 0.0199999996,
+    "allowedPenetration": 0.00999999978
+   },
+   "paperCollisionMs": 2.7,
+   "wallMs": {
+    "mean": 77.36763628749989,
+    "p95": 141.60954099998344,
+    "upperMedian": 63.12495800000033
+   },
+   "gpuCollisionMs": {
+    "mean": 36.031146666666665,
+    "p95": 43.188224,
+    "upperMedian": 35.323904
+   },
+   "gpuTotalMs": {
+    "mean": 50.80132266666666,
+    "p95": 66.125824,
+    "upperMedian": 47.972352
+   },
+   "gpuFrames": [
+    {
+     "frame": 130,
+     "collision": 42.336256,
+     "total": 67.1744
+    },
+    {
+     "frame": 140,
+     "collision": 47.906816000000006,
+     "total": 65.601536
+    },
+    {
+     "frame": 150,
+     "collision": 37.879808,
+     "total": 63.832064
+    },
+    {
+     "frame": 160,
+     "collision": 43.188224,
+     "total": 66.125824
+    },
+    {
+     "frame": 170,
+     "collision": 36.110336000000004,
+     "total": 55.836672
+    },
+    {
+     "frame": 180,
+     "collision": 32.702464,
+     "total": 44.630016
+    },
+    {
+     "frame": 190,
+     "collision": 32.768,
+     "total": 43.778048
+    },
+    {
+     "frame": 200,
+     "collision": 33.292288,
+     "total": 45.8752
+    },
+    {
+     "frame": 210,
+     "collision": 37.748736,
+     "total": 51.44576000000001
+    },
+    {
+     "frame": 220,
+     "collision": 34.471936,
+     "total": 47.18592
+    },
+    {
+     "frame": 230,
+     "collision": 33.685503999999995,
+     "total": 47.57913599999999
+    },
+    {
+     "frame": 240,
+     "collision": 36.634624,
+     "total": 49.545215999999996
+    },
+    {
+     "frame": 250,
+     "collision": 33.488896,
+     "total": 46.858239999999995
+    },
+    {
+     "frame": 260,
+     "collision": 34.471936,
+     "total": 47.710208
+    },
+    {
+     "frame": 270,
+     "collision": 35.979264,
+     "total": 49.217536
+    },
+    {
+     "frame": 280,
+     "collision": 33.947648,
+     "total": 45.678591999999995
+    },
+    {
+     "frame": 290,
+     "collision": 34.013184,
+     "total": 45.940736
+    },
+    {
+     "frame": 300,
+     "collision": 32.505856,
+     "total": 44.89216
+    },
+    {
+     "frame": 310,
+     "collision": 35.520512,
+     "total": 47.579136
+    },
+    {
+     "frame": 320,
+     "collision": 36.0448,
+     "total": 50.13504
+    },
+    {
+     "frame": 330,
+     "collision": 34.996224,
+     "total": 47.972352
+    },
+    {
+     "frame": 340,
+     "collision": 35.323904,
+     "total": 49.020928
+    },
+    {
+     "frame": 350,
+     "collision": 36.503552,
+     "total": 50.003968
+    },
+    {
+     "frame": 360,
+     "collision": 33.226752,
+     "total": 45.613056
+    }
+   ],
+   "samples": [
+    {
+     "frame": 60,
+     "pairs": 41922,
+     "contacts": 16885
+    },
+    {
+     "frame": 120,
+     "pairs": 43264,
+     "contacts": 31250
+    },
+    {
+     "frame": 180,
+     "pairs": 43341,
+     "contacts": 38393
+    },
+    {
+     "frame": 240,
+     "pairs": 43407,
+     "contacts": 40328
+    },
+    {
+     "frame": 300,
+     "pairs": 43459,
+     "contacts": 41208
+    },
+    {
+     "frame": 360,
+     "pairs": 43485,
+     "contacts": 41752
+    }
+   ],
+   "overflow": 0
+  },
+  {
+   "cacheSize": 6,
+   "randomSamples": 2,
+   "collisionParams": {
+    "optimizer": 0,
+    "cacheSize": 6,
+    "randomSamples": 2,
+    "warmStart": true,
+    "curvatureSampling": true,
+    "skipConvexSamples": true,
+    "epsilon": 0.100000001,
+    "alpha": 0.00999999978,
+    "replacementThreshold": 0.00999999978,
+    "tolerance": 0.01,
+    "maxIterations": 50,
+    "stepSize": 0.100000001,
+    "margin": 0.0199999996,
+    "allowedPenetration": 0.00999999978
+   },
+   "paperCollisionMs": 3,
+   "wallMs": {
+    "mean": 58.83135682916715,
+    "p95": 72.2310839999991,
+    "upperMedian": 56.80874999999651
+   },
+   "gpuCollisionMs": {
+    "mean": 35.01260800000001,
+    "p95": 36.438016000000005,
+    "upperMedian": 34.73408
+   },
+   "gpuTotalMs": {
+    "mean": 44.34875733333334,
+    "p95": 45.87519999999999,
+    "upperMedian": 44.433408
+   },
+   "gpuFrames": [
+    {
+     "frame": 130,
+     "collision": 35.979264,
+     "total": 45.154304
+    },
+    {
+     "frame": 140,
+     "collision": 33.947648,
+     "total": 42.139647999999994
+    },
+    {
+     "frame": 150,
+     "collision": 35.258368,
+     "total": 44.040192
+    },
+    {
+     "frame": 160,
+     "collision": 35.782656,
+     "total": 44.826623999999995
+    },
+    {
+     "frame": 170,
+     "collision": 36.438016,
+     "total": 45.744127999999996
+    },
+    {
+     "frame": 180,
+     "collision": 34.406400000000005,
+     "total": 42.991616
+    },
+    {
+     "frame": 190,
+     "collision": 36.438016000000005,
+     "total": 45.350912
+    },
+    {
+     "frame": 200,
+     "collision": 36.110336,
+     "total": 45.87519999999999
+    },
+    {
+     "frame": 210,
+     "collision": 33.947648,
+     "total": 43.25376
+    },
+    {
+     "frame": 220,
+     "collision": 35.06176000000001,
+     "total": 44.630016000000005
+    },
+    {
+     "frame": 230,
+     "collision": 36.37248,
+     "total": 45.809664
+    },
+    {
+     "frame": 240,
+     "collision": 34.73408,
+     "total": 43.974655999999996
+    },
+    {
+     "frame": 250,
+     "collision": 36.831232,
+     "total": 47.382528
+    },
+    {
+     "frame": 260,
+     "collision": 34.275327999999995,
+     "total": 43.515904
+    },
+    {
+     "frame": 270,
+     "collision": 34.668544,
+     "total": 44.56448
+    },
+    {
+     "frame": 280,
+     "collision": 36.175872,
+     "total": 45.613056
+    },
+    {
+     "frame": 290,
+     "collision": 34.537471999999994,
+     "total": 43.778048
+    },
+    {
+     "frame": 300,
+     "collision": 33.554432,
+     "total": 42.663936
+    },
+    {
+     "frame": 310,
+     "collision": 34.209792,
+     "total": 43.450368
+    },
+    {
+     "frame": 320,
+     "collision": 33.947648,
+     "total": 43.778048000000005
+    },
+    {
+     "frame": 330,
+     "collision": 34.144256,
+     "total": 43.450368
+    },
+    {
+     "frame": 340,
+     "collision": 34.275328,
+     "total": 44.433408
+    },
+    {
+     "frame": 350,
+     "collision": 35.06176000000001,
+     "total": 44.498944
+    },
+    {
+     "frame": 360,
+     "collision": 34.144256,
+     "total": 43.450368
+    }
+   ],
+   "samples": [
+    {
+     "frame": 60,
+     "pairs": 41849,
+     "contacts": 18201
+    },
+    {
+     "frame": 120,
+     "pairs": 43290,
+     "contacts": 34668
+    },
+    {
+     "frame": 180,
+     "pairs": 43225,
+     "contacts": 42387
+    },
+    {
+     "frame": 240,
+     "pairs": 43267,
+     "contacts": 44560
+    },
+    {
+     "frame": 300,
+     "pairs": 43292,
+     "contacts": 45036
+    },
+    {
+     "frame": 360,
+     "pairs": 43323,
+     "contacts": 46071
+    }
+   ],
+   "overflow": 0
+  },
+  {
+   "cacheSize": 6,
+   "randomSamples": 4,
+   "collisionParams": {
+    "optimizer": 0,
+    "cacheSize": 6,
+    "randomSamples": 4,
+    "warmStart": true,
+    "curvatureSampling": true,
+    "skipConvexSamples": true,
+    "epsilon": 0.100000001,
+    "alpha": 0.00999999978,
+    "replacementThreshold": 0.00999999978,
+    "tolerance": 0.01,
+    "maxIterations": 50,
+    "stepSize": 0.100000001,
+    "margin": 0.0199999996,
+    "allowedPenetration": 0.00999999978
+   },
+   "paperCollisionMs": 4.4,
+   "wallMs": {
+    "mean": 67.53777188333333,
+    "p95": 71.83562499997788,
+    "upperMedian": 67.23399999999674
+   },
+   "gpuCollisionMs": {
+    "mean": 45.07238400000001,
+    "p95": 48.49664,
+    "upperMedian": 45.023232
+   },
+   "gpuTotalMs": {
+    "mean": 55.24411733333333,
+    "p95": 58.327040000000004,
+    "upperMedian": 55.115776000000004
+   },
+   "gpuFrames": [
+    {
+     "frame": 130,
+     "collision": 43.712512000000004,
+     "total": 52.4288
+    },
+    {
+     "frame": 140,
+     "collision": 45.416448,
+     "total": 55.115776000000004
+    },
+    {
+     "frame": 150,
+     "collision": 44.695552000000006,
+     "total": 54.001664000000005
+    },
+    {
+     "frame": 160,
+     "collision": 48.49664,
+     "total": 58.327040000000004
+    },
+    {
+     "frame": 170,
+     "collision": 44.56448,
+     "total": 54.001664
+    },
+    {
+     "frame": 180,
+     "collision": 43.31929600000001,
+     "total": 53.215232
+    },
+    {
+     "frame": 190,
+     "collision": 45.416448,
+     "total": 55.508992
+    },
+    {
+     "frame": 200,
+     "collision": 43.646976,
+     "total": 53.936128000000004
+    },
+    {
+     "frame": 210,
+     "collision": 45.87519999999999,
+     "total": 55.967744
+    },
+    {
+     "frame": 220,
+     "collision": 45.088768,
+     "total": 55.312384
+    },
+    {
+     "frame": 230,
+     "collision": 44.957696,
+     "total": 55.312384
+    },
+    {
+     "frame": 240,
+     "collision": 45.285376,
+     "total": 55.443456
+    },
+    {
+     "frame": 250,
+     "collision": 45.350911999999994,
+     "total": 55.508992
+    },
+    {
+     "frame": 260,
+     "collision": 44.498943999999995,
+     "total": 54.591488
+    },
+    {
+     "frame": 270,
+     "collision": 47.513600000000004,
+     "total": 58.32704
+    },
+    {
+     "frame": 280,
+     "collision": 43.384832,
+     "total": 53.215232
+    },
+    {
+     "frame": 290,
+     "collision": 43.778048000000005,
+     "total": 53.673984000000004
+    },
+    {
+     "frame": 300,
+     "collision": 45.023232,
+     "total": 54.853632
+    },
+    {
+     "frame": 310,
+     "collision": 46.399488,
+     "total": 58.261504
+    },
+    {
+     "frame": 320,
+     "collision": 49.80736,
+     "total": 61.669376
+    },
+    {
+     "frame": 330,
+     "collision": 43.188224000000005,
+     "total": 52.822016000000005
+    },
+    {
+     "frame": 340,
+     "collision": 43.450368,
+     "total": 54.001664000000005
+    },
+    {
+     "frame": 350,
+     "collision": 45.678592,
+     "total": 56.819712
+    },
+    {
+     "frame": 360,
+     "collision": 43.188224,
+     "total": 53.542912
+    }
+   ],
+   "samples": [
+    {
+     "frame": 60,
+     "pairs": 41931,
+     "contacts": 19977
+    },
+    {
+     "frame": 120,
+     "pairs": 43140,
+     "contacts": 39007
+    },
+    {
+     "frame": 180,
+     "pairs": 43312,
+     "contacts": 48182
+    },
+    {
+     "frame": 240,
+     "pairs": 43412,
+     "contacts": 51107
+    },
+    {
+     "frame": 300,
+     "pairs": 43392,
+     "contacts": 52443
+    },
+    {
+     "frame": 360,
+     "pairs": 43420,
+     "contacts": 52877
+    }
+   ],
+   "overflow": 0
+  },
+  {
+   "cacheSize": 8,
+   "randomSamples": 1,
+   "collisionParams": {
+    "optimizer": 0,
+    "cacheSize": 8,
+    "randomSamples": 1,
+    "warmStart": true,
+    "curvatureSampling": true,
+    "skipConvexSamples": true,
+    "epsilon": 0.100000001,
+    "alpha": 0.00999999978,
+    "replacementThreshold": 0.00999999978,
+    "tolerance": 0.01,
+    "maxIterations": 50,
+    "stepSize": 0.100000001,
+    "margin": 0.0199999996,
+    "allowedPenetration": 0.00999999978
+   },
+   "paperCollisionMs": 3.9,
+   "wallMs": {
+    "mean": 63.48716961666796,
+    "p95": 68.67900000000373,
+    "upperMedian": 62.76054099999601
+   },
+   "gpuCollisionMs": {
+    "mean": 41.582592000000005,
+    "p95": 45.678592,
+    "upperMedian": 41.418752
+   },
+   "gpuTotalMs": {
+    "mean": 51.208192,
+    "p95": 55.836672,
+    "upperMedian": 50.987008
+   },
+   "gpuFrames": [
+    {
+     "frame": 130,
+     "collision": 42.401792,
+     "total": 50.987008
+    },
+    {
+     "frame": 140,
+     "collision": 42.5984,
+     "total": 51.511295999999994
+    },
+    {
+     "frame": 150,
+     "collision": 39.387136,
+     "total": 47.84128
+    },
+    {
+     "frame": 160,
+     "collision": 38.797312,
+     "total": 47.579136
+    },
+    {
+     "frame": 170,
+     "collision": 42.5984,
+     "total": 51.904512
+    },
+    {
+     "frame": 180,
+     "collision": 39.64928,
+     "total": 48.431104
+    },
+    {
+     "frame": 190,
+     "collision": 41.418752000000005,
+     "total": 51.576832
+    },
+    {
+     "frame": 200,
+     "collision": 39.911424,
+     "total": 48.627712
+    },
+    {
+     "frame": 210,
+     "collision": 39.714816,
+     "total": 48.889856
+    },
+    {
+     "frame": 220,
+     "collision": 40.697856,
+     "total": 50.069504
+    },
+    {
+     "frame": 230,
+     "collision": 39.518208,
+     "total": 48.23449599999999
+    },
+    {
+     "frame": 240,
+     "collision": 39.518208,
+     "total": 48.693248000000004
+    },
+    {
+     "frame": 250,
+     "collision": 40.894464,
+     "total": 50.724864
+    },
+    {
+     "frame": 260,
+     "collision": 39.714816,
+     "total": 50.987008
+    },
+    {
+     "frame": 270,
+     "collision": 43.90912,
+     "total": 53.215232
+    },
+    {
+     "frame": 280,
+     "collision": 39.845888,
+     "total": 49.348608
+    },
+    {
+     "frame": 290,
+     "collision": 40.566784,
+     "total": 50.593792
+    },
+    {
+     "frame": 300,
+     "collision": 43.319296,
+     "total": 53.08416
+    },
+    {
+     "frame": 310,
+     "collision": 42.663936,
+     "total": 53.608448
+    },
+    {
+     "frame": 320,
+     "collision": 41.418752,
+     "total": 51.773439999999994
+    },
+    {
+     "frame": 330,
+     "collision": 45.678592,
+     "total": 55.836672
+    },
+    {
+     "frame": 340,
+     "collision": 44.89216,
+     "total": 55.05024
+    },
+    {
+     "frame": 350,
+     "collision": 47.054848,
+     "total": 58.654720000000005
+    },
+    {
+     "frame": 360,
+     "collision": 41.811968,
+     "total": 51.77344
+    }
+   ],
+   "samples": [
+    {
+     "frame": 60,
+     "pairs": 41653,
+     "contacts": 18234
+    },
+    {
+     "frame": 120,
+     "pairs": 43153,
+     "contacts": 35544
+    },
+    {
+     "frame": 180,
+     "pairs": 43325,
+     "contacts": 44434
+    },
+    {
+     "frame": 240,
+     "pairs": 43231,
+     "contacts": 46480
+    },
+    {
+     "frame": 300,
+     "pairs": 43290,
+     "contacts": 47914
+    },
+    {
+     "frame": 360,
+     "pairs": 43321,
+     "contacts": 48683
+    }
+   ],
+   "overflow": 0
+  },
+  {
+   "cacheSize": 8,
+   "randomSamples": 2,
+   "collisionParams": {
+    "optimizer": 0,
+    "cacheSize": 8,
+    "randomSamples": 2,
+    "warmStart": true,
+    "curvatureSampling": true,
+    "skipConvexSamples": true,
+    "epsilon": 0.100000001,
+    "alpha": 0.00999999978,
+    "replacementThreshold": 0.00999999978,
+    "tolerance": 0.01,
+    "maxIterations": 50,
+    "stepSize": 0.100000001,
+    "margin": 0.0199999996,
+    "allowedPenetration": 0.00999999978
+   },
+   "paperCollisionMs": 4.2,
+   "wallMs": {
+    "mean": 76.73037877500052,
+    "p95": 89.76329100003932,
+    "upperMedian": 76.0741670000134
+   },
+   "gpuCollisionMs": {
+    "mean": 48.791551999999996,
+    "p95": 52.822016,
+    "upperMedian": 48.693248
+   },
+   "gpuTotalMs": {
+    "mean": 61.61476266666668,
+    "p95": 74.317824,
+    "upperMedian": 61.341696
+   },
+   "gpuFrames": [
+    {
+     "frame": 130,
+     "collision": 57.409536,
+     "total": 74.317824
+    },
+    {
+     "frame": 140,
+     "collision": 49.807359999999996,
+     "total": 60.620799999999996
+    },
+    {
+     "frame": 150,
+     "collision": 52.822016,
+     "total": 74.645504
+    },
+    {
+     "frame": 160,
+     "collision": 52.756479999999996,
+     "total": 71.237632
+    },
+    {
+     "frame": 170,
+     "collision": 45.154303999999996,
+     "total": 55.37792
+    },
+    {
+     "frame": 180,
+     "collision": 46.268416,
+     "total": 56.819712
+    },
+    {
+     "frame": 190,
+     "collision": 49.283072000000004,
+     "total": 62.980095999999996
+    },
+    {
+     "frame": 200,
+     "collision": 44.498943999999995,
+     "total": 53.870591999999995
+    },
+    {
+     "frame": 210,
+     "collision": 46.20288,
+     "total": 56.426496
+    },
+    {
+     "frame": 220,
+     "collision": 45.8752,
+     "total": 56.819711999999996
+    },
+    {
+     "frame": 230,
+     "collision": 45.54752,
+     "total": 55.115776000000004
+    },
+    {
+     "frame": 240,
+     "collision": 46.07180799999999,
+     "total": 55.83667200000001
+    },
+    {
+     "frame": 250,
+     "collision": 43.974655999999996,
+     "total": 53.608448
+    },
+    {
+     "frame": 260,
+     "collision": 47.710208,
+     "total": 57.933824
+    },
+    {
+     "frame": 270,
+     "collision": 47.316992,
+     "total": 61.341696
+    },
+    {
+     "frame": 280,
+     "collision": 51.249152,
+     "total": 63.373312
+    },
+    {
+     "frame": 290,
+     "collision": 50.921472,
+     "total": 66.19136
+    },
+    {
+     "frame": 300,
+     "collision": 50.855936,
+     "total": 62.980096
+    },
+    {
+     "frame": 310,
+     "collision": 48.693248,
+     "total": 60.03097600000001
+    },
+    {
+     "frame": 320,
+     "collision": 47.05484800000001,
+     "total": 64.684032
+    },
+    {
+     "frame": 330,
+     "collision": 51.511296,
+     "total": 65.20832
+    },
+    {
+     "frame": 340,
+     "collision": 52.101119999999995,
+     "total": 67.567616
+    },
+    {
+     "frame": 350,
+     "collision": 49.283072000000004,
+     "total": 60.096512
+    },
+    {
+     "frame": 360,
+     "collision": 48.627711999999995,
+     "total": 61.669376
+    }
+   ],
+   "samples": [
+    {
+     "frame": 60,
+     "pairs": 42002,
+     "contacts": 19368
+    },
+    {
+     "frame": 120,
+     "pairs": 43104,
+     "contacts": 38362
+    },
+    {
+     "frame": 180,
+     "pairs": 43172,
+     "contacts": 47515
+    },
+    {
+     "frame": 240,
+     "pairs": 43280,
+     "contacts": 50506
+    },
+    {
+     "frame": 300,
+     "pairs": 43304,
+     "contacts": 51855
+    },
+    {
+     "frame": 360,
+     "pairs": 43416,
+     "contacts": 53120
+    }
+   ],
+   "overflow": 0
+  },
+  {
+   "cacheSize": 8,
+   "randomSamples": 4,
+   "collisionParams": {
+    "optimizer": 0,
+    "cacheSize": 8,
+    "randomSamples": 4,
+    "warmStart": true,
+    "curvatureSampling": true,
+    "skipConvexSamples": true,
+    "epsilon": 0.100000001,
+    "alpha": 0.00999999978,
+    "replacementThreshold": 0.00999999978,
+    "tolerance": 0.01,
+    "maxIterations": 50,
+    "stepSize": 0.100000001,
+    "margin": 0.0199999996,
+    "allowedPenetration": 0.00999999978
+   },
+   "paperCollisionMs": 5,
+   "wallMs": {
+    "mean": 88.34501094999844,
+    "p95": 100.4050419999985,
+    "upperMedian": 88.96958299999824
+   },
+   "gpuCollisionMs": {
+    "mean": 59.42749866666666,
+    "p95": 63.11116799999999,
+    "upperMedian": 60.620799999999996
+   },
+   "gpuTotalMs": {
+    "mean": 74.14033066666667,
+    "p95": 81.788928,
+    "upperMedian": 76.28390399999999
+   },
+   "gpuFrames": [
+    {
+     "frame": 130,
+     "collision": 61.99705600000001,
+     "total": 78.053376
+    },
+    {
+     "frame": 140,
+     "collision": 60.29312,
+     "total": 76.28390399999999
+    },
+    {
+     "frame": 150,
+     "collision": 57.540608,
+     "total": 76.34943999999999
+    },
+    {
+     "frame": 160,
+     "collision": 61.734912,
+     "total": 77.98784
+    },
+    {
+     "frame": 170,
+     "collision": 59.047936,
+     "total": 82.24768
+    },
+    {
+     "frame": 180,
+     "collision": 63.307776000000004,
+     "total": 78.184448
+    },
+    {
+     "frame": 190,
+     "collision": 61.538304,
+     "total": 74.842112
+    },
+    {
+     "frame": 200,
+     "collision": 55.771136,
+     "total": 66.19136
+    },
+    {
+     "frame": 210,
+     "collision": 55.443456,
+     "total": 65.601536
+    },
+    {
+     "frame": 220,
+     "collision": 55.246848,
+     "total": 65.47046399999999
+    },
+    {
+     "frame": 230,
+     "collision": 55.574528,
+     "total": 65.60153600000001
+    },
+    {
+     "frame": 240,
+     "collision": 57.344,
+     "total": 68.550656
+    },
+    {
+     "frame": 250,
+     "collision": 54.591488,
+     "total": 64.88064
+    },
+    {
+     "frame": 260,
+     "collision": 57.147391999999996,
+     "total": 68.81280000000001
+    },
+    {
+     "frame": 270,
+     "collision": 55.05024,
+     "total": 66.715648
+    },
+    {
+     "frame": 280,
+     "collision": 61.472768,
+     "total": 76.02175999999999
+    },
+    {
+     "frame": 290,
+     "collision": 63.11116799999999,
+     "total": 76.93926400000001
+    },
+    {
+     "frame": 300,
+     "collision": 62.586879999999994,
+     "total": 74.317824
+    },
+    {
+     "frame": 310,
+     "collision": 61.800448,
+     "total": 75.3664
+    },
+    {
+     "frame": 320,
+     "collision": 62.062591999999995,
+     "total": 81.461248
+    },
+    {
+     "frame": 330,
+     "collision": 59.506688,
+     "total": 81.199104
+    },
+    {
+     "frame": 340,
+     "collision": 60.620799999999996,
+     "total": 76.34944
+    },
+    {
+     "frame": 350,
+     "collision": 61.341696,
+     "total": 81.788928
+    },
+    {
+     "frame": 360,
+     "collision": 62.128128,
+     "total": 80.15052800000001
+    }
+   ],
+   "samples": [
+    {
+     "frame": 60,
+     "pairs": 41700,
+     "contacts": 21116
+    },
+    {
+     "frame": 120,
+     "pairs": 43159,
+     "contacts": 42566
+    },
+    {
+     "frame": 180,
+     "pairs": 43329,
+     "contacts": 54124
+    },
+    {
+     "frame": 240,
+     "pairs": 43404,
+     "contacts": 57513
+    },
+    {
+     "frame": 300,
+     "pairs": 43470,
+     "contacts": 58999
+    },
+    {
+     "frame": 360,
+     "pairs": 43433,
+     "contacts": 60245
+    }
+   ],
+   "overflow": 0
+  },
+  {
+   "cacheSize": 16,
+   "randomSamples": 1,
+   "collisionParams": {
+    "optimizer": 0,
+    "cacheSize": 16,
+    "randomSamples": 1,
+    "warmStart": true,
+    "curvatureSampling": true,
+    "skipConvexSamples": true,
+    "epsilon": 0.100000001,
+    "alpha": 0.00999999978,
+    "replacementThreshold": 0.00999999978,
+    "tolerance": 0.01,
+    "maxIterations": 50,
+    "stepSize": 0.100000001,
+    "margin": 0.0199999996,
+    "allowedPenetration": 0.00999999978
+   },
+   "paperCollisionMs": 7.7,
+   "wallMs": {
+    "mean": 134.91243940416487,
+    "p95": 175.59658300003503,
+    "upperMedian": 127.83666599995922
+   },
+   "gpuCollisionMs": {
+    "mean": 104.57634133333335,
+    "p95": 129.4336,
+    "upperMedian": 101.711872
+   },
+   "gpuTotalMs": {
+    "mean": 119.91722666666668,
+    "p95": 154.140672,
+    "upperMedian": 114.622464
+   },
+   "gpuFrames": [
+    {
+     "frame": 130,
+     "collision": 138.67417600000002,
+     "total": 168.951808
+    },
+    {
+     "frame": 140,
+     "collision": 129.4336,
+     "total": 154.140672
+    },
+    {
+     "frame": 150,
+     "collision": 110.886912,
+     "total": 134.938624
+    },
+    {
+     "frame": 160,
+     "collision": 112.39424,
+     "total": 130.613248
+    },
+    {
+     "frame": 170,
+     "collision": 110.624768,
+     "total": 129.43359999999998
+    },
+    {
+     "frame": 180,
+     "collision": 115.47443200000001,
+     "total": 136.511488
+    },
+    {
+     "frame": 190,
+     "collision": 112.984064,
+     "total": 128.12288
+    },
+    {
+     "frame": 200,
+     "collision": 95.289344,
+     "total": 107.282432
+    },
+    {
+     "frame": 210,
+     "collision": 96.73113599999999,
+     "total": 108.265472
+    },
+    {
+     "frame": 220,
+     "collision": 94.568448,
+     "total": 106.56153599999999
+    },
+    {
+     "frame": 230,
+     "collision": 95.22380799999999,
+     "total": 107.413504
+    },
+    {
+     "frame": 240,
+     "collision": 103.61241600000001,
+     "total": 115.539968
+    },
+    {
+     "frame": 250,
+     "collision": 101.711872,
+     "total": 114.09817600000001
+    },
+    {
+     "frame": 260,
+     "collision": 97.452032,
+     "total": 110.10047999999999
+    },
+    {
+     "frame": 270,
+     "collision": 101.515264,
+     "total": 115.80211200000001
+    },
+    {
+     "frame": 280,
+     "collision": 97.05881600000001,
+     "total": 110.166016
+    },
+    {
+     "frame": 290,
+     "collision": 93.650944,
+     "total": 106.561536
+    },
+    {
+     "frame": 300,
+     "collision": 106.430464,
+     "total": 119.40659199999999
+    },
+    {
+     "frame": 310,
+     "collision": 97.64864,
+     "total": 110.55923200000001
+    },
+    {
+     "frame": 320,
+     "collision": 106.10278399999999,
+     "total": 118.94784
+    },
+    {
+     "frame": 330,
+     "collision": 98.56614400000001,
+     "total": 111.804416
+    },
+    {
+     "frame": 340,
+     "collision": 95.092736,
+     "total": 107.937792
+    },
+    {
+     "frame": 350,
+     "collision": 101.711872,
+     "total": 114.622464
+    },
+    {
+     "frame": 360,
+     "collision": 96.99328,
+     "total": 110.231552
+    }
+   ],
+   "samples": [
+    {
+     "frame": 60,
+     "pairs": 41534,
+     "contacts": 21972
+    },
+    {
+     "frame": 120,
+     "pairs": 43333,
+     "contacts": 47700
+    },
+    {
+     "frame": 180,
+     "pairs": 43489,
+     "contacts": 61580
+    },
+    {
+     "frame": 240,
+     "pairs": 43523,
+     "contacts": 66256
+    },
+    {
+     "frame": 300,
+     "pairs": 43587,
+     "contacts": 69232
+    },
+    {
+     "frame": 360,
+     "pairs": 43520,
+     "contacts": 70107
+    }
+   ],
+   "overflow": 0
+  },
+  {
+   "cacheSize": 16,
+   "randomSamples": 2,
+   "collisionParams": {
+    "optimizer": 0,
+    "cacheSize": 16,
+    "randomSamples": 2,
+    "warmStart": true,
+    "curvatureSampling": true,
+    "skipConvexSamples": true,
+    "epsilon": 0.100000001,
+    "alpha": 0.00999999978,
+    "replacementThreshold": 0.00999999978,
+    "tolerance": 0.01,
+    "maxIterations": 50,
+    "stepSize": 0.100000001,
+    "margin": 0.0199999996,
+    "allowedPenetration": 0.00999999978
+   },
+   "paperCollisionMs": 8.1,
+   "wallMs": {
+    "mean": 143.1770790250043,
+    "p95": 175.97912499995437,
+    "upperMedian": 137.34816600003978
+   },
+   "gpuCollisionMs": {
+    "mean": 110.61384533333336,
+    "p95": 114.425856,
+    "upperMedian": 110.952448
+   },
+   "gpuTotalMs": {
+    "mean": 123.71285333333333,
+    "p95": 128.319488,
+    "upperMedian": 125.30483199999999
+   },
+   "gpuFrames": [
+    {
+     "frame": 130,
+     "collision": 107.02028800000001,
+     "total": 119.01337600000001
+    },
+    {
+     "frame": 140,
+     "collision": 106.430464,
+     "total": 117.9648
+    },
+    {
+     "frame": 150,
+     "collision": 109.838336,
+     "total": 121.11052799999999
+    },
+    {
+     "frame": 160,
+     "collision": 110.493696,
+     "total": 123.338752
+    },
+    {
+     "frame": 170,
+     "collision": 109.051904,
+     "total": 120.782848
+    },
+    {
+     "frame": 180,
+     "collision": 109.11744,
+     "total": 122.159104
+    },
+    {
+     "frame": 190,
+     "collision": 114.294784,
+     "total": 126.48447999999999
+    },
+    {
+     "frame": 200,
+     "collision": 114.425856,
+     "total": 127.13983999999999
+    },
+    {
+     "frame": 210,
+     "collision": 109.51065599999998,
+     "total": 122.22464
+    },
+    {
+     "frame": 220,
+     "collision": 105.51295999999999,
+     "total": 118.226944
+    },
+    {
+     "frame": 230,
+     "collision": 110.952448,
+     "total": 125.30483199999999
+    },
+    {
+     "frame": 240,
+     "collision": 109.379584,
+     "total": 121.700352
+    },
+    {
+     "frame": 250,
+     "collision": 113.115136,
+     "total": 126.287872
+    },
+    {
+     "frame": 260,
+     "collision": 114.163712,
+     "total": 127.270912
+    },
+    {
+     "frame": 270,
+     "collision": 112.656384,
+     "total": 127.401984
+    },
+    {
+     "frame": 280,
+     "collision": 113.70496,
+     "total": 128.319488
+    },
+    {
+     "frame": 290,
+     "collision": 103.87456,
+     "total": 117.50604799999999
+    },
+    {
+     "frame": 300,
+     "collision": 105.316352,
+     "total": 118.226944
+    },
+    {
+     "frame": 310,
+     "collision": 111.86995199999998,
+     "total": 125.435904
+    },
+    {
+     "frame": 320,
+     "collision": 112.525312,
+     "total": 126.681088
+    },
+    {
+     "frame": 330,
+     "collision": 114.22924800000001,
+     "total": 127.729664
+    },
+    {
+     "frame": 340,
+     "collision": 111.542272,
+     "total": 125.632512
+    },
+    {
+     "frame": 350,
+     "collision": 115.212288,
+     "total": 129.04038400000002
+    },
+    {
+     "frame": 360,
+     "collision": 110.493696,
+     "total": 124.12518400000002
+    }
+   ],
+   "samples": [
+    {
+     "frame": 60,
+     "pairs": 41728,
+     "contacts": 23007
+    },
+    {
+     "frame": 120,
+     "pairs": 43243,
+     "contacts": 48624
+    },
+    {
+     "frame": 180,
+     "pairs": 43398,
+     "contacts": 63983
+    },
+    {
+     "frame": 240,
+     "pairs": 43429,
+     "contacts": 69109
+    },
+    {
+     "frame": 300,
+     "pairs": 43453,
+     "contacts": 72212
+    },
+    {
+     "frame": 360,
+     "pairs": 43489,
+     "contacts": 73786
+    }
+   ],
+   "overflow": 0
+  },
+  {
+   "cacheSize": 16,
+   "randomSamples": 4,
+   "collisionParams": {
+    "optimizer": 0,
+    "cacheSize": 16,
+    "randomSamples": 4,
+    "warmStart": true,
+    "curvatureSampling": true,
+    "skipConvexSamples": true,
+    "epsilon": 0.100000001,
+    "alpha": 0.00999999978,
+    "replacementThreshold": 0.00999999978,
+    "tolerance": 0.01,
+    "maxIterations": 50,
+    "stepSize": 0.100000001,
+    "margin": 0.0199999996,
+    "allowedPenetration": 0.00999999978
+   },
+   "paperCollisionMs": 8.9,
+   "wallMs": {
+    "mean": 159.1024947541664,
+    "p95": 170.84445800003596,
+    "upperMedian": 158.11033400008455
+   },
+   "gpuCollisionMs": {
+    "mean": 130.613248,
+    "p95": 136.11827200000002,
+    "upperMedian": 130.482176
+   },
+   "gpuTotalMs": {
+    "mean": 145.55545599999996,
+    "p95": 152.502272,
+    "upperMedian": 145.948672
+   },
+   "gpuFrames": [
+    {
+     "frame": 130,
+     "collision": 126.81215999999999,
+     "total": 139.526144
+    },
+    {
+     "frame": 140,
+     "collision": 129.957888,
+     "total": 142.934016
+    },
+    {
+     "frame": 150,
+     "collision": 126.81215999999999,
+     "total": 140.115968
+    },
+    {
+     "frame": 160,
+     "collision": 124.649472,
+     "total": 138.018816
+    },
+    {
+     "frame": 170,
+     "collision": 129.17145599999998,
+     "total": 143.32723199999998
+    },
+    {
+     "frame": 180,
+     "collision": 134.61094400000002,
+     "total": 148.04582399999998
+    },
+    {
+     "frame": 190,
+     "collision": 127.008768,
+     "total": 141.55776
+    },
+    {
+     "frame": 200,
+     "collision": 130.482176,
+     "total": 144.50688
+    },
+    {
+     "frame": 210,
+     "collision": 134.02112,
+     "total": 149.22547200000002
+    },
+    {
+     "frame": 220,
+     "collision": 136.31488000000002,
+     "total": 152.502272
+    },
+    {
+     "frame": 230,
+     "collision": 132.513792,
+     "total": 147.259392
+    },
+    {
+     "frame": 240,
+     "collision": 130.809856,
+     "total": 145.948672
+    },
+    {
+     "frame": 250,
+     "collision": 130.41664,
+     "total": 145.686528
+    },
+    {
+     "frame": 260,
+     "collision": 132.05504,
+     "total": 147.193856
+    },
+    {
+     "frame": 270,
+     "collision": 133.824512,
+     "total": 148.76672
+    },
+    {
+     "frame": 280,
+     "collision": 130.08896,
+     "total": 145.81759999999997
+    },
+    {
+     "frame": 290,
+     "collision": 133.36576,
+     "total": 148.76672
+    },
+    {
+     "frame": 300,
+     "collision": 126.418944,
+     "total": 141.688832
+    },
+    {
+     "frame": 310,
+     "collision": 129.17145599999998,
+     "total": 144.441344
+    },
+    {
+     "frame": 320,
+     "collision": 127.205376,
+     "total": 143.065088
+    },
+    {
+     "frame": 330,
+     "collision": 131.59628800000002,
+     "total": 147.390464
+    },
+    {
+     "frame": 340,
+     "collision": 131.268608,
+     "total": 147.652608
+    },
+    {
+     "frame": 350,
+     "collision": 130.023424,
+     "total": 146.276352
+    },
+    {
+     "frame": 360,
+     "collision": 136.11827200000002,
+     "total": 153.61638399999998
+    }
+   ],
+   "samples": [
+    {
+     "frame": 60,
+     "pairs": 41814,
+     "contacts": 23662
+    },
+    {
+     "frame": 120,
+     "pairs": 43128,
+     "contacts": 52168
+    },
+    {
+     "frame": 180,
+     "pairs": 43251,
+     "contacts": 68279
+    },
+    {
+     "frame": 240,
+     "pairs": 43427,
+     "contacts": 74134
+    },
+    {
+     "frame": 300,
+     "pairs": 43468,
+     "contacts": 78312
+    },
+    {
+     "frame": 360,
+     "pairs": 43483,
+     "contacts": 80396
+    }
+   ],
+   "overflow": 0
+  }
+ ],
+ "dynamicBunnies": 4314,
+ "totalBodies": 4315,
+ "reportingCorrection": "Post-run labels only: bodies split into dynamicBunnies/totalBodies and upper-middle summaries renamed upperMedian. Raw measurements unchanged."
+}

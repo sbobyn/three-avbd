@@ -55,10 +55,10 @@ struct BridgeParams { counts: vec4u, distances: vec4f }
     // Only the previous SDF result can identify the solved production point.
     // Its export slot is separate from pair keys and from rank/sort position.
     if(point.flags.y!=0u && pair.w!=0xffffffffu && pair.w<arrayLength(&previous)) {
-      let old=previous[pair.w];
-      if(all(old.identity.xyz==pair.xyz)) {
-        for(var j=0u;j<old.identity.w;j++) {
-          let prior=old.points[j];
+      // Read individual history entries; avoid a per-invocation copy of the entire contact array.
+      if(all(previous[pair.w].identity.xyz==pair.xyz)) {
+        for(var j=0u;j<previous[pair.w].identity.w;j++) {
+          let prior=previous[pair.w].points[j];
           if(prior.flags.z==point.flags.z && prior.flags.w>0u && prior.flags.w<=arrayLength(&prevContacts)) {
             let k=prevContacts[prior.flags.w-1u];
             let oldBasis=orthonormal(-prior.normal.xyz);

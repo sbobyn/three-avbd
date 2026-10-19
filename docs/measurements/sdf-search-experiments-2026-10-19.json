@@ -1,0 +1,4296 @@
+{
+ "baseCommit": "58a6a128c64fc66f5879aa82d85be9d9c6f7d6b0",
+ "target": "High-budget full-frame collision well below 33 ms, ideally below 16 ms",
+ "status": "No prototype retained. Exploratory performance screen, not correctness acceptance. All runtime source restored to baseCommit.",
+ "protocol": "Sequential bounded 4314-body, 90-frame, 16+4 runs, 50 ms idle/frame. Six timed frames after 30-frame warmup. Compare split-pass runs only against split control; normal runs only against normal control. Single run per variant, not interleaved statistical trials. Prototypes changed floating-point paths/contact histories; none underwent full settling acceptance because none showed a useful speedup.",
+ "runs": {
+  "simplex": {
+   "description": "Fixed-local simplex instead of indexed four-element arrays",
+   "measurement": {
+    "paper": "Giles & Andrews Table 2",
+    "three": "186",
+    "dynamicBunnies": 4314,
+    "totalBodies": 4315,
+    "frames": 90,
+    "warmupFrames": 30,
+    "frameDt": 0.016,
+    "substeps": 4,
+    "solverIterations": 20,
+    "timestamps": true,
+    "adapter": {
+     "subgroupMatrixConfigs": []
+    },
+    "dispatchProfile": true,
+    "pauseMs": 50,
+    "protocol": "Diagnostic per-dispatch pass splitting; collision sums dispatch timestamps, GPU total unavailable. Not comparable to unsplit totals. Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+    "rows": [
+     {
+      "cacheSize": 16,
+      "randomSamples": 4,
+      "collisionParams": {
+       "optimizer": 0,
+       "cacheSize": 16,
+       "randomSamples": 4,
+       "warmStart": true,
+       "curvatureSampling": true,
+       "skipConvexSamples": true,
+       "epsilon": 0.100000001,
+       "alpha": 0.00999999978,
+       "replacementThreshold": 0.00999999978,
+       "tolerance": 0.01,
+       "maxIterations": 50,
+       "stepSize": 0.100000001,
+       "margin": 0.0199999996,
+       "allowedPenetration": 0.00999999978
+      },
+      "paperCollisionMs": 8.9,
+      "wallMs": {
+       "mean": 130.7728048,
+       "upperMedian": 131.22854200000074,
+       "p95": 140.25233300000036
+      },
+      "gpuCollisionMs": {
+       "mean": 112.00102399999999,
+       "upperMedian": 112.91852800000001,
+       "p95": 117.374976
+      },
+      "gpuTotalMs": null,
+      "gpuFrames": [
+       {
+        "frame": 40,
+        "collision": 112.52531200000001,
+        "total": null
+       },
+       {
+        "frame": 50,
+        "collision": 104.988672,
+        "total": null
+       },
+       {
+        "frame": 60,
+        "collision": 111.08352,
+        "total": null
+       },
+       {
+        "frame": 70,
+        "collision": 117.374976,
+        "total": null
+       },
+       {
+        "frame": 80,
+        "collision": 112.91852800000001,
+        "total": null
+       },
+       {
+        "frame": 90,
+        "collision": 113.115136,
+        "total": null
+       }
+      ],
+      "samples": [
+       {
+        "frame": 40,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.607616,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.804224,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.2144,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 27.656192,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 24.772608,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 24.707072,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.100288,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 24.772608,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.54208,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 27.000832,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.148864,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.624576,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "pairs": 41499,
+        "contacts": 23456
+       },
+       {
+        "frame": 70,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 28.442624,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 28.901376,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.589824,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.738688,
+         "exportContacts": 0.917504,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.262144,
+         "narrowphase": 27.066368,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.411008,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.279936,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0.065536,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.476544,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 27.787264,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 25.55904,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 27.131904,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 27.52512,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 27.066368,
+         "exportContacts": 0.98304,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "pairs": 42922,
+        "contacts": 37056
+       }
+      ],
+      "overflow": 0
+     }
+    ]
+   }
+  },
+  "shared": {
+   "description": "Four-lane workgroup scratch for contact results (eight lanes exceeded the requested device storage limit)",
+   "measurement": {
+    "paper": "Giles & Andrews Table 2",
+    "three": "186",
+    "dynamicBunnies": 4314,
+    "totalBodies": 4315,
+    "frames": 90,
+    "warmupFrames": 30,
+    "frameDt": 0.016,
+    "substeps": 4,
+    "solverIterations": 20,
+    "timestamps": true,
+    "adapter": {
+     "subgroupMatrixConfigs": []
+    },
+    "dispatchProfile": true,
+    "pauseMs": 50,
+    "protocol": "Diagnostic per-dispatch pass splitting; collision sums dispatch timestamps, GPU total unavailable. Not comparable to unsplit totals. Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+    "rows": [
+     {
+      "cacheSize": 16,
+      "randomSamples": 4,
+      "collisionParams": {
+       "optimizer": 0,
+       "cacheSize": 16,
+       "randomSamples": 4,
+       "warmStart": true,
+       "curvatureSampling": true,
+       "skipConvexSamples": true,
+       "epsilon": 0.100000001,
+       "alpha": 0.00999999978,
+       "replacementThreshold": 0.00999999978,
+       "tolerance": 0.01,
+       "maxIterations": 50,
+       "stepSize": 0.100000001,
+       "margin": 0.0199999996,
+       "allowedPenetration": 0.00999999978
+      },
+      "paperCollisionMs": 8.9,
+      "wallMs": {
+       "mean": 390.9260444833335,
+       "upperMedian": 388.9762919999994,
+       "p95": 451.46333400000003
+      },
+      "gpuCollisionMs": {
+       "mean": 352.7693653333333,
+       "upperMedian": 354.28761599999996,
+       "p95": 363.52819199999993
+      },
+      "gpuTotalMs": null,
+      "gpuFrames": [
+       {
+        "frame": 40,
+        "collision": 363.52819199999993,
+        "total": null
+       },
+       {
+        "frame": 50,
+        "collision": 342.949888,
+        "total": null
+       },
+       {
+        "frame": 60,
+        "collision": 353.107968,
+        "total": null
+       },
+       {
+        "frame": 70,
+        "collision": 363.06944,
+        "total": null
+       },
+       {
+        "frame": 80,
+        "collision": 354.28761599999996,
+        "total": null
+       },
+       {
+        "frame": 90,
+        "collision": 339.673088,
+        "total": null
+       }
+      ],
+      "samples": [
+       {
+        "frame": 40,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 99.680256,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 79.822848,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 84.21376,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 94.306304,
+         "exportContacts": 0.786432,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 87.949312,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 85.917696,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 81.002496,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 82.640896,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 84.934656,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.131072,
+         "narrowphase": 84.148224,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.65536,
+         "transformSeeds": 0.065536,
+         "narrowphase": 87.49056,
+         "exportContacts": 1.245184,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 89.980928,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "pairs": 41814,
+        "contacts": 23662
+       },
+       {
+        "frame": 70,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.589824,
+         "transformSeeds": 0.065536,
+         "narrowphase": 90.963968,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 84.21376,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0.196608,
+         "clearGrid": 0.262144,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.65536,
+         "transformSeeds": 0.720896,
+         "narrowphase": 87.621632,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0.065536,
+         "cachePairs": 0,
+         "findPairs": 0.98304,
+         "transformSeeds": 0.065536,
+         "narrowphase": 92.274688,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.262144,
+         "clearGrid": 0.262144,
+         "buildGrid": 0.196608,
+         "cachePairs": 0.131072,
+         "findPairs": 0.786432,
+         "transformSeeds": 0.065536,
+         "narrowphase": 84.803584,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.65536,
+         "transformSeeds": 0,
+         "narrowphase": 85.065728,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.65536,
+         "transformSeeds": 0.065536,
+         "narrowphase": 91.291648,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 85.655552,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 1.572864,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.65536,
+         "transformSeeds": 0.32768,
+         "narrowphase": 84.017152,
+         "exportContacts": 0.98304,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.589824,
+         "transformSeeds": 0.065536,
+         "narrowphase": 79.29856,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 78.184448,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 89.718784,
+         "exportContacts": 0.98304,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 90,
+        "pairs": 42836,
+        "contacts": 37399
+       }
+      ],
+      "overflow": 0
+     }
+    ]
+   }
+  },
+  "unroll": {
+   "description": "Unrolled repulsion accesses",
+   "measurement": {
+    "paper": "Giles & Andrews Table 2",
+    "three": "186",
+    "dynamicBunnies": 4314,
+    "totalBodies": 4315,
+    "frames": 90,
+    "warmupFrames": 30,
+    "frameDt": 0.016,
+    "substeps": 4,
+    "solverIterations": 20,
+    "timestamps": true,
+    "adapter": {
+     "subgroupMatrixConfigs": []
+    },
+    "dispatchProfile": true,
+    "pauseMs": 50,
+    "protocol": "Diagnostic per-dispatch pass splitting; collision sums dispatch timestamps, GPU total unavailable. Not comparable to unsplit totals. Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+    "rows": [
+     {
+      "cacheSize": 16,
+      "randomSamples": 4,
+      "collisionParams": {
+       "optimizer": 0,
+       "cacheSize": 16,
+       "randomSamples": 4,
+       "warmStart": true,
+       "curvatureSampling": true,
+       "skipConvexSamples": true,
+       "epsilon": 0.100000001,
+       "alpha": 0.00999999978,
+       "replacementThreshold": 0.00999999978,
+       "tolerance": 0.01,
+       "maxIterations": 50,
+       "stepSize": 0.100000001,
+       "margin": 0.0199999996,
+       "allowedPenetration": 0.00999999978
+      },
+      "paperCollisionMs": 8.9,
+      "wallMs": {
+       "mean": 179.89661536666665,
+       "upperMedian": 181.58729200000016,
+       "p95": 204.47541700000147
+      },
+      "gpuCollisionMs": {
+       "mean": 154.21713066666666,
+       "upperMedian": 157.876224,
+       "p95": 158.859264
+      },
+      "gpuTotalMs": null,
+      "gpuFrames": [
+       {
+        "frame": 40,
+        "collision": 147.193856,
+        "total": null
+       },
+       {
+        "frame": 50,
+        "collision": 158.466048,
+        "total": null
+       },
+       {
+        "frame": 60,
+        "collision": 147.78368,
+        "total": null
+       },
+       {
+        "frame": 70,
+        "collision": 158.859264,
+        "total": null
+       },
+       {
+        "frame": 80,
+        "collision": 157.876224,
+        "total": null
+       },
+       {
+        "frame": 90,
+        "collision": 155.123712,
+        "total": null
+       }
+      ],
+      "samples": [
+       {
+        "frame": 40,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.589824,
+         "transformSeeds": 0.065536,
+         "narrowphase": 34.73408,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.131072,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.851968,
+         "transformSeeds": 0.131072,
+         "narrowphase": 34.668544,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.589824,
+         "transformSeeds": 0.065536,
+         "narrowphase": 36.503552,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 34.603008,
+         "exportContacts": 0.786432,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.196608,
+         "clearGrid": 0,
+         "buildGrid": 0.065536,
+         "cachePairs": 0.065536,
+         "findPairs": 0.589824,
+         "transformSeeds": 0.131072,
+         "narrowphase": 38.141952,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0.065536,
+         "cachePairs": 0,
+         "findPairs": 0.589824,
+         "transformSeeds": 0,
+         "narrowphase": 34.4064,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0,
+         "clearGrid": 0.131072,
+         "buildGrid": 0.131072,
+         "cachePairs": 0.262144,
+         "findPairs": 0.786432,
+         "transformSeeds": 0.786432,
+         "narrowphase": 38.797312,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.786432,
+         "transformSeeds": 0.065536,
+         "narrowphase": 38.731776,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 1.179648,
+         "transformSeeds": 0,
+         "narrowphase": 35.06176,
+         "exportContacts": 0.917504,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.524288,
+         "transformSeeds": 0,
+         "narrowphase": 32.505856,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.196608,
+         "clearGrid": 0.393216,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.851968,
+         "transformSeeds": 0.720896,
+         "narrowphase": 34.668544,
+         "exportContacts": 1.703936,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.131072,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.851968,
+         "transformSeeds": 0.524288,
+         "narrowphase": 35.258368,
+         "exportContacts": 0.917504,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 60,
+        "pairs": 41814,
+        "contacts": 23662
+       },
+       {
+        "frame": 70,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.720896,
+         "transformSeeds": 0.065536,
+         "narrowphase": 38.076416,
+         "exportContacts": 0.98304,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.131072,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.851968,
+         "transformSeeds": 0.065536,
+         "narrowphase": 35.913728,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.65536,
+         "transformSeeds": 0.065536,
+         "narrowphase": 39.190528,
+         "exportContacts": 0.851968,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.720896,
+         "transformSeeds": 0.065536,
+         "narrowphase": 38.404096,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.720896,
+         "transformSeeds": 0.065536,
+         "narrowphase": 35.454976,
+         "exportContacts": 0.98304,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0.393216,
+         "buildGrid": 0.131072,
+         "cachePairs": 0.262144,
+         "findPairs": 0.917504,
+         "transformSeeds": 1.507328,
+         "narrowphase": 37.093376,
+         "exportContacts": 0.98304,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0.32768,
+         "buildGrid": 0.196608,
+         "cachePairs": 0.262144,
+         "findPairs": 0.98304,
+         "transformSeeds": 1.6384,
+         "narrowphase": 35.913728,
+         "exportContacts": 0.98304,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.720896,
+         "transformSeeds": 0,
+         "narrowphase": 37.158912,
+         "exportContacts": 0.917504,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.589824,
+         "transformSeeds": 0,
+         "narrowphase": 36.0448,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.196608,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.786432,
+         "transformSeeds": 0.065536,
+         "narrowphase": 37.617664,
+         "exportContacts": 0.98304,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0.131072,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.851968,
+         "transformSeeds": 0.262144,
+         "narrowphase": 36.0448,
+         "exportContacts": 1.114112,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0.851968,
+         "clearGrid": 0.131072,
+         "buildGrid": 0.065536,
+         "cachePairs": 0.131072,
+         "findPairs": 1.048576,
+         "transformSeeds": 0.131072,
+         "narrowphase": 35.848192,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "pairs": 42836,
+        "contacts": 37399
+       }
+      ],
+      "overflow": 0
+     }
+    ]
+   }
+  },
+  "staged": {
+   "description": "Separate initialization, sequential per-candidate search dispatches, final ranking",
+   "measurement": {
+    "paper": "Giles & Andrews Table 2",
+    "three": "186",
+    "dynamicBunnies": 4314,
+    "totalBodies": 4315,
+    "frames": 90,
+    "warmupFrames": 30,
+    "frameDt": 0.016,
+    "substeps": 4,
+    "solverIterations": 20,
+    "timestamps": true,
+    "adapter": {
+     "subgroupMatrixConfigs": []
+    },
+    "dispatchProfile": false,
+    "pauseMs": 50,
+    "protocol": "Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+    "rows": [
+     {
+      "cacheSize": 16,
+      "randomSamples": 4,
+      "collisionParams": {
+       "optimizer": 0,
+       "cacheSize": 16,
+       "randomSamples": 4,
+       "warmStart": true,
+       "curvatureSampling": true,
+       "skipConvexSamples": true,
+       "epsilon": 0.100000001,
+       "alpha": 0.00999999978,
+       "replacementThreshold": 0.00999999978,
+       "tolerance": 0.01,
+       "maxIterations": 50,
+       "stepSize": 0.100000001,
+       "margin": 0.0199999996,
+       "allowedPenetration": 0.00999999978
+      },
+      "paperCollisionMs": 8.9,
+      "wallMs": {
+       "mean": 147.7903596999999,
+       "upperMedian": 148.34195799999725,
+       "p95": 158.84599999999955
+      },
+      "gpuCollisionMs": {
+       "mean": 129.58651733333332,
+       "upperMedian": 128.516096,
+       "p95": 133.890048
+      },
+      "gpuTotalMs": {
+       "mean": 137.38530133333333,
+       "upperMedian": 136.839168,
+       "p95": 142.93401599999999
+      },
+      "gpuFrames": [
+       {
+        "frame": 40,
+        "collision": 128.45056,
+        "total": 134.74201599999998
+       },
+       {
+        "frame": 50,
+        "collision": 125.698048,
+        "total": 132.25164800000002
+       },
+       {
+        "frame": 60,
+        "collision": 128.516096,
+        "total": 136.708096
+       },
+       {
+        "frame": 70,
+        "collision": 132.775936,
+        "total": 140.836864
+       },
+       {
+        "frame": 80,
+        "collision": 128.188416,
+        "total": 136.839168
+       },
+       {
+        "frame": 90,
+        "collision": 133.890048,
+        "total": 142.93401599999999
+       }
+      ],
+      "samples": [
+       {
+        "frame": 60,
+        "pairs": 41720,
+        "contacts": 23739
+       },
+       {
+        "frame": 90,
+        "pairs": 42847,
+        "contacts": 37118
+       }
+      ],
+      "overflow": 0
+     }
+    ]
+   }
+  },
+  "texture": {
+   "description": "rgba32float 3D texture loads with manual eight-corner interpolation",
+   "measurement": {
+    "paper": "Giles & Andrews Table 2",
+    "three": "186",
+    "dynamicBunnies": 4314,
+    "totalBodies": 4315,
+    "frames": 90,
+    "warmupFrames": 30,
+    "frameDt": 0.016,
+    "substeps": 4,
+    "solverIterations": 20,
+    "timestamps": true,
+    "adapter": {
+     "subgroupMatrixConfigs": []
+    },
+    "dispatchProfile": true,
+    "pauseMs": 50,
+    "protocol": "Diagnostic per-dispatch pass splitting; collision sums dispatch timestamps, GPU total unavailable. Not comparable to unsplit totals. Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+    "rows": [
+     {
+      "cacheSize": 16,
+      "randomSamples": 4,
+      "collisionParams": {
+       "optimizer": 0,
+       "cacheSize": 16,
+       "randomSamples": 4,
+       "warmStart": true,
+       "curvatureSampling": true,
+       "skipConvexSamples": true,
+       "epsilon": 0.100000001,
+       "alpha": 0.00999999978,
+       "replacementThreshold": 0.00999999978,
+       "tolerance": 0.01,
+       "maxIterations": 50,
+       "stepSize": 0.100000001,
+       "margin": 0.0199999996,
+       "allowedPenetration": 0.00999999978
+      },
+      "paperCollisionMs": 8.9,
+      "wallMs": {
+       "mean": 184.86299718333308,
+       "upperMedian": 186.15333399999872,
+       "p95": 198.98620799999844
+      },
+      "gpuCollisionMs": {
+       "mean": 165.75146666666666,
+       "upperMedian": 167.641088,
+       "p95": 172.294144
+      },
+      "gpuTotalMs": null,
+      "gpuFrames": [
+       {
+        "frame": 40,
+        "collision": 160.432128,
+        "total": null
+       },
+       {
+        "frame": 50,
+        "collision": 159.383552,
+        "total": null
+       },
+       {
+        "frame": 60,
+        "collision": 167.90323199999997,
+        "total": null
+       },
+       {
+        "frame": 70,
+        "collision": 172.294144,
+        "total": null
+       },
+       {
+        "frame": 80,
+        "collision": 166.85465599999998,
+        "total": null
+       },
+       {
+        "frame": 90,
+        "collision": 167.641088,
+        "total": null
+       }
+      ],
+      "samples": [
+       {
+        "frame": 40,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 39.190528,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 38.66624,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 39.059456,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0,
+         "narrowphase": 38.141952,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 37.093376,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0.065536,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0,
+         "narrowphase": 38.66624,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 37.814272,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 40.173568,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 40.828928,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 40.63232,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 39.911424,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 40.96,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "pairs": 41814,
+        "contacts": 23662
+       },
+       {
+        "frame": 70,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0.065536,
+         "cachePairs": 0,
+         "findPairs": 0.589824,
+         "transformSeeds": 0.065536,
+         "narrowphase": 42.139648,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 41.877504,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 41.680896,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 40.697856,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0.065536,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 40.501248,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0.065536,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0,
+         "narrowphase": 40.173568,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 40.108032,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 40.30464,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 40.30464,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 41.156608,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 40.370176,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 40.30464,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "pairs": 42836,
+        "contacts": 37399
+       }
+      ],
+      "overflow": 0
+     }
+    ]
+   }
+  },
+  "filtered": {
+   "description": "Optional float32-filterable hardware interpolation",
+   "measurement": {
+    "paper": "Giles & Andrews Table 2",
+    "three": "186",
+    "dynamicBunnies": 4314,
+    "totalBodies": 4315,
+    "frames": 90,
+    "warmupFrames": 30,
+    "frameDt": 0.016,
+    "substeps": 4,
+    "solverIterations": 20,
+    "timestamps": true,
+    "adapter": {
+     "subgroupMatrixConfigs": []
+    },
+    "dispatchProfile": false,
+    "pauseMs": 50,
+    "protocol": "Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+    "rows": [
+     {
+      "cacheSize": 16,
+      "randomSamples": 4,
+      "collisionParams": {
+       "optimizer": 0,
+       "cacheSize": 16,
+       "randomSamples": 4,
+       "warmStart": true,
+       "curvatureSampling": true,
+       "skipConvexSamples": true,
+       "epsilon": 0.100000001,
+       "alpha": 0.00999999978,
+       "replacementThreshold": 0.00999999978,
+       "tolerance": 0.01,
+       "maxIterations": 50,
+       "stepSize": 0.100000001,
+       "margin": 0.0199999996,
+       "allowedPenetration": 0.00999999978
+      },
+      "paperCollisionMs": 8.9,
+      "wallMs": {
+       "mean": 150.0125084333334,
+       "upperMedian": 151.1058749999993,
+       "p95": 162.32762500000172
+      },
+      "gpuCollisionMs": {
+       "mean": 131.63997866666668,
+       "upperMedian": 132.120576,
+       "p95": 133.562368
+      },
+      "gpuTotalMs": {
+       "mean": 139.28584533333333,
+       "upperMedian": 140.57471999999999,
+       "p95": 141.295616
+      },
+      "gpuFrames": [
+       {
+        "frame": 40,
+        "collision": 132.120576,
+        "total": 138.018816
+       },
+       {
+        "frame": 50,
+        "collision": 130.678784,
+        "total": 137.822208
+       },
+       {
+        "frame": 60,
+        "collision": 133.36576000000002,
+        "total": 140.57471999999999
+       },
+       {
+        "frame": 70,
+        "collision": 133.562368,
+        "total": 141.295616
+       },
+       {
+        "frame": 80,
+        "collision": 132.120576,
+        "total": 140.967936
+       },
+       {
+        "frame": 90,
+        "collision": 127.99180799999999,
+        "total": 137.035776
+       }
+      ],
+      "samples": [
+       {
+        "frame": 60,
+        "pairs": 41629,
+        "contacts": 23424
+       },
+       {
+        "frame": 90,
+        "pairs": 42779,
+        "contacts": 37217
+       }
+      ],
+      "overflow": 0
+     }
+    ]
+   }
+  },
+  "optimizer": {
+   "description": "Nelder\u2013Mead-only specialization",
+   "measurement": {
+    "paper": "Giles & Andrews Table 2",
+    "three": "186",
+    "dynamicBunnies": 4314,
+    "totalBodies": 4315,
+    "frames": 90,
+    "warmupFrames": 30,
+    "frameDt": 0.016,
+    "substeps": 4,
+    "solverIterations": 20,
+    "timestamps": true,
+    "adapter": {
+     "subgroupMatrixConfigs": []
+    },
+    "dispatchProfile": true,
+    "pauseMs": 50,
+    "protocol": "Diagnostic per-dispatch pass splitting; collision sums dispatch timestamps, GPU total unavailable. Not comparable to unsplit totals. Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+    "rows": [
+     {
+      "cacheSize": 16,
+      "randomSamples": 4,
+      "collisionParams": {
+       "optimizer": 0,
+       "cacheSize": 16,
+       "randomSamples": 4,
+       "warmStart": true,
+       "curvatureSampling": true,
+       "skipConvexSamples": true,
+       "epsilon": 0.100000001,
+       "alpha": 0.00999999978,
+       "replacementThreshold": 0.00999999978,
+       "tolerance": 0.01,
+       "maxIterations": 50,
+       "stepSize": 0.100000001,
+       "margin": 0.0199999996,
+       "allowedPenetration": 0.00999999978
+      },
+      "paperCollisionMs": 8.9,
+      "wallMs": {
+       "mean": 127.0177694833335,
+       "upperMedian": 128.4272920000003,
+       "p95": 132.23949999999968
+      },
+      "gpuCollisionMs": {
+       "mean": 108.22178133333334,
+       "upperMedian": 108.724224,
+       "p95": 109.576192
+      },
+      "gpuTotalMs": null,
+      "gpuFrames": [
+       {
+        "frame": 40,
+        "collision": 105.77510400000001,
+        "total": null
+       },
+       {
+        "frame": 50,
+        "collision": 108.72422399999999,
+        "total": null
+       },
+       {
+        "frame": 60,
+        "collision": 107.21689599999999,
+        "total": null
+       },
+       {
+        "frame": 70,
+        "collision": 108.724224,
+        "total": null
+       },
+       {
+        "frame": 80,
+        "collision": 109.576192,
+        "total": null
+       },
+       {
+        "frame": 90,
+        "collision": 109.314048,
+        "total": null
+       }
+      ],
+      "samples": [
+       {
+        "frame": 40,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.755648,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 24.772608,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 24.707072,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0.065536,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0,
+         "narrowphase": 25.427968,
+         "exportContacts": 0.720896,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.362432,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.755648,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 27.000832,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.427968,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 25.165824,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 24.641536,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.083328,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.821184,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "pairs": 41814,
+        "contacts": 23662
+       },
+       {
+        "frame": 70,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.55904,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0.065536,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.690112,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.493504,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.345472,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.131072,
+         "narrowphase": 26.083328,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.083328,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.755648,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.624576,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.55904,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.738688,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 24.444928,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.32768,
+         "narrowphase": 26.411008,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "pairs": 42836,
+        "contacts": 37399
+       }
+      ],
+      "overflow": 0
+     }
+    ]
+   }
+  },
+  "wg256": {
+   "description": "256-lane narrowphase workgroups",
+   "measurement": {
+    "paper": "Giles & Andrews Table 2",
+    "three": "186",
+    "dynamicBunnies": 4314,
+    "totalBodies": 4315,
+    "frames": 90,
+    "warmupFrames": 30,
+    "frameDt": 0.016,
+    "substeps": 4,
+    "solverIterations": 20,
+    "timestamps": true,
+    "adapter": {
+     "subgroupMatrixConfigs": []
+    },
+    "dispatchProfile": true,
+    "pauseMs": 50,
+    "protocol": "Diagnostic per-dispatch pass splitting; collision sums dispatch timestamps, GPU total unavailable. Not comparable to unsplit totals. Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+    "rows": [
+     {
+      "cacheSize": 16,
+      "randomSamples": 4,
+      "collisionParams": {
+       "optimizer": 0,
+       "cacheSize": 16,
+       "randomSamples": 4,
+       "warmStart": true,
+       "curvatureSampling": true,
+       "skipConvexSamples": true,
+       "epsilon": 0.100000001,
+       "alpha": 0.00999999978,
+       "replacementThreshold": 0.00999999978,
+       "tolerance": 0.01,
+       "maxIterations": 50,
+       "stepSize": 0.100000001,
+       "margin": 0.0199999996,
+       "allowedPenetration": 0.00999999978
+      },
+      "paperCollisionMs": 8.9,
+      "wallMs": {
+       "mean": 145.2786562166668,
+       "upperMedian": 148.8941250000007,
+       "p95": 160.03733400000056
+      },
+      "gpuCollisionMs": {
+       "mean": 128.59255466666664,
+       "upperMedian": 131.268608,
+       "p95": 134.67648
+      },
+      "gpuTotalMs": null,
+      "gpuFrames": [
+       {
+        "frame": 40,
+        "collision": 118.095872,
+        "total": null
+       },
+       {
+        "frame": 50,
+        "collision": 127.13983999999999,
+        "total": null
+       },
+       {
+        "frame": 60,
+        "collision": 128.45056,
+        "total": null
+       },
+       {
+        "frame": 70,
+        "collision": 131.268608,
+        "total": null
+       },
+       {
+        "frame": 80,
+        "collision": 134.67648,
+        "total": null
+       },
+       {
+        "frame": 90,
+        "collision": 131.923968,
+        "total": null
+       }
+      ],
+      "samples": [
+       {
+        "frame": 40,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 29.097984,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.279936,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 29.16352,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0,
+         "narrowphase": 28.246016,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 30.015488,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.131072,
+         "narrowphase": 30.605312,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 30.736384,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0.065536,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0,
+         "narrowphase": 30.212096,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 30.343168,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 30.80192,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 32.178176,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 29.425664,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "pairs": 41814,
+        "contacts": 23662
+       },
+       {
+        "frame": 70,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.524288,
+         "narrowphase": 30.80192,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0.065536,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 32.571392,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 31.719424,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 29.884416,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 32.309248,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 33.882112,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0,
+         "narrowphase": 31.326208,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 31.326208,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.131072,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.131072,
+         "narrowphase": 30.277632,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 32.243712,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 32.11264,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 31.1296,
+         "exportContacts": 0.98304,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "pairs": 42836,
+        "contacts": 37399
+       }
+      ],
+      "overflow": 0
+     }
+    ]
+   }
+  },
+  "empty": {
+   "description": "Conservative voxel block minima reject empty search regions",
+   "measurement": {
+    "paper": "Giles & Andrews Table 2",
+    "three": "186",
+    "dynamicBunnies": 4314,
+    "totalBodies": 4315,
+    "frames": 90,
+    "warmupFrames": 30,
+    "frameDt": 0.016,
+    "substeps": 4,
+    "solverIterations": 20,
+    "timestamps": true,
+    "adapter": {
+     "subgroupMatrixConfigs": []
+    },
+    "dispatchProfile": false,
+    "pauseMs": 50,
+    "protocol": "Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+    "rows": [
+     {
+      "cacheSize": 16,
+      "randomSamples": 4,
+      "collisionParams": {
+       "optimizer": 0,
+       "cacheSize": 16,
+       "randomSamples": 4,
+       "warmStart": true,
+       "curvatureSampling": true,
+       "skipConvexSamples": true,
+       "epsilon": 0.100000001,
+       "alpha": 0.00999999978,
+       "replacementThreshold": 0.00999999978,
+       "tolerance": 0.01,
+       "maxIterations": 50,
+       "stepSize": 0.100000001,
+       "margin": 0.0199999996,
+       "allowedPenetration": 0.00999999978
+      },
+      "paperCollisionMs": 8.9,
+      "wallMs": {
+       "mean": 125.48531804999995,
+       "upperMedian": 126.03891600000134,
+       "p95": 131.4533339999998
+      },
+      "gpuCollisionMs": {
+       "mean": 107.33704533333332,
+       "upperMedian": 108.855296,
+       "p95": 109.510656
+      },
+      "gpuTotalMs": {
+       "mean": 114.67707733333333,
+       "upperMedian": 116.719616,
+       "p95": 117.9648
+      },
+      "gpuFrames": [
+       {
+        "frame": 40,
+        "collision": 104.59545600000001,
+        "total": 110.690304
+       },
+       {
+        "frame": 50,
+        "collision": 106.10278399999999,
+        "total": 112.656384
+       },
+       {
+        "frame": 60,
+        "collision": 105.51295999999999,
+        "total": 112.459776
+       },
+       {
+        "frame": 70,
+        "collision": 109.510656,
+        "total": 116.719616
+       },
+       {
+        "frame": 80,
+        "collision": 109.44512,
+        "total": 117.9648
+       },
+       {
+        "frame": 90,
+        "collision": 108.855296,
+        "total": 117.571584
+       }
+      ],
+      "samples": [
+       {
+        "frame": 60,
+        "pairs": 41350,
+        "contacts": 23618
+       },
+       {
+        "frame": 90,
+        "pairs": 42926,
+        "contacts": 37251
+       }
+      ],
+      "overflow": 0
+     }
+    ]
+   }
+  },
+  "cell-cache": {
+   "description": "Per-pair last-voxel-cell corner reuse",
+   "measurement": {
+    "paper": "Giles & Andrews Table 2",
+    "three": "186",
+    "dynamicBunnies": 4314,
+    "totalBodies": 4315,
+    "frames": 90,
+    "warmupFrames": 30,
+    "frameDt": 0.016,
+    "substeps": 4,
+    "solverIterations": 20,
+    "timestamps": true,
+    "adapter": {
+     "subgroupMatrixConfigs": []
+    },
+    "dispatchProfile": true,
+    "pauseMs": 50,
+    "protocol": "Diagnostic per-dispatch pass splitting; collision sums dispatch timestamps, GPU total unavailable. Not comparable to unsplit totals. Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+    "rows": [
+     {
+      "cacheSize": 16,
+      "randomSamples": 4,
+      "collisionParams": {
+       "optimizer": 0,
+       "cacheSize": 16,
+       "randomSamples": 4,
+       "warmStart": true,
+       "curvatureSampling": true,
+       "skipConvexSamples": true,
+       "epsilon": 0.100000001,
+       "alpha": 0.00999999978,
+       "replacementThreshold": 0.00999999978,
+       "tolerance": 0.01,
+       "maxIterations": 50,
+       "stepSize": 0.100000001,
+       "margin": 0.0199999996,
+       "allowedPenetration": 0.00999999978
+      },
+      "paperCollisionMs": 8.9,
+      "wallMs": {
+       "mean": 217.18367501666665,
+       "upperMedian": 219.52145800000108,
+       "p95": 232.72912500000166
+      },
+      "gpuCollisionMs": {
+       "mean": 201.54504533333332,
+       "upperMedian": 203.68588799999998,
+       "p95": 211.877888
+      },
+      "gpuTotalMs": null,
+      "gpuFrames": [
+       {
+        "frame": 40,
+        "collision": 193.46227199999998,
+        "total": null
+       },
+       {
+        "frame": 50,
+        "collision": 199.294976,
+        "total": null
+       },
+       {
+        "frame": 60,
+        "collision": 195.166208,
+        "total": null
+       },
+       {
+        "frame": 70,
+        "collision": 211.877888,
+        "total": null
+       },
+       {
+        "frame": 80,
+        "collision": 203.68588799999998,
+        "total": null
+       },
+       {
+        "frame": 90,
+        "collision": 205.78303999999997,
+        "total": null
+       }
+      ],
+      "samples": [
+       {
+        "frame": 40,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 47.906816,
+         "exportContacts": 0.720896,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 48.234496,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 46.333952,
+         "exportContacts": 0.720896,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 45.8752,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 48.234496,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 47.906816,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 47.775744,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 49.80736,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 48.234496,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0,
+         "narrowphase": 47.382528,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 46.006272,
+         "exportContacts": 0.786432,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 47.972352,
+         "exportContacts": 0.98304,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "pairs": 41647,
+        "contacts": 23579
+       },
+       {
+        "frame": 70,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 50.069504,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.32768,
+         "narrowphase": 50.397184,
+         "exportContacts": 0.98304,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.393216,
+         "narrowphase": 52.10112,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 52.75648,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 50.397184,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 48.82432,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.589824,
+         "transformSeeds": 0.065536,
+         "narrowphase": 48.562176,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 50.003968,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 51.052544,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 50.397184,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 49.938432,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0.065536,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.32768,
+         "narrowphase": 48.16896,
+         "exportContacts": 0.851968,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 90,
+        "pairs": 42812,
+        "contacts": 37255
+       }
+      ],
+      "overflow": 0
+     }
+    ]
+   }
+  },
+  "control-split": {
+   "description": "Restored source, split-pass diagnostic control",
+   "measurement": {
+    "paper": "Giles & Andrews Table 2",
+    "three": "186",
+    "dynamicBunnies": 4314,
+    "totalBodies": 4315,
+    "frames": 90,
+    "warmupFrames": 30,
+    "frameDt": 0.016,
+    "substeps": 4,
+    "solverIterations": 20,
+    "timestamps": true,
+    "adapter": {
+     "subgroupMatrixConfigs": []
+    },
+    "dispatchProfile": true,
+    "pauseMs": 50,
+    "protocol": "Diagnostic per-dispatch pass splitting; collision sums dispatch timestamps, GPU total unavailable. Not comparable to unsplit totals. Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+    "rows": [
+     {
+      "cacheSize": 16,
+      "randomSamples": 4,
+      "collisionParams": {
+       "optimizer": 0,
+       "cacheSize": 16,
+       "randomSamples": 4,
+       "warmStart": true,
+       "curvatureSampling": true,
+       "skipConvexSamples": true,
+       "epsilon": 0.100000001,
+       "alpha": 0.00999999978,
+       "replacementThreshold": 0.00999999978,
+       "tolerance": 0.01,
+       "maxIterations": 50,
+       "stepSize": 0.100000001,
+       "margin": 0.0199999996,
+       "allowedPenetration": 0.00999999978
+      },
+      "paperCollisionMs": 8.9,
+      "wallMs": {
+       "mean": 127.8960403833333,
+       "upperMedian": 128.9853750000002,
+       "p95": 135.6998339999991
+      },
+      "gpuCollisionMs": {
+       "mean": 108.82252799999999,
+       "upperMedian": 109.510656,
+       "p95": 113.442816
+      },
+      "gpuTotalMs": null,
+      "gpuFrames": [
+       {
+        "frame": 40,
+        "collision": 105.250816,
+        "total": null
+       },
+       {
+        "frame": 50,
+        "collision": 107.282432,
+        "total": null
+       },
+       {
+        "frame": 60,
+        "collision": 106.954752,
+        "total": null
+       },
+       {
+        "frame": 70,
+        "collision": 109.510656,
+        "total": null
+       },
+       {
+        "frame": 80,
+        "collision": 113.442816,
+        "total": null
+       },
+       {
+        "frame": 90,
+        "collision": 110.49369599999999,
+        "total": null
+       }
+      ],
+      "samples": [
+       {
+        "frame": 40,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.427968,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 24.90368,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 24.90368,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 40,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 24.772608,
+         "exportContacts": 0.851968,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.427968,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.493504,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.427968,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 50,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.624576,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.493504,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.393216,
+         "transformSeeds": 0.065536,
+         "narrowphase": 24.641536,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.034752,
+         "exportContacts": 0.98304,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.131072,
+         "narrowphase": 26.017792,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 60,
+        "pairs": 41814,
+        "contacts": 23662
+       },
+       {
+        "frame": 70,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.952256,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.476544,
+         "exportContacts": 0.786432,
+         "argsContacts": 0.065536
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.624576,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 70,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.821184,
+         "exportContacts": 0.786432,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.345472,
+         "exportContacts": 0.98304,
+         "argsContacts": 0.131072
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 27.328512,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0.065536,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 26.345472,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 80,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.524288,
+         "transformSeeds": 0.065536,
+         "narrowphase": 27.590656,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 0,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.804224,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 1,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 26.54208,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 2,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0.065536,
+         "clearGrid": 0,
+         "buildGrid": 0.065536,
+         "cachePairs": 0,
+         "findPairs": 0.458752,
+         "transformSeeds": 0,
+         "narrowphase": 25.55904,
+         "exportContacts": 0.917504,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "substep": 3,
+        "phases": {
+         "beginFrame": 0,
+         "prepareBodies": 0,
+         "clearGrid": 0,
+         "buildGrid": 0,
+         "cachePairs": 0.065536,
+         "findPairs": 0.458752,
+         "transformSeeds": 0.065536,
+         "narrowphase": 25.821184,
+         "exportContacts": 0.851968,
+         "argsContacts": 0
+        }
+       },
+       {
+        "frame": 90,
+        "pairs": 42836,
+        "contacts": 37399
+       }
+      ],
+      "overflow": 0
+     }
+    ]
+   }
+  },
+  "control-normal": {
+   "description": "Restored source, normal unsplit control",
+   "measurement": {
+    "paper": "Giles & Andrews Table 2",
+    "three": "186",
+    "dynamicBunnies": 4314,
+    "totalBodies": 4315,
+    "frames": 90,
+    "warmupFrames": 30,
+    "frameDt": 0.016,
+    "substeps": 4,
+    "solverIterations": 20,
+    "timestamps": true,
+    "adapter": {
+     "subgroupMatrixConfigs": []
+    },
+    "dispatchProfile": false,
+    "pauseMs": 50,
+    "protocol": "Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+    "rows": [
+     {
+      "cacheSize": 16,
+      "randomSamples": 4,
+      "collisionParams": {
+       "optimizer": 0,
+       "cacheSize": 16,
+       "randomSamples": 4,
+       "warmStart": true,
+       "curvatureSampling": true,
+       "skipConvexSamples": true,
+       "epsilon": 0.100000001,
+       "alpha": 0.00999999978,
+       "replacementThreshold": 0.00999999978,
+       "tolerance": 0.01,
+       "maxIterations": 50,
+       "stepSize": 0.100000001,
+       "margin": 0.0199999996,
+       "allowedPenetration": 0.00999999978
+      },
+      "paperCollisionMs": 8.9,
+      "wallMs": {
+       "mean": 125.77611868333332,
+       "upperMedian": 126.46524999999929,
+       "p95": 133.48666599999888
+      },
+      "gpuCollisionMs": {
+       "mean": 107.20597333333335,
+       "upperMedian": 107.41350399999999,
+       "p95": 113.11513599999999
+      },
+      "gpuTotalMs": {
+       "mean": 114.78630399999999,
+       "upperMedian": 115.867648,
+       "p95": 120.848384
+      },
+      "gpuFrames": [
+       {
+        "frame": 40,
+        "collision": 102.825984,
+        "total": 109.11744
+       },
+       {
+        "frame": 50,
+        "collision": 108.98636800000001,
+        "total": 115.867648
+       },
+       {
+        "frame": 60,
+        "collision": 103.54688,
+        "total": 110.88691200000001
+       },
+       {
+        "frame": 70,
+        "collision": 113.11513599999999,
+        "total": 120.848384
+       },
+       {
+        "frame": 80,
+        "collision": 107.41350399999999,
+        "total": 115.736576
+       },
+       {
+        "frame": 90,
+        "collision": 107.347968,
+        "total": 116.260864
+       }
+      ],
+      "samples": [
+       {
+        "frame": 60,
+        "pairs": 41814,
+        "contacts": 23662
+       },
+       {
+        "frame": 90,
+        "pairs": 42836,
+        "contacts": 37399
+       }
+      ],
+      "overflow": 0
+     }
+    ]
+   }
+  }
+ }
+}

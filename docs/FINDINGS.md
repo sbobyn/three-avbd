@@ -2,6 +2,32 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-10-19 — Contact-search experiments: no accepted speedup
+
+The next performance screen tested ten prototypes sequentially on 4,314 bunnies, 90 frames, 16+4 samples, with 50 ms idle/frame. No runtime change was retained. All production source and scripts were restored to `58a6a12`; correctness/settling acceptance was not claimed for the rejected prototypes.
+
+The same-session restored-source controls measured 108.82 ms collision with diagnostic pass splitting and 107.21 ms without it. Split-pass variants: fixed-local simplex 112.00 ms; workgroup scratch 352.77; unrolled repulsion 154.22; full-precision texture loads 165.75; NM specialization 108.22; 256-lane workgroups 128.59; last-cell corner cache 201.55. Normal unsplit variants: staged candidate passes 129.59 ms; hardware float32 interpolation 131.64; voxel empty-region block rejection 107.34. Compare only within each timing scope. These are single exploratory runs, not statistical trials; the 90-frame controls do not replace the prior 360-frame measurement.
+
+The specialization difference is too small to claim improvement; empty-region rejection did not reduce time and changed the later contact history. The others were slower. Experimental shader variants were discarded, not turned into public APIs or fallback requirements. Raw records: `measurements/sdf-search-experiments-2026-10-19.json`. The requested <33 ms / ideally <16 ms high-budget goal remains unmet. Further work needs hardware-level bottleneck evidence and a larger architectural improvement; these results do not establish that the target is impossible. A bounded native Metal System Trace of the restored source completed, but its shader-profiler sample table was empty and the counter metadata exposed only RT Unit Active; it does not establish an ALU, bandwidth or register-spill bottleneck. The local trace is not committed (large and contains system metadata). A correctly configured compute-counter/shader-profiler capture is the next diagnostic checkpoint.
+
+## 2026-10-19 — Full-pile profiling: preserve the trajectory before accepting speedups
+
+Split-dispatch profiling of 4,314 bunnies identifies contact search as the dominant cost. Reading individual history members avoids copying the entire contact array; a bounded per-body cache transforms curvature seeds once per substep instead of once per candidate pair. Cache allocation falls back to direct sampling for small scenes, insufficient binding/workgroup limits, or allocations over 128 MiB/device limits. Contact order, independent normals and warm-start semantics remain unchanged.
+
+The retained cache/history changes reproduce every recorded physics metric of the previous 600-frame mesh-quality baseline exactly at all 20 samples: pair/contact counts, energy, overflow, ground penetration and sampled mesh penetration. The sampled mesh maximum remains 2.749 mm; this is a reservoir of 300 nearby pairs, not a global penetration bound. A populated-seed regression compares direct and cached results through pose changes, curvature mode switches, key reset and capacity growth.
+
+A scalar-only voxel distance shortcut was rejected despite a faster diagnostic timing: its 600-frame run reached 7.731 mm sampled penetration and 16.412 J final energy. Local distance agreement did not preserve the long-pile trajectory. Workgroup-size, global workspace, compact repulsion, field specialization and eligibility-mask experiments were also discarded. The diagnostic records distinguish rejected variants and null unavailable total timestamps. Split-pass timings are not normal frame timings.
+
+Raw records: `measurements/sdf-dispatch-profile-2026-10-19.json`, `sdf-performance-cache-settling-2026-10-19.json`, and `sdf-performance-rejected-scalar-2026-10-19.json`. Normal 360-frame endpoint remeasurement gives collision 20.34 / 110.20 ms at 4+1 / 16+4, versus 20.28 / 130.61 ms previously; total GPU means are 28.09 / 124.65 ms versus 28.09 / 145.56 ms. This is about 16% faster high-budget collision with no low-budget improvement, from single sequential runs, not statistical trials. See `measurements/sdf-performance-endpoints-2026-10-19.json`. The full-pile performance gap remains open.
+
+## 2026-10-19 — Full-pile budget timings and five-rollout dense pile comparison
+
+The Table 2 analogue completed twelve sample budgets on 4,314 dynamic bunnies plus floor, 360 frames each, sequentially with 50 ms idle/frame. M4 Max mean collision timestamps range from 20.28 to 130.61 ms/frame (four substeps), including preparation, spatial broadphase, search and export. These are substantially slower than the paper values; the reconstructed layout and timing scope prevent equivalence claims. No overflow/non-finite state occurred.
+
+The Figure 7 analogue completed 30 runs (released chairs/bunnies × uniform/curvature/dense × five matched jitter seeds), 500 frames each with 10 ms idle/frame. Mean last-100-frame energy in joules: chairs 0.019345 / 0.262713 / 0.000001280; bunnies 0.180283 / 0.032203 / 0.000001916. The fixed-surface dense backend settles tightly but creates more constraints; curvature is not consistently better. The released bunny pile is not Iron Maiden, and fixed surface samples are not the paper's 1,000 optimized seeds. No production solver behavior changed for these measurements.
+
+See `SDF_REPRODUCTION_STATUS.md` and the raw `measurements/sdf-table2-full-2026-10-19.json` / `sdf-fig7-piles-2026-10-19.json`. New GPU regressions cover released-mesh support, directed mesh contacts and multiplier transport. Runtime testing caught and fixed a WGSL reserved identifier; review corrected upper-median/body-count/timestamp-wait labels. Measurements retain the original values.
+
 ## 2026-10-19 — Corrected paper-scale bunny measurements (PR #37 review follow-up)
 
 The version-2 harness checks overflow after **every substep**, times those readbacks, and

@@ -11,6 +11,7 @@ export async function measuredFrame(scene:ReleasedScene, world:World, bodies:Bod
   let queries=0, iterations=0, results:GpuSdfResult[]=[];
   for(let s=0;s<Math.round(scene.capture.solver.dt/world.dt);s++) {
     world.step(); results=await world.readSdfResults();
+    const counters=await world.solver.readCounters();if(counters.overflow)throw new Error(`Collision overflow ${counters.overflow} at substep ${s}`);
     for(const result of results){queries+=result.queries;iterations+=result.iterations;}
   }
   await world.read();
@@ -49,6 +50,5 @@ export async function measuredFrame(scene:ReleasedScene, world:World, bodies:Bod
     }
     sample.maxVertexPenetration=maximum;sample.vertexQueries=probes;
   }
-  const counters=await world.solver.readCounters();if(counters.overflow)throw new Error(`Collision overflow ${counters.overflow}`);
   return sample;
 }
