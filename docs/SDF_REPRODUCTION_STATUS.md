@@ -131,6 +131,10 @@ These results are substantially slower than the listed paper timings. **No hardw
 
 Raw record: [full-pile timings](measurements/sdf-table2-full-2026-10-19.json).
 
+### High-budget target: still unmet
+
+A subsequent bounded search-optimization screen rejected ten prototypes. The restored-source 90-frame controls measured 108.82 ms with diagnostic pass splitting and 107.21 ms normally; these do not replace the 360-frame result below. No new runtime change was retained. The requested well-below-33 ms / ideally-below-16 ms collision target remains open; no target achievement or settling acceptance is claimed for the rejected variants. See the newest FINDINGS entry and `measurements/sdf-search-experiments-2026-10-19.json`. Native Metal tracing succeeded but did not collect useful compute shader samples/counters; configuring those is the next diagnostic checkpoint before another architectural change.
+
 ### Performance follow-up: history reads and transformed seeds
 
 The retained optimization reads history members directly and caches transformed curvature seeds per body/substep. It preserves independent normals, point identities and warm starts. Optional cache allocation is capped at 128 MiB and device limits; unsupported/small cases retain direct sampling.

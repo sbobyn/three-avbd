@@ -2,6 +2,14 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-10-19 — Contact-search experiments: no accepted speedup
+
+The next performance screen tested ten prototypes sequentially on 4,314 bunnies, 90 frames, 16+4 samples, with 50 ms idle/frame. No runtime change was retained. All production source and scripts were restored to `58a6a12`; correctness/settling acceptance was not claimed for the rejected prototypes.
+
+The same-session restored-source controls measured 108.82 ms collision with diagnostic pass splitting and 107.21 ms without it. Split-pass variants: fixed-local simplex 112.00 ms; workgroup scratch 352.77; unrolled repulsion 154.22; full-precision texture loads 165.75; NM specialization 108.22; 256-lane workgroups 128.59; last-cell corner cache 201.55. Normal unsplit variants: staged candidate passes 129.59 ms; hardware float32 interpolation 131.64; voxel empty-region block rejection 107.34. Compare only within each timing scope. These are single exploratory runs, not statistical trials; the 90-frame controls do not replace the prior 360-frame measurement.
+
+The specialization difference is too small to claim improvement; empty-region rejection did not reduce time and changed the later contact history. The others were slower. Experimental shader variants were discarded, not turned into public APIs or fallback requirements. Raw records: `measurements/sdf-search-experiments-2026-10-19.json`. The requested <33 ms / ideally <16 ms high-budget goal remains unmet. Further work needs hardware-level bottleneck evidence and a larger architectural improvement; these results do not establish that the target is impossible. A bounded native Metal System Trace of the restored source completed, but its shader-profiler sample table was empty and the counter metadata exposed only RT Unit Active; it does not establish an ALU, bandwidth or register-spill bottleneck. The local trace is not committed (large and contains system metadata). A correctly configured compute-counter/shader-profiler capture is the next diagnostic checkpoint.
+
 ## 2026-10-19 — Full-pile profiling: preserve the trajectory before accepting speedups
 
 Split-dispatch profiling of 4,314 bunnies identifies contact search as the dominant cost. Reading individual history members avoids copying the entire contact array; a bounded per-body cache transforms curvature seeds once per substep instead of once per candidate pair. Cache allocation falls back to direct sampling for small scenes, insufficient binding/workgroup limits, or allocations over 128 MiB/device limits. Contact order, independent normals and warm-start semantics remain unchanged.
