@@ -13,6 +13,8 @@ import type { Quat, Vec3 } from '../src/lib/world.ts';
 const output=process.argv[2],count=Number(process.argv[3]??4314),frames=Number(process.argv[4]??300);
 // Optional candidate-pair reservation; by default World sizes it (8 per body) and grows it after overflow.
 const maxPairs=process.argv[5]===undefined?undefined:Number(process.argv[5]);
+const pauseMs=Number(process.env.SDF_FRAME_PAUSE_MS??0);
+if(!Number.isFinite(pauseMs)||pauseMs<0||pauseMs>1000)throw new Error("SDF_FRAME_PAUSE_MS must be in 0..1000");
 if(!output||!Number.isInteger(count)||count<1||count>5000||!Number.isInteger(frames)||frames<1||frames>600||(maxPairs!==undefined&&!(Number.isInteger(maxPairs)&&maxPairs>0)))
   throw new Error('Usage: sdf-scale.ts output.json [bodies 1..5000, default 4314] [frames 1..600, default 300] [maxPairs]');
 const read:ReadAsset=async path=>{const b=await readFile(new URL(`../tests/fixtures/${path}`,import.meta.url));return b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength) as ArrayBuffer;};
@@ -37,7 +39,7 @@ world.maxSubsteps=settings.substeps;world.readbackEvery=0;
 const local=(()=>{const p=template.geometry.getAttribute('position');return Array.from({length:p.count},(_,i)=>new THREE.Vector3().fromBufferAttribute(p,i));})();
 const diameter=2*Math.max(...local.map(v=>v.length()));
 const report:Record<string,unknown>={paper:'Giles & Andrews 2026, Table 1 Bunnies (4314 bodies); layout not published, lattice drop used',
-  measurementVersion:2,penetrationSampling:'reservoir of up to 300 unordered conservative bounding-sphere pairs across all bodies, both vertex directions; sampled, not a global bound',
+  measurementVersion:2,pauseMs,penetrationSampling:'reservoir of up to 300 unordered conservative bounding-sphere pairs across all bodies, both vertex directions; sampled, not a global bound',
   reference:'sdf-dcd-demo 1dcdf1e7fa07d16fda15826ad8c2e6697075a76e',bodies:count,frames,profile:'mesh-quality',substeps:settings.substeps,iterations:source.iterations,
   timing:`wall clock per frame (counter readback after every substep included) (${settings.substeps} substeps) after onSubmittedWorkDone, on the machine that ran this; not target hardware, not t_coll`,
   adapter:(adapter as unknown as {info?:{vendor?:string;architecture?:string;description?:string}}).info??null};
@@ -62,6 +64,7 @@ try{
     }
     await device.queue.onSubmittedWorkDone();times.push(performance.now()-t);
     if(overflow)overflowFrames.push(frame);
+    if(pauseMs)await new Promise(resolve=>setTimeout(resolve,pauseMs));
     if(frame%30!==0&&frame!==frames)continue;
     await world.read();
     let energy=0,groundDepth=0;

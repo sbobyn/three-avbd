@@ -2,6 +2,40 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-10-19 — Corrected paper-scale bunny measurements (PR #37 review follow-up)
+
+The version-2 harness checks overflow after **every substep**, times those readbacks, and
+reservoir-samples up to 300 conservative bounding-sphere candidate pairs across all bodies,
+checking source vertices in both directions. These remain sampled penetration observations,
+not whole-pile bounds. The deterministic reservoir samples do not affect initial poses.
+
+Sequential runs on the M4 Max used 4,314 dynamic bunnies, 600 frames, 64,000 reserved pairs,
+and `SDF_FRAME_PAUSE_MS=100` (100 ms idle after every frame, excluded from timing).
+The source was frozen per run. Baseline: PR #37 `d6422fc`; witness: the same source plus
+PR #36's production change at `e675345`. No hardware equivalence or t_coll claim is made.
+
+| measurement | baseline | with witness fix |
+|---|---:|---:|
+| overflow at any substep | none | none |
+| energy, sampled frames 300–600 | 2.33–12.79 J | 0.67–2.20 J |
+| sampled mesh penetration, frames 300–600 | ≤2.75 mm | ≤2.33 mm |
+| ground penetration, sampled frames | 0 | 0 |
+| wall-clock step+readback median | 53.86 ms | 54.03 ms |
+
+No GPU validation errors or capacity-growth errors occurred. This is one run per configuration;
+no statistical or worst-case claim follows. The sampled mesh maximum differs from the old biased
+subset; this does not establish that previously observed deeper contacts no longer exist.
+
+A separate 12-frame witness run with default capacity reproduces startup overflow and growth;
+see the exact frames/capacities in `sdf-scale-v2-default-2026-10-19.json`. Reserve capacity for
+large dense scenes: automatic growth does not replay dropped contacts. This short run does not
+establish later settling. Raw records retain source provenance and timing scope.
+
+Reproduce one run at a time:
+`SDF_FRAME_PAUSE_MS=100 nice -n 15 node --experimental-transform-types scripts/sdf-scale.ts OUT.json 4314 600 64000`
+
+Measurements: `measurements/sdf-scale-v2-{baseline,witness,default}-2026-10-19.json`.
+
 ## 2026-10-18 — Paper-scale pile: 4314-bunny exploratory measurements (capacity validation pending)
 
 **Review correction (2026-10-19):** the historical measurements below are not sufficient to
