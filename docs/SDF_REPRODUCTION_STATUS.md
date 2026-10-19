@@ -59,6 +59,23 @@ Curvature sampling improves the bunny result and the cow peak, but worsens the c
 
 The earlier [finite-floor diagnostic](measurements/sdf-fig6-1000-4-1-2026-10-19.json) is retained only as an invalidated diagnostic: it allowed drop-drop contacts and had a 120 m-wide floor. A separate [isolated-drop diagnostic with escape records](measurements/sdf-fig6-finite-floor-diagnostic-2026-10-19.json) confirmed cows leaving that finite floor. The old extreme depth values cannot be treated as infinite-plane penetration measurements. The corrected records are [bunny](measurements/sdf-fig6-wide-bunny-2026-10-19.json) and [cow](measurements/sdf-fig6-wide-cow-2026-10-19.json).
 
+### Larger contact-search budget
+
+The same isolated-drop protocol at **16 cached + 4 random samples** measured zero source-vertex plane penetration for both bunny and cow, under both uniform and curvature sampling, across all 100 drops and 1,000 frames. All configurations had zero escapes. This is an observed result, not a universal nonpenetration guarantee. The solver rest-gap intrusion remained nonzero (about 1.1–1.3 mm mean), so zero plane penetration does not mean exact target separation.
+
+[Raw 16+4 record](measurements/sdf-fig6-wide-16-4-2026-10-19.json). Command: `scripts/sdf-fig6.ts OUT.json 100 1000 bunny,cow 16:4`. Source: `d9e424d`, Three.js 0.186.1, M4 Max; sequential execution with 10 ms idle per frame. The earlier 4+1 records used Three.js 0.186.0. No timing comparison is claimed, and the dense-oracle simulation remains outstanding.
+
+At **8 cached + 1 random sample**, all configurations again had zero escapes, but residual transient penetration remained:
+
+| Shape | Sampling | Mean depth (mm) | Peak depth (mm) |
+|---|---|---:|---:|
+| Bunny | Uniform | 0.022 | 5.910 |
+| Bunny | Curvature | 0.022 | 5.910 |
+| Cow | Uniform | 0.322 | 772.299 |
+| Cow | Curvature | 0.201 | 133.516 |
+
+[Raw 8+1 record](measurements/sdf-fig6-wide-8-1-2026-10-19.json), same source/environment and protocol as 16+4, with the final command argument changed to `8:1`. The 8+1 uniform-cow peak (772 mm) is worse than the earlier 4+1 result despite a lower mean, so improvement is not monotonic and these transient failures remain important. The 16+4 outcome shows a budget effect in this diagnostic, not a general guarantee or a complete cache-size/sample-count sweep.
+
 ## Other evidence and remaining gaps
 
 - Table 1 bunny analogue: corrected 4,314-body/600-frame measurements in PR #37 check every substep. A 64k reservation avoids overflow in both measured configurations; default capacity drops contacts during startup. Sampled penetration is not a global bound.
