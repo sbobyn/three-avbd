@@ -35,9 +35,11 @@ const poses=Array.from({length:count},(_,i)=>{
 const world=await World.create({device,maxBodies:count+1,dt:source.dt/settings.substeps,iterations:source.iterations,gravity:source.gravity});
 world.maxSubsteps=settings.substeps;world.readbackEvery=0;
 const local=(()=>{const p=template.geometry.getAttribute('position');return Array.from({length:p.count},(_,i)=>new THREE.Vector3().fromBufferAttribute(p,i));})();
+const diameter=2*Math.max(...local.map(v=>v.length()));
 const report:Record<string,unknown>={paper:'Giles & Andrews 2026, Table 1 Bunnies (4314 bodies); layout not published, lattice drop used',
+  measurementVersion:2,penetrationSampling:'reservoir of up to 300 unordered conservative bounding-sphere pairs across all bodies, both vertex directions; sampled, not a global bound',
   reference:'sdf-dcd-demo 1dcdf1e7fa07d16fda15826ad8c2e6697075a76e',bodies:count,frames,profile:'mesh-quality',substeps:settings.substeps,iterations:source.iterations,
-  timing:`wall clock per frame (counter readback each frame included) (${settings.substeps} substeps) after onSubmittedWorkDone, on the machine that ran this; not target hardware, not t_coll`,
+  timing:`wall clock per frame (counter readback after every substep included) (${settings.substeps} substeps) after onSubmittedWorkDone, on the machine that ran this; not target hardware, not t_coll`,
   adapter:(adapter as unknown as {info?:{vendor?:string;architecture?:string;description?:string}}).info??null};
 try{
   const floor=world.addBox({size:[1,1,1],position:ground.original.position,rotation:ground.rotation,fixed:true,friction:ground.original.friction})!;
@@ -53,15 +55,19 @@ try{
   const times:number[]=[],samples:unknown[]=[];
   for(let frame=1;frame<=frames;frame++){
     const t=performance.now();
-    for(let s=0;s<settings.substeps;s++)world.step();
+    let counters:Awaited<ReturnType<typeof world.solver.readCounters>>|undefined,overflow=0;
+    for(let s=0;s<settings.substeps;s++){
+      world.step();
+      counters=await world.solver.readCounters();overflow|=counters.overflow;
+    }
     await device.queue.onSubmittedWorkDone();times.push(performance.now()-t);
-    const counters=await world.solver.readCounters();if(counters.overflow)overflowFrames.push(frame);
+    if(overflow)overflowFrames.push(frame);
     if(frame%30!==0&&frame!==frames)continue;
     await world.read();
     let energy=0,groundDepth=0;
     const rotations=bodies.map(b=>new THREE.Quaternion(...b.rotation));
     bodies.forEach((body,i)=>{
-      if(![...body.position,...body.rotation,...body.velocity].every(Number.isFinite))throw new Error(`Non-finite body ${i} at frame ${frame}`);
+      if(![...body.position,...body.rotation,...body.velocity,...body.angularVelocity].every(Number.isFinite))throw new Error(`Non-finite body ${i} at frame ${frame}`);
       const w=new THREE.Vector3(...body.angularVelocity).applyQuaternion(rotations[i].clone().invert()),m=template.moments;
       energy+=.5*(template.original.mass*body.velocity.reduce((s,v)=>s+v*v,0)+m[0]*w.x*w.x+m[1]*w.y*w.y+m[2]*w.z*w.z);
       for(const v of local)groundDepth=Math.max(groundDepth,groundTop-(v.clone().applyQuaternion(rotations[i]).y+body.position[1]));
@@ -71,14 +77,21 @@ try{
     if(frame%60===0||frame===frames){
       meshDepth=0;
       const fields=bodies.map((b,i)=>new SdfBody(template.field,b.position,rotations[i].clone().multiply(new THREE.Quaternion(...template.fieldRotation)).toArray() as Quat,template.original.scale));
-      for(let i=0;i<bodies.length&&probed<300;i+=7)for(let j=0;j<bodies.length&&probed<300;j++){
-        if(i===j||Math.hypot(...bodies[i].position.map((v,k)=>v-bodies[j].position[k]))>1)continue;
-        probed++;
-        for(const v of local){const p=v.clone().applyQuaternion(rotations[i]).add(new THREE.Vector3(...bodies[i].position));meshDepth=Math.max(meshDepth,-fields[j].sample(p.toArray() as Vec3).phi);}
+      // Reservoir sample unordered nearby pairs across the entire pile, independent of body order.
+      const pairs:[number,number][]=[];let seen=0;
+      for(let i=0;i<bodies.length;i++)for(let j=i+1;j<bodies.length;j++){
+        if(Math.hypot(...bodies[i].position.map((v,k)=>v-bodies[j].position[k]))>diameter)continue;
+        const slot=Math.floor(random()*++seen);
+        if(pairs.length<300)pairs.push([i,j]);else if(slot<300)pairs[slot]=[i,j];
+      }
+      probed=pairs.length;
+      for(const [i,j] of pairs)for(const [a,b] of [[i,j],[j,i]])for(const v of local){
+        const p=v.clone().applyQuaternion(rotations[a]).add(new THREE.Vector3(...bodies[a].position));
+        meshDepth=Math.max(meshDepth,-fields[b].sample(p.toArray() as Vec3).phi);
       }
     }
     const recent=times.slice(-30);
-    const sample={frame,pairCapacity:world.sdfCollisionCapacity,pairs:counters.pairs,contacts:counters.contacts,overflow:counters.overflow,kineticEnergy:energy,groundPenetration:Math.max(0,groundDepth),
+    const sample={frame,pairCapacity:world.sdfCollisionCapacity,pairs:counters!.pairs,contacts:counters!.contacts,overflow,kineticEnergy:energy,groundPenetration:Math.max(0,groundDepth),
       meshPenetration:meshDepth,probedPairs:probed,frameMsMean30:recent.reduce((s,v)=>s+v,0)/recent.length};
     samples.push(sample);console.log(JSON.stringify(sample));
   }

@@ -2,7 +2,16 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
-## 2026-10-18 — Paper-scale pile: 4314 bunnies run without overflow; it settles only with the witness rule
+## 2026-10-18 — Paper-scale pile: 4314-bunny exploratory measurements (capacity validation pending)
+
+**Review correction (2026-10-19):** the historical measurements below are not sufficient to
+establish zero dropped substeps: the old harness read overflow only after the final substep.
+Its recorded frame times exclude the explicit counter readback, despite the original label.
+Mesh penetration scanned the first 300 qualifying directed pairs, biased toward early body IDs;
+the reported depths are observations of that subset, not bounds on the entire pile. These raw
+records are retained unchanged for provenance. Harness version 2 checks every substep, times
+those readbacks, and reservoir-samples nearby pairs across all bodies in both directions.
+Version 2 results must be measured before making corrected capacity or pile-wide quality claims.
 
 Paper Table 1 times a 4314-body Bunnies scene, but the layout is not published.
 `scripts/sdf-scale.ts` builds an analogue:
@@ -11,14 +20,14 @@ Paper Table 1 times a 4314-body Bunnies scene, but the layout is not published.
 - mesh-quality settings, the World spatial broadphase, and 600 frames (10 s).
 
 One run per configuration on the dev machine (M4 Max). Frame times are wall clock, including
-submission and a per-frame counter readback. **They are not target-hardware numbers and not the
+submission but excluding the explicit per-frame counter readback. **They are not target-hardware numbers and not the
 paper's t_coll.**
 
 - **Capacity:**
   - World's default reservation is 8 candidate pairs per body (34,520). It overflowed on frames
     1–2, because the lattice packs more AABB neighbours than that, so those pairs were dropped for
-    those steps. Auto-grow then doubled capacity to 69,040, with no further overflow.
-  - Reserving 64,000 pairs up front (`maxPairs`) gives zero overflow frames.
+    those steps. Auto-grow then doubled capacity to 69,040, with no further overflow observed in the final-substep samples.
+  - Reserving 64,000 pairs up front (`maxPairs`) recorded zero overflow in final-substep samples; earlier substeps were not checked.
   - The settled pile uses about 44.5k candidate pairs and 41–43k contacts.
   - Recommendation for large scenes: reserve `maxPairs` rather than rely on growth.
 - **Cost:** median 46 ms per frame (p95 51 ms, max 74–86 ms), with 4 substeps and 20 AVBD
@@ -29,8 +38,8 @@ paper's t_coll.**
 
   | frames 300–600 | `main` 33d34f6 | with the witness rule (PR #36) |
   |---|---|---|
-  | kinetic energy | 2.2–12.8 J, spike at frame 360 | 0.67–1.7 J |
-  | sampled mesh-mesh penetration | up to 12.8 mm (frame 480) | ≤ 3.7 mm |
+  | kinetic energy | 2.33–12.8 J, spike at frame 360 | 0.67–2.21 J |
+  | biased-subset mesh penetration (not pile-wide bounds) | up to 12.8 mm (frame 480) | ≤ 3.7 mm in that subset |
   | ground penetration | 0 | 0 |
 
   Without the rule, the pile does not settle within 10 s. With it, about 1 J remains. That is
