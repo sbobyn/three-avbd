@@ -11,7 +11,7 @@ fn dropOpposedAmbiguous(normal: vec3f, count: u32) {
   for(var i=0u;i<count;i++) {
     let q=work.points[i];
     if(q.flags.x==0u || dot(q.normal.xyz,normal)>=0.0) { continue; }
-    let a=worldField(bodyA,q.x.xyz); let b=worldField(bodyB,q.x.xyz); work.stats.x+=2u;
+    let a=worldField(bodyA,q.x.xyz); let b=worldField(bodyB,q.x.xyz); work.stats.x+=1u;
     if((a.phi<0.0 && b.phi<0.0 && dot(a.gradient,b.gradient)>0.0) || (a.phi>0.0 && b.phi>0.0)) { work.points[i].flags.x=0u; }
   }
 }
