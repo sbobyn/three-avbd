@@ -1,0 +1,151 @@
+{
+ "paper": "Giles & Andrews 2026, Table 1 Bunnies (4314 bodies); layout not published, lattice drop used",
+ "reference": "sdf-dcd-demo 1dcdf1e7fa07d16fda15826ad8c2e6697075a76e",
+ "bodies": 4314,
+ "frames": 300,
+ "profile": "mesh-quality",
+ "substeps": 4,
+ "iterations": 20,
+ "timing": "wall clock per frame (counter readback each frame included) (4 substeps) after onSubmittedWorkDone, on the machine that ran this; not target hardware, not t_coll",
+ "adapter": {
+  "subgroupMatrixConfigs": []
+ },
+ "setupMs": 112.61670800000002,
+ "maxPairs": "World default (8 per body, grown after overflow)",
+ "initialPairCapacity": 34520,
+ "overflowFrames": [
+  1,
+  2
+ ],
+ "finalPairCapacity": 69040,
+ "growthError": null,
+ "frameMs": {
+  "median": 45.75958299999911,
+  "p95": 51.38654099999985,
+  "max": 79.96629200000098
+ },
+ "samples": [
+  {
+   "frame": 30,
+   "pairCapacity": 69040,
+   "pairs": 40086,
+   "contacts": 10655,
+   "overflow": 0,
+   "kineticEnergy": 3530.984734984505,
+   "groundPenetration": 0,
+   "meshPenetration": null,
+   "probedPairs": 0,
+   "frameMsMean30": 34.251008366666674
+  },
+  {
+   "frame": 60,
+   "pairCapacity": 69040,
+   "pairs": 42777,
+   "contacts": 20876,
+   "overflow": 0,
+   "kineticEnergy": 684.78821347406,
+   "groundPenetration": 0.0020522428912462254,
+   "meshPenetration": 0.0012319177621975541,
+   "probedPairs": 300,
+   "frameMsMean30": 43.34111399999986
+  },
+  {
+   "frame": 90,
+   "pairCapacity": 69040,
+   "pairs": 44140,
+   "contacts": 28581,
+   "overflow": 0,
+   "kineticEnergy": 178.11580393116856,
+   "groundPenetration": 0,
+   "meshPenetration": null,
+   "probedPairs": 0,
+   "frameMsMean30": 45.995187566666694
+  },
+  {
+   "frame": 120,
+   "pairCapacity": 69040,
+   "pairs": 44386,
+   "contacts": 34054,
+   "overflow": 0,
+   "kineticEnergy": 44.75328649004108,
+   "groundPenetration": 0,
+   "meshPenetration": 0,
+   "probedPairs": 300,
+   "frameMsMean30": 46.45543326666654
+  },
+  {
+   "frame": 150,
+   "pairCapacity": 69040,
+   "pairs": 44592,
+   "contacts": 37107,
+   "overflow": 0,
+   "kineticEnergy": 15.475089640876957,
+   "groundPenetration": 0,
+   "meshPenetration": null,
+   "probedPairs": 0,
+   "frameMsMean30": 47.550043
+  },
+  {
+   "frame": 180,
+   "pairCapacity": 69040,
+   "pairs": 44611,
+   "contacts": 38833,
+   "overflow": 0,
+   "kineticEnergy": 11.612052191396462,
+   "groundPenetration": 0,
+   "meshPenetration": 0,
+   "probedPairs": 300,
+   "frameMsMean30": 47.61432626666695
+  },
+  {
+   "frame": 210,
+   "pairCapacity": 69040,
+   "pairs": 44674,
+   "contacts": 39984,
+   "overflow": 0,
+   "kineticEnergy": 3.3421727470151485,
+   "groundPenetration": 0,
+   "meshPenetration": null,
+   "probedPairs": 0,
+   "frameMsMean30": 48.079349966666996
+  },
+  {
+   "frame": 240,
+   "pairCapacity": 69040,
+   "pairs": 44674,
+   "contacts": 40555,
+   "overflow": 0,
+   "kineticEnergy": 3.499322511544274,
+   "groundPenetration": 0,
+   "meshPenetration": 0,
+   "probedPairs": 300,
+   "frameMsMean30": 47.006037433333404
+  },
+  {
+   "frame": 270,
+   "pairCapacity": 69040,
+   "pairs": 44659,
+   "contacts": 41026,
+   "overflow": 0,
+   "kineticEnergy": 2.079041953472674,
+   "groundPenetration": 0,
+   "meshPenetration": null,
+   "probedPairs": 0,
+   "frameMsMean30": 47.251032066666326
+  },
+  {
+   "frame": 300,
+   "pairCapacity": 69040,
+   "pairs": 44658,
+   "contacts": 41679,
+   "overflow": 0,
+   "kineticEnergy": 1.703305810611269,
+   "groundPenetration": 0,
+   "meshPenetration": 0,
+   "probedPairs": 300,
+   "frameMsMean30": 46.47512633333293
+  }
+ ],
+ "errors": [],
+ "code": "main 33d34f6"
+}

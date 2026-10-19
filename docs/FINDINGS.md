@@ -2,6 +2,43 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-10-18 — Paper-scale pile: 4314 bunnies run without overflow; it settles only with the witness rule
+
+Paper Table 1 times a 4314-body Bunnies scene, but the layout is not published.
+`scripts/sdf-scale.ts` builds an analogue:
+- the released voxel bunny and the released ground;
+- a 33×33 lattice, 4 layers high, spaced 1.2 m, with random orientations;
+- mesh-quality settings, the World spatial broadphase, and 600 frames (10 s).
+
+One run per configuration on the dev machine (M4 Max). Frame times are wall clock, including
+submission and a per-frame counter readback. **They are not target-hardware numbers and not the
+paper's t_coll.**
+
+- **Capacity:**
+  - World's default reservation is 8 candidate pairs per body (34,520). It overflowed on frames
+    1–2, because the lattice packs more AABB neighbours than that, so those pairs were dropped for
+    those steps. Auto-grow then doubled capacity to 69,040, with no further overflow.
+  - Reserving 64,000 pairs up front (`maxPairs`) gives zero overflow frames.
+  - The settled pile uses about 44.5k candidate pairs and 41–43k contacts.
+  - Recommendation for large scenes: reserve `maxPairs` rather than rely on growth.
+- **Cost:** median 46 ms per frame (p95 51 ms, max 74–86 ms), with 4 substeps and 20 AVBD
+  iterations. That is 2.8× the 16.7 ms frame budget at 60 Hz on this machine. It is not comparable
+  with the paper's 1.8 ms t_coll on an RTX 4090, which times collision only.
+- **Stability and penetration** (64k reserved; ground penetration is exact over all vertices;
+  mesh-mesh penetration is sampled over 300 nearby pairs every 60 frames):
+
+  | frames 300–600 | `main` 33d34f6 | with the witness rule (PR #36) |
+  |---|---|---|
+  | kinetic energy | 2.2–12.8 J, spike at frame 360 | 0.67–1.7 J |
+  | sampled mesh-mesh penetration | up to 12.8 mm (frame 480) | ≤ 3.7 mm |
+  | ground penetration | 0 | 0 |
+
+  Without the rule, the pile does not settle within 10 s. With it, about 1 J remains. That is
+  about 0.3 mJ per body, comparable to the small pile's 0.01 J / 27-body limit. This is one run each
+  and is indicative, not an ensemble.
+
+Measurements: `measurements/sdf-scale-bunnies-{default,reserved,witness}-2026-10-18.json`.
+
 ## 2026-10-18 — Paper Table 5 SGD row matches SGD without its ‖Δx‖ < τ stop (opt-in added)
 
 The entry below found that the released SGD costs about 0.48× Nelder–Mead per pair, against the
