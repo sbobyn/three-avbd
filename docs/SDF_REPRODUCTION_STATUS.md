@@ -102,15 +102,65 @@ The new diagnostic backend exhaustively evaluates **1,000 fixed, area-stratified
 
 [Dense raw record](measurements/sdf-fig6-dense-plane-2026-10-19.json). Command: `scripts/sdf-fig6.ts OUT.json 100 1000 bunny,cow dense`. Runs are sequential with 10 ms idle per frame; no performance claim is made.
 
-**Interpretation:** this is an independent dense plane-contact analogue, not the paper's exact oracle. The paper describes grid-sampled surface points, but its sample set and contact-reduction policy are unavailable. Our area-stratified points can miss extreme source vertices, and using all nearby samples as constraints changes contact multiplicity. Consequently the dense curve is not a guaranteed accuracy ceiling for the source-vertex metric, and trajectory differences cannot be attributed solely to search accuracy. Zero optimizer-run depth at 16+4 alongside nonzero dense depth is therefore not proof that the optimizer outperforms the paper oracle. Full Figure 7 dense pile/energy reproduction remains outstanding.
+**Interpretation:** this is an independent dense plane-contact analogue, not the paper's exact oracle. The paper describes grid-sampled surface points, but its sample set and contact-reduction policy are unavailable. Our area-stratified points can miss extreme source vertices, and using all nearby samples as constraints changes contact multiplicity. Consequently the dense curve is not a guaranteed accuracy ceiling for the source-vertex metric, and trajectory differences cannot be attributed solely to search accuracy. Zero optimizer-run depth at 16+4 alongside nonzero dense depth is therefore not proof that the optimizer outperforms the paper oracle. See the separate Figure 7 analogue below; exact paper reproduction remains outstanding.
+
+## Table 2: full-pile budget timing analogue
+
+Command: `nice -n 15 node --experimental-transform-types scripts/sdf-table2.ts OUT.json 4314 360`.
+
+All twelve budgets completed sequentially on the M4 Max: **4,314 dynamic bunnies plus one floor**, a reconstructed deterministic lattice, 360 frames, 120 warmup frames, 16 ms simulation frames, four substeps, and 20 AVBD iterations. NM uses tolerance 0.01 and at most 50 optimizer iterations. Every substep checked overflow; periodic full readbacks checked finite state. No overflow or non-finite state was observed. Each frame had 50 ms excluded idle time.
+
+GPU timings below average 24 timestamped frames per budget and sum all four substeps. Collision includes preparation, spatial broadphase, search and contact export. Total sums per-substep elapsed timestamps spanning the collision/adjacency/coloring/solve phases, including inter-pass gaps. Wall time additionally includes dispatch and counter readbacks, timestamp waits on sampled frames, and synchronization. The raw JSON retains per-frame GPU timings, counters, and explicitly named **upperMedian** summaries; it does not retain individual wall samples. Runs are single observations, not confidence intervals.
+
+| Cached + random | GPU collision (ms/frame) | GPU total (ms/frame) | Wall (ms/frame) | Paper t_coll (ms) |
+|---|---:|---:|---:|---:|
+| 4 + 1 | 20.28 | 28.09 | 41.20 | 1.8 |
+| 4 + 2 | 29.32 | 45.50 | 60.31 | 2.4 |
+| 4 + 4 | 42.89 | 63.11 | 80.68 | 4.2 |
+| 6 + 1 | 36.03 | 50.80 | 77.37 | 2.7 |
+| 6 + 2 | 35.01 | 44.35 | 58.83 | 3.0 |
+| 6 + 4 | 45.07 | 55.24 | 67.54 | 4.4 |
+| 8 + 1 | 41.58 | 51.21 | 63.49 | 3.9 |
+| 8 + 2 | 48.79 | 61.61 | 76.73 | 4.2 |
+| 8 + 4 | 59.43 | 74.14 | 88.35 | 5.0 |
+| 16 + 1 | 104.58 | 119.92 | 134.91 | 7.7 |
+| 16 + 2 | 110.61 | 123.71 | 143.18 | 8.1 |
+| 16 + 4 | 130.61 | 145.56 | 159.10 | 8.9 |
+
+These results are substantially slower than the listed paper timings. **No hardware or timing-region equivalence is claimed**, and the paper's exact pile poses are unavailable. This completes the full-size budget sweep for this implementation, not an exact numerical reproduction or a real-time performance claim. Production profiling/optimization remains warranted, especially at larger sample budgets.
+
+Raw record: [full-pile timings](measurements/sdf-table2-full-2026-10-19.json).
+
+## Figure 7: five-rollout dense-pile energy analogue
+
+Command: `nice -n 15 node --experimental-transform-types scripts/sdf-fig7.ts OUT.json 500 5`.
+
+Completed all **30 runs**, sequentially with 10 ms idle per frame: two released 27-mesh piles plus floor, three contact modes, five matched deterministic ±10 µm initial-position jitter seeds, and 500 frames per run. Released masses, principal inertias, friction, four substeps and 20 AVBD iterations are preserved. Uniform/curvature use the released 4+1 search budget. Energy is post-step translational plus rotational kinetic energy in the principal body frame. Every substep checks overflow and every frame checks finite state. No overflow, non-finite state, or below-ground body center occurred; the center check is **not a penetration bound**.
+
+The independent dense backend tests 1,000 area-stratified, fixed body-local surface samples against every other body's SDF. Each active directed sample produces its own constraint, with independent normal and persistent identity/warm start. Both directions of dynamic pairs are tested. There is no optimizer or manifold reduction, so this deliberately changes contact multiplicity. It requires ten storage bindings and is a diagnostic backend, not a public portable collision path.
+
+The table reports energy averaged over frames 401–500, then averaged over five rollouts; ranges show the five individual tail means.
+
+| Scene | Mode | Mean tail energy (J) | Rollout range (J) |
+|---|---|---:|---:|
+| Chairs | uniform | 0.019345 | 0.0066971–0.0396314 |
+| Chairs | curvature | 0.262713 | 0.000547303–0.895405 |
+| Chairs | dense | 1.28031e-06 | 2.01546e-10–6.17444e-06 |
+| Bunny Pile proxy | uniform | 0.180283 | 0.00888553–0.601629 |
+| Bunny Pile proxy | curvature | 0.0322033 | 0.00259785–0.077708 |
+| Bunny Pile proxy | dense | 1.9162e-06 | 9.43586e-08–4.6481e-06 |
+
+The dense analogue settles much more tightly. Curvature improves the bunny average here but worsens the chair average, with substantial rollout variation. This does **not** reproduce the paper's consistent curvature-to-dense result. No solver thresholds or fixtures were changed to fit the curves.
+
+**Exact Figure 7 remains unreproduced:** the released Bunny Pile is not the paper's Bunny Iron Maiden; its spiked-plate layout and motion are not provided by the pinned source. Also, the paper's 1,000-seed baseline is not equivalent to this fixed-surface, all-contact diagnostic. These results support a scoped comparison, not an exact dense-oracle or Figure 7 claim. Raw per-frame energies/contact counts, mean curves, jitter seeds, sample-upload hashes and source hashes are retained in [the measurement record](measurements/sdf-fig7-piles-2026-10-19.json).
 
 ## Other evidence and remaining gaps
 
 - Table 1 bunny analogue: corrected 4,314-body/600-frame measurements in PR #37 check every substep. A 64k reservation avoids overflow in both measured configurations; default capacity drops contacts during startup. Sampled penetration is not a global bound.
 - Table 5: all three optimizer sweeps exist. The opt-in gradient-only SGD stopping rule matches aggregate paper cost more closely; it is an inference about the paper/code discrepancy, not author confirmation.
 - Figure 6: full six-budget sweep and an independently implemented 1000-point dense plane-contact analogue completed above. Exact paper oracle/sample-set equivalence and consistent curvature benefit remain unestablished.
-- Figure 7: full five-rollout dense-oracle energy comparison remains missing.
-- Table 2: the GPU supports the largest 16+4 point budget, but the complete 4,314-body timing sweep remains outstanding.
+- Figure 7: five-rollout released-pile dense-surface comparison completed above. Exact Iron Maiden layout and the 1,000-seed baseline remain unreproduced; consistent curvature benefit is not established.
+- Table 2: the full-size timing analogue is measured above; exact paper layout, hardware and collision-region equivalence remain unavailable.
 - Remaining Table 1 scenes (16k funnel, 8,819-body Colosseum, 583 cows), SAT/GJK/EPA/hierarchical baseline implementations, and matching paper CPU timings have not been reproduced. Published layouts and all baseline implementations are not present in the pinned released fixtures.
 - Target M1/GTX 1080 measurements are excluded at Steven’s request. M4 Max observations are not predictions for those devices.
 

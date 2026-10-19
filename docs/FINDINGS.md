@@ -2,6 +2,14 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-10-19 — Full-pile budget timings and five-rollout dense pile comparison
+
+The Table 2 analogue completed twelve sample budgets on 4,314 dynamic bunnies plus floor, 360 frames each, sequentially with 50 ms idle/frame. M4 Max mean collision timestamps range from 20.28 to 130.61 ms/frame (four substeps), including preparation, spatial broadphase, search and export. These are substantially slower than the paper values; the reconstructed layout and timing scope prevent equivalence claims. No overflow/non-finite state occurred.
+
+The Figure 7 analogue completed 30 runs (released chairs/bunnies × uniform/curvature/dense × five matched jitter seeds), 500 frames each with 10 ms idle/frame. Mean last-100-frame energy in joules: chairs 0.019345 / 0.262713 / 0.000001280; bunnies 0.180283 / 0.032203 / 0.000001916. The fixed-surface dense backend settles tightly but creates more constraints; curvature is not consistently better. The released bunny pile is not Iron Maiden, and fixed surface samples are not the paper's 1,000 optimized seeds. No production solver behavior changed for these measurements.
+
+See `SDF_REPRODUCTION_STATUS.md` and the raw `measurements/sdf-table2-full-2026-10-19.json` / `sdf-fig7-piles-2026-10-19.json`. New GPU regressions cover released-mesh support, directed mesh contacts and multiplier transport. Runtime testing caught and fixed a WGSL reserved identifier; review corrected upper-median/body-count/timestamp-wait labels. Measurements retain the original values.
+
 ## 2026-10-19 — Corrected paper-scale bunny measurements (PR #37 review follow-up)
 
 The version-2 harness checks overflow after **every substep**, times those readbacks, and
