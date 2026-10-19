@@ -2,6 +2,16 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-10-19 — Full-pile profiling: preserve the trajectory before accepting speedups
+
+Split-dispatch profiling of 4,314 bunnies identifies contact search as the dominant cost. Reading individual history members avoids copying the entire contact array; a bounded per-body cache transforms curvature seeds once per substep instead of once per candidate pair. Cache allocation falls back to direct sampling for small scenes, insufficient binding/workgroup limits, or allocations over 128 MiB/device limits. Contact order, independent normals and warm-start semantics remain unchanged.
+
+The retained cache/history changes reproduce every recorded physics metric of the previous 600-frame mesh-quality baseline exactly at all 20 samples: pair/contact counts, energy, overflow, ground penetration and sampled mesh penetration. The sampled mesh maximum remains 2.749 mm; this is a reservoir of 300 nearby pairs, not a global penetration bound. A populated-seed regression compares direct and cached results through pose changes, curvature mode switches, key reset and capacity growth.
+
+A scalar-only voxel distance shortcut was rejected despite a faster diagnostic timing: its 600-frame run reached 7.731 mm sampled penetration and 16.412 J final energy. Local distance agreement did not preserve the long-pile trajectory. Workgroup-size, global workspace, compact repulsion, field specialization and eligibility-mask experiments were also discarded. The diagnostic records distinguish rejected variants and null unavailable total timestamps. Split-pass timings are not normal frame timings.
+
+Raw records: `measurements/sdf-dispatch-profile-2026-10-19.json`, `sdf-performance-cache-settling-2026-10-19.json`, and `sdf-performance-rejected-scalar-2026-10-19.json`. Normal 360-frame endpoint remeasurement gives collision 20.34 / 110.20 ms at 4+1 / 16+4, versus 20.28 / 130.61 ms previously; total GPU means are 28.09 / 124.65 ms versus 28.09 / 145.56 ms. This is about 16% faster high-budget collision with no low-budget improvement, from single sequential runs, not statistical trials. See `measurements/sdf-performance-endpoints-2026-10-19.json`. The full-pile performance gap remains open.
+
 ## 2026-10-19 — Full-pile budget timings and five-rollout dense pile comparison
 
 The Table 2 analogue completed twelve sample budgets on 4,314 dynamic bunnies plus floor, 360 frames each, sequentially with 50 ms idle/frame. M4 Max mean collision timestamps range from 20.28 to 130.61 ms/frame (four substeps), including preparation, spatial broadphase, search and export. These are substantially slower than the paper values; the reconstructed layout and timing scope prevent equivalence claims. No overflow/non-finite state occurred.

@@ -37,9 +37,9 @@ fn meshPlaneContacts(pair: vec4u) -> bool {
   let id=0x40000000u+best;
   var cached=0u;
   if(params.flags.y!=0u && pair.w!=0xffffffffu && pair.w<arrayLength(&previous)) {
-    let old=previous[pair.w];
-    if(all(old.identity.xyz==pair.xyz)) {
-      for(var j=0u;j<old.identity.w;j++) { if(old.points[j].flags.z==id) { cached=1u; } }
+    // Read individual history entries; avoid a per-invocation copy of the entire contact array.
+    if(all(previous[pair.w].identity.xyz==pair.xyz)) {
+      for(var j=0u;j<previous[pair.w].identity.w;j++) { if(previous[pair.w].points[j].flags.z==id) { cached=1u; } }
     }
   }
   let slot=min(work.identity.w,${maxPoints - 1}u);
@@ -73,9 +73,9 @@ fn meshMeshContacts(pair: vec4u) -> bool {
   else { let n=unit(worldField(bodyB,p).gradient); normal=-n; b=p-n*separation; }
   var cached=0u;
   if(params.flags.y!=0u && pair.w!=0xffffffffu && pair.w<arrayLength(&previous)) {
-    let old=previous[pair.w];
-    if(all(old.identity.xyz==pair.xyz)) {
-      for(var j=0u;j<old.identity.w;j++) { if(old.points[j].flags.z==id) { cached=1u; } }
+    // Read individual history entries; avoid a per-invocation copy of the entire contact array.
+    if(all(previous[pair.w].identity.xyz==pair.xyz)) {
+      for(var j=0u;j<previous[pair.w].identity.w;j++) { if(previous[pair.w].points[j].flags.z==id) { cached=1u; } }
     }
   }
   let slot=min(work.identity.w,${maxPoints - 1}u);

@@ -131,6 +131,23 @@ These results are substantially slower than the listed paper timings. **No hardw
 
 Raw record: [full-pile timings](measurements/sdf-table2-full-2026-10-19.json).
 
+### Performance follow-up: history reads and transformed seeds
+
+The retained optimization reads history members directly and caches transformed curvature seeds per body/substep. It preserves independent normals, point identities and warm starts. Optional cache allocation is capped at 128 MiB and device limits; unsupported/small cases retain direct sampling.
+
+Normal, unsplit endpoint measurements (4,314 dynamic bunnies plus floor; 360 frames; four substeps; 50 ms idle/frame):
+
+| Budget (cached + random) | Previous collision mean (ms) | Updated collision mean (ms) | Previous GPU total mean (ms) | Updated GPU total mean (ms) |
+|---|---:|---:|---:|---:|
+| 4 + 1 | 20.28 | 20.34 | 28.09 | 28.09 |
+| 16 + 4 | 130.61 | 110.20 | 145.56 | 124.65 |
+
+High-budget collision time decreased about 16%; low-budget time is effectively unchanged. These are single-run observations, not interleaved statistical trials. Intermediate budgets have not been remeasured. The performance gap remains open. Diagnostic split-pass profiling identifies narrowphase search as the dominant remaining cost; those timestamps include extra pass boundaries and must not be substituted for normal timings.
+
+A separate 600-frame mesh-quality run matches every recorded physics field of the previous baseline exactly at all 20 samples, including energy and sampled penetration (maximum 2.749 mm). Sampling 300 nearby pairs does not establish a global penetration bound. A faster scalar-distance experiment was rejected after reaching 7.731 mm sampled penetration and 16.412 J final energy. The original distance objective is retained.
+
+Records: `measurements/sdf-performance-endpoints-2026-10-19.json`, `sdf-performance-cache-settling-2026-10-19.json`, `sdf-dispatch-profile-2026-10-19.json`, and `sdf-performance-rejected-scalar-2026-10-19.json`. Reproduce normal endpoints with `scripts/sdf-table2.ts OUT 4314 360 4:1` and `16:4` sequentially; use `SDF_DISPATCH_PROFILE=1` only for diagnostic phase splitting. Run `SDF_FRAME_PAUSE_MS=100 node --experimental-transform-types scripts/sdf-scale.ts OUT 4314 600 64000` for the paced settling check.
+
 ## Figure 7: five-rollout dense-pile energy analogue
 
 Command: `nice -n 15 node --experimental-transform-types scripts/sdf-fig7.ts OUT.json 500 5`.

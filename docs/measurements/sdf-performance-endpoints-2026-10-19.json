@@ -1,0 +1,430 @@
+{
+ "sourceBase": "d80c3ac53e322de174335c9191bd4f3c0b0bdda3",
+ "sourceChanges": "Direct history member reads and bounded per-body seed cache; original vector distance objective retained.",
+ "baseline": "sdf-table2-full-2026-10-19.json",
+ "comparisonLimit": "Single sequential run per endpoint, not interleaved trials or a statistical speedup estimate; same 4314-body reconstructed lattice and 360-frame protocol. Not paper-equivalent hardware/layout/timing.",
+ "runs": [
+  {
+   "paper": "Giles & Andrews Table 2",
+   "three": "186",
+   "dynamicBunnies": 4314,
+   "totalBodies": 4315,
+   "frames": 360,
+   "warmupFrames": 120,
+   "frameDt": 0.016,
+   "substeps": 4,
+   "solverIterations": 20,
+   "timestamps": true,
+   "adapter": {
+    "subgroupMatrixConfigs": []
+   },
+   "dispatchProfile": false,
+   "pauseMs": 50,
+   "protocol": "Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+   "rows": [
+    {
+     "cacheSize": 4,
+     "randomSamples": 1,
+     "collisionParams": {
+      "optimizer": 0,
+      "cacheSize": 4,
+      "randomSamples": 1,
+      "warmStart": true,
+      "curvatureSampling": true,
+      "skipConvexSamples": true,
+      "epsilon": 0.100000001,
+      "alpha": 0.00999999978,
+      "replacementThreshold": 0.00999999978,
+      "tolerance": 0.01,
+      "maxIterations": 50,
+      "stepSize": 0.100000001,
+      "margin": 0.0199999996,
+      "allowedPenetration": 0.00999999978
+     },
+     "paperCollisionMs": 1.8,
+     "wallMs": {
+      "mean": 41.080447737499966,
+      "upperMedian": 40.888332999998966,
+      "p95": 43.3449580000015
+     },
+     "gpuCollisionMs": {
+      "mean": 20.343466666666668,
+      "upperMedian": 20.381695999999998,
+      "p95": 21.168128
+     },
+     "gpuTotalMs": {
+      "mean": 28.087637333333337,
+      "upperMedian": 28.049408,
+      "p95": 29.360128000000003
+     },
+     "gpuFrames": [
+      {
+       "frame": 130,
+       "collision": 20.905984,
+       "total": 28.049408
+      },
+      {
+       "frame": 140,
+       "collision": 20.447232,
+       "total": 28.18048
+      },
+      {
+       "frame": 150,
+       "collision": 20.774912,
+       "total": 28.049408
+      },
+      {
+       "frame": 160,
+       "collision": 20.381695999999998,
+       "total": 27.787264
+      },
+      {
+       "frame": 170,
+       "collision": 21.2992,
+       "total": 28.704768
+      },
+      {
+       "frame": 180,
+       "collision": 20.381695999999998,
+       "total": 28.049408
+      },
+      {
+       "frame": 190,
+       "collision": 19.857408,
+       "total": 27.262976
+      },
+      {
+       "frame": 200,
+       "collision": 20.185088,
+       "total": 27.656192
+      },
+      {
+       "frame": 210,
+       "collision": 19.660800000000002,
+       "total": 27.19744
+      },
+      {
+       "frame": 220,
+       "collision": 20.185088,
+       "total": 27.525119999999998
+      },
+      {
+       "frame": 230,
+       "collision": 19.595263999999997,
+       "total": 27.262976000000002
+      },
+      {
+       "frame": 240,
+       "collision": 20.381695999999998,
+       "total": 27.918336
+      },
+      {
+       "frame": 250,
+       "collision": 20.054016,
+       "total": 27.590656
+      },
+      {
+       "frame": 260,
+       "collision": 20.119552,
+       "total": 27.787263999999997
+      },
+      {
+       "frame": 270,
+       "collision": 20.840448,
+       "total": 28.442624000000002
+      },
+      {
+       "frame": 280,
+       "collision": 20.119552,
+       "total": 27.590655999999996
+      },
+      {
+       "frame": 290,
+       "collision": 21.168128,
+       "total": 29.687807999999997
+      },
+      {
+       "frame": 300,
+       "collision": 20.643839999999997,
+       "total": 29.360128000000003
+      },
+      {
+       "frame": 310,
+       "collision": 19.726336,
+       "total": 27.8528
+      },
+      {
+       "frame": 320,
+       "collision": 19.98848,
+       "total": 28.180480000000003
+      },
+      {
+       "frame": 330,
+       "collision": 20.578304000000003,
+       "total": 28.573695999999998
+      },
+      {
+       "frame": 340,
+       "collision": 19.791871999999998,
+       "total": 27.983871999999998
+      },
+      {
+       "frame": 350,
+       "collision": 20.905984,
+       "total": 29.294592
+      },
+      {
+       "frame": 360,
+       "collision": 20.250624,
+       "total": 28.114944
+      }
+     ],
+     "samples": [
+      {
+       "frame": 60,
+       "pairs": 41983,
+       "contacts": 14804
+      },
+      {
+       "frame": 120,
+       "pairs": 43103,
+       "contacts": 25959
+      },
+      {
+       "frame": 180,
+       "pairs": 43154,
+       "contacts": 30622
+      },
+      {
+       "frame": 240,
+       "pairs": 43333,
+       "contacts": 32160
+      },
+      {
+       "frame": 300,
+       "pairs": 43410,
+       "contacts": 33002
+      },
+      {
+       "frame": 360,
+       "pairs": 43437,
+       "contacts": 33117
+      }
+     ],
+     "overflow": 0
+    }
+   ]
+  },
+  {
+   "paper": "Giles & Andrews Table 2",
+   "three": "186",
+   "dynamicBunnies": 4314,
+   "totalBodies": 4315,
+   "frames": 360,
+   "warmupFrames": 120,
+   "frameDt": 0.016,
+   "substeps": 4,
+   "solverIterations": 20,
+   "timestamps": true,
+   "adapter": {
+    "subgroupMatrixConfigs": []
+   },
+   "dispatchProfile": false,
+   "pauseMs": 50,
+   "protocol": "Reconstructed deterministic lattice (paper layout unavailable); reference collision params except NM, tolerance .01 and maxIterations 50; 16ms frames; released AVBD substeps/iterations. GPU collision timestamps sum all substeps on every tenth measured frame; include prepare, spatial broadphase, search and export. Wall timings include per-substep counter readback and timed-frame timestamp waits. Idle excluded. Single run per budget, not hardware-equivalent paper t_coll.",
+   "rows": [
+    {
+     "cacheSize": 16,
+     "randomSamples": 4,
+     "collisionParams": {
+      "optimizer": 0,
+      "cacheSize": 16,
+      "randomSamples": 4,
+      "warmStart": true,
+      "curvatureSampling": true,
+      "skipConvexSamples": true,
+      "epsilon": 0.100000001,
+      "alpha": 0.00999999978,
+      "replacementThreshold": 0.00999999978,
+      "tolerance": 0.01,
+      "maxIterations": 50,
+      "stepSize": 0.100000001,
+      "margin": 0.0199999996,
+      "allowedPenetration": 0.00999999978
+     },
+     "paperCollisionMs": 8.9,
+     "wallMs": {
+      "mean": 137.43353213333316,
+      "upperMedian": 137.39441699999588,
+      "p95": 144.1875
+     },
+     "gpuCollisionMs": {
+      "mean": 110.19605333333332,
+      "upperMedian": 109.969408,
+      "p95": 115.80211200000001
+     },
+     "gpuTotalMs": {
+      "mean": 124.64947200000002,
+      "upperMedian": 124.78054399999999,
+      "p95": 130.547712
+     },
+     "gpuFrames": [
+      {
+       "frame": 130,
+       "collision": 108.06886399999999,
+       "total": 119.734272
+      },
+      {
+       "frame": 140,
+       "collision": 106.43046399999999,
+       "total": 118.161408
+      },
+      {
+       "frame": 150,
+       "collision": 108.265472,
+       "total": 120.324096
+      },
+      {
+       "frame": 160,
+       "collision": 114.22924799999998,
+       "total": 127.205376
+      },
+      {
+       "frame": 170,
+       "collision": 110.55923200000001,
+       "total": 124.12518399999999
+      },
+      {
+       "frame": 180,
+       "collision": 107.34796800000001,
+       "total": 120.061952
+      },
+      {
+       "frame": 190,
+       "collision": 110.75584,
+       "total": 124.911616
+      },
+      {
+       "frame": 200,
+       "collision": 111.017984,
+       "total": 125.435904
+      },
+      {
+       "frame": 210,
+       "collision": 115.80211200000001,
+       "total": 130.547712
+      },
+      {
+       "frame": 220,
+       "collision": 118.751232,
+       "total": 133.758976
+      },
+      {
+       "frame": 230,
+       "collision": 112.852992,
+       "total": 127.13983999999999
+      },
+      {
+       "frame": 240,
+       "collision": 106.299392,
+       "total": 120.717312
+      },
+      {
+       "frame": 250,
+       "collision": 108.46208000000001,
+       "total": 123.011072
+      },
+      {
+       "frame": 260,
+       "collision": 109.969408,
+       "total": 124.91161600000001
+      },
+      {
+       "frame": 270,
+       "collision": 111.345664,
+       "total": 126.418944
+      },
+      {
+       "frame": 280,
+       "collision": 109.707264,
+       "total": 124.78054399999999
+      },
+      {
+       "frame": 290,
+       "collision": 108.1344,
+       "total": 123.27321599999999
+      },
+      {
+       "frame": 300,
+       "collision": 108.986368,
+       "total": 124.125184
+      },
+      {
+       "frame": 310,
+       "collision": 111.80441599999999,
+       "total": 127.79520000000001
+      },
+      {
+       "frame": 320,
+       "collision": 105.38188799999999,
+       "total": 121.176064
+      },
+      {
+       "frame": 330,
+       "collision": 112.39424,
+       "total": 128.45056
+      },
+      {
+       "frame": 340,
+       "collision": 105.84064000000001,
+       "total": 121.700352
+      },
+      {
+       "frame": 350,
+       "collision": 108.724224,
+       "total": 124.51840000000001
+      },
+      {
+       "frame": 360,
+       "collision": 113.57388800000001,
+       "total": 129.302528
+      }
+     ],
+     "samples": [
+      {
+       "frame": 60,
+       "pairs": 41814,
+       "contacts": 23662
+      },
+      {
+       "frame": 120,
+       "pairs": 43128,
+       "contacts": 52168
+      },
+      {
+       "frame": 180,
+       "pairs": 43251,
+       "contacts": 68279
+      },
+      {
+       "frame": 240,
+       "pairs": 43427,
+       "contacts": 74134
+      },
+      {
+       "frame": 300,
+       "pairs": 43468,
+       "contacts": 78312
+      },
+      {
+       "frame": 360,
+       "pairs": 43483,
+       "contacts": 80396
+      }
+     ],
+     "overflow": 0
+    }
+   ]
+  }
+ ]
+}
