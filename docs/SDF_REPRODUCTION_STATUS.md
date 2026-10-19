@@ -63,7 +63,7 @@ The earlier [finite-floor diagnostic](measurements/sdf-fig6-1000-4-1-2026-10-19.
 
 The same isolated-drop protocol at **16 cached + 4 random samples** measured zero source-vertex plane penetration for both bunny and cow, under both uniform and curvature sampling, across all 100 drops and 1,000 frames. All configurations had zero escapes. This is an observed result, not a universal nonpenetration guarantee. The solver rest-gap intrusion remained nonzero (about 1.1–1.3 mm mean), so zero plane penetration does not mean exact target separation.
 
-[Raw 16+4 record](measurements/sdf-fig6-wide-16-4-2026-10-19.json). Command: `scripts/sdf-fig6.ts OUT.json 100 1000 bunny,cow 16:4`. Source: `d9e424d`, Three.js 0.186.1, M4 Max; sequential execution with 10 ms idle per frame. The earlier 4+1 records used Three.js 0.186.0. No timing comparison is claimed, and the dense-oracle simulation remains outstanding.
+[Raw 16+4 record](measurements/sdf-fig6-wide-16-4-2026-10-19.json). Command: `scripts/sdf-fig6.ts OUT.json 100 1000 bunny,cow 16:4`. Source: `d9e424d`, Three.js 0.186.1, M4 Max; sequential execution with 10 ms idle per frame. The earlier 4+1 records used Three.js 0.186.0. No timing comparison is claimed, and the exact paper-oracle reproduction remains outstanding.
 
 At **8 cached + 1 random sample**, all configurations again had zero escapes, but residual transient penetration remained:
 
@@ -74,13 +74,41 @@ At **8 cached + 1 random sample**, all configurations again had zero escapes, bu
 | Cow | Uniform | 0.322 | 772.299 |
 | Cow | Curvature | 0.201 | 133.516 |
 
-[Raw 8+1 record](measurements/sdf-fig6-wide-8-1-2026-10-19.json), same source/environment and protocol as 16+4, with the final command argument changed to `8:1`. The 8+1 uniform-cow peak (772 mm) is worse than the earlier 4+1 result despite a lower mean, so improvement is not monotonic and these transient failures remain important. The 16+4 outcome shows a budget effect in this diagnostic, not a general guarantee or a complete cache-size/sample-count sweep.
+[Raw 8+1 record](measurements/sdf-fig6-wide-8-1-2026-10-19.json), same source/environment and protocol as 16+4, with the final command argument changed to `8:1`. The 8+1 uniform-cow peak (772 mm) is worse than the earlier 4+1 result despite a lower mean, so improvement is not monotonic and these transient failures remain important. The 16+4 outcome shows a budget effect in this diagnostic, not a general guarantee; the completed sweep is reported below.
+
+## Completed Figure 6 budget sweep and dense-plane analogue
+
+All six cache/sample combinations, both sampling modes and both shapes are now measured with 100 orientations and 1,000 frames: **24 configurations**. The rerun 4+1 baseline uses the same Three.js 0.186.1 version as the other records. No configuration escaped the wide floor or overflowed its contact buffers. [Complete raw sweep](measurements/sdf-fig6-budget-sweep-2026-10-19.json).
+
+Peak source-vertex penetration across all orientations and frames, in millimetres:
+
+| Cache:random | Bunny uniform | Bunny curvature | Cow uniform | Cow curvature |
+|---|---:|---:|---:|---:|
+| 4:1 | 78.213 | 64.365 | 384.969 | 334.693 |
+| 4:4 | 12.145 | 20.488 | 82.070 | 129.670 |
+| 8:1 | 5.910 | 5.910 | 772.299 | 133.516 |
+| 8:4 | 0.000 | 0.000 | 2.231 | 5.945 |
+| 16:1 | 0.000 | 0.000 | 4.189 | 4.180 |
+| 16:4 | 0.000 | 0.000 | 0.000 | 0.000 |
+
+The high-budget configurations sharply reduce observed penetration, but results are not monotonic and curvature sampling does not consistently improve them. This reproduces the Figure 6 **parameter sweep protocol**, not the paper's numerical curves. It is not the separate Table 2 full-pile timing sweep.
+
+The new diagnostic backend exhaustively evaluates **1,000 fixed, area-stratified mesh-surface points per body** against an analytic plane every substep. Every point inside the margin emits its own AVBD contact; persistent point-to-contact mappings transport warm starts. It uses the same initial orientations, mass/inertia, friction, gravity, substeps, iterations and depth probe as the optimizer runs. It does not use Algorithm 1, its seed selection, or supplemental mesh contacts. The generated point arrays and their hashes are recorded, together with SHA-256 hashes of the actual Float32 upload bytes (including vec4 padding).
+
+| Dense reference | Mean depth (mm) | Peak depth (mm) | Peak total active contacts |
+|---|---:|---:|---:|
+| Bunny | 1.719 | 21.785 | 2539 |
+| Cow | 4.546 | 32.812 | 2972 |
+
+[Dense raw record](measurements/sdf-fig6-dense-plane-2026-10-19.json). Command: `scripts/sdf-fig6.ts OUT.json 100 1000 bunny,cow dense`. Runs are sequential with 10 ms idle per frame; no performance claim is made.
+
+**Interpretation:** this is an independent dense plane-contact analogue, not the paper's exact oracle. The paper describes grid-sampled surface points, but its sample set and contact-reduction policy are unavailable. Our area-stratified points can miss extreme source vertices, and using all nearby samples as constraints changes contact multiplicity. Consequently the dense curve is not a guaranteed accuracy ceiling for the source-vertex metric, and trajectory differences cannot be attributed solely to search accuracy. Zero optimizer-run depth at 16+4 alongside nonzero dense depth is therefore not proof that the optimizer outperforms the paper oracle. Full Figure 7 dense pile/energy reproduction remains outstanding.
 
 ## Other evidence and remaining gaps
 
 - Table 1 bunny analogue: corrected 4,314-body/600-frame measurements in PR #37 check every substep. A 64k reservation avoids overflow in both measured configurations; default capacity drops contacts during startup. Sampled penetration is not a global bound.
 - Table 5: all three optimizer sweeps exist. The opt-in gradient-only SGD stopping rule matches aggregate paper cost more closely; it is an inference about the paper/code discrepancy, not author confirmation.
-- Figure 6: cache-size benefit measured. Curvature benefit has not been convincingly reproduced; the 1000-point dense-oracle simulation is still missing.
+- Figure 6: full six-budget sweep and an independently implemented 1000-point dense plane-contact analogue completed above. Exact paper oracle/sample-set equivalence and consistent curvature benefit remain unestablished.
 - Figure 7: full five-rollout dense-oracle energy comparison remains missing.
 - Table 2: the GPU supports the largest 16+4 point budget, but the complete 4,314-body timing sweep remains outstanding.
 - Remaining Table 1 scenes (16k funnel, 8,819-body Colosseum, 583 cows), SAT/GJK/EPA/hierarchical baseline implementations, and matching paper CPU timings have not been reproduced. Published layouts and all baseline implementations are not present in the pinned released fixtures.
