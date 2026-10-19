@@ -2,6 +2,46 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-10-18 — SDF interlocks: the pair's vertex witness resolves opposed ambiguous contacts
+
+This follows the plan in the interlock entry below: resolve the conflict per pair rather than per
+sample. When a pair has an exact vertex witness (the floor-box support or the mesh-mesh deepest
+vertex, both under `meshVertexContacts`), the narrowphase deactivates that pair's optimizer
+contacts that meet both of these conditions:
+- the contact's normal opposes the witness normal;
+- the contact's own normal is ambiguous: inside both fields with aligned gradients (bunny point
+  179), or outside both, where the gap normal can flip (chair point 719).
+
+Clearly opposed contacts are kept, and pairs without a witness are unchanged. This touches only
+the `meshVertexContacts` path, so released settings are not affected.
+
+**Ensemble:** chairs and bunnies, jitter seeds 0–10, 360 frames, mesh-quality, probes every 5
+frames. Baseline is `main` 33d34f6, which reproduces the earlier record exactly. The decision rule
+was fixed before the run: failures must not increase in either scene, and both probes ≥5 mm and
+median peak must be no worse in each scene.
+
+| | failures | probes ≥5 mm | median peak | max peak |
+|---|---|---|---|---|
+| Chairs, baseline → witness rule | 0 → 0 | 37 → 20 | 12.0 → 9.1 mm | 15.9 → 12.9 mm |
+| Bunnies, baseline → witness rule | 1 → 1 | 14 → 1 | 0.8 → 0.2 mm | 15.4 → 6.9 mm |
+
+**Accepted.**
+- Chair seed 3, which regressed under the earlier per-sample rule (0.0377 J), does not regress
+  here: its peak stays at 12.5 mm and its final energy at 0.0000 J.
+- Bunny seed 3 still fails the energy limit, but for a different reason:
+  - Its peak drops from 9.1 to 0.2 mm, and its final energy from 0.058 to 0.0169 J.
+  - The baseline's interlock pump (1.06 J at frame 300) is gone.
+  - At frame 360, bunny 21 is still toppling and rolling across the open floor. It descends from
+    0.42 to 0.35 m and is not penetrating anything.
+  - Extended to 720 frames, it rests by frame 390 (about 1e-4 J). So this is a late settle just
+    past the window, not an interlock.
+
+A new GPU test sweeps 48 deep, tilted box-box overlaps. It asserts that no active optimizer
+contact both opposes the witness and has an ambiguous normal, that the drop fires, and that
+nothing is dropped without the option or without a witness. Disabling the drop makes it fail.
+
+Measurements: `measurements/sdf-interlock-witness-2026-10-18.json`.
+
 ## 2026-10-18 — Paper Table 5 SGD row matches SGD without its ‖Δx‖ < τ stop (opt-in added)
 
 The entry below found that the released SGD costs about 0.48× Nelder–Mead per pair, against the

@@ -3,6 +3,18 @@ import { SDF_MAX_POINTS } from './sdf-layout.ts';
  * witness between two dynamic meshes (meshMeshContacts). Other pairs use Algorithm 1 only. */
 /** SDF_SUPPORTS_WGSL for a pass whose pair results hold `maxPoints` points. */
 export const sdfSupportsSource = (maxPoints: number = SDF_MAX_POINTS) => /* wgsl */ `
+/** Per-pair interlock resolution: an exact witness fixes the pair's contact direction. Optimizer
+ * points that push the opposite way are dropped only where their own normal is ambiguous: inside
+ * both fields with aligned gradients (phiA+phiB has no resolving direction), or outside both (the
+ * unsigned gap normal can flip). Clear opposed contacts, as in a genuine interlock, are kept. */
+fn dropOpposedAmbiguous(normal: vec3f, count: u32) {
+  for(var i=0u;i<count;i++) {
+    let q=work.points[i];
+    if(q.flags.x==0u || dot(q.normal.xyz,normal)>=0.0) { continue; }
+    let a=worldField(bodyA,q.x.xyz); let b=worldField(bodyB,q.x.xyz); work.stats.x+=2u;
+    if((a.phi<0.0 && b.phi<0.0 && dot(a.gradient,b.gradient)>0.0) || (a.phi>0.0 && b.phi>0.0)) { work.points[i].flags.x=0u; }
+  }
+}
 fn meshPlaneContacts(pair: vec4u) -> bool {
   if(params.distances.w==0.0) { return false; }
   let fixedA=bodyA.velocity.w!=0.0 && atlas[bodyHeader(bodyA)].x==0u;
@@ -42,7 +54,7 @@ fn meshPlaneContacts(pair: vec4u) -> bool {
       for(var j=0u;j<old.identity.w;j++) { if(old.points[j].flags.z==id) { cached=1u; } }
     }
   }
-  let slot=min(work.identity.w,${maxPoints - 1}u);
+  let slot=min(work.identity.w,${maxPoints - 1}u); dropOpposedAmbiguous(normal,slot);
   work.points[slot]=Point(vec4f(p,min(0.0,separation)),vec4f(normal,separation),
     vec4f(rot(bodyA.anchorRotation,invrot(bodyA.rotation,a-bodyA.position.xyz)),0),
     vec4f(rot(bodyB.anchorRotation,invrot(bodyB.rotation,b-bodyB.position.xyz)),0),vec4u(1,cached,id,0),vec4f(1,0,0,1),vec4f(0,1,0,0));
@@ -78,7 +90,7 @@ fn meshMeshContacts(pair: vec4u) -> bool {
       for(var j=0u;j<old.identity.w;j++) { if(old.points[j].flags.z==id) { cached=1u; } }
     }
   }
-  let slot=min(work.identity.w,${maxPoints - 1}u);
+  let slot=min(work.identity.w,${maxPoints - 1}u); dropOpposedAmbiguous(normal,slot);
   work.points[slot]=Point(vec4f(p,min(0.0,separation)),vec4f(normal,separation),
     vec4f(rot(bodyA.anchorRotation,invrot(bodyA.rotation,a-bodyA.position.xyz)),0),
     vec4f(rot(bodyB.anchorRotation,invrot(bodyB.rotation,b-bodyB.position.xyz)),0),vec4u(1,cached,id,0),vec4f(1,0,0,1),vec4f(0,1,0,0));
