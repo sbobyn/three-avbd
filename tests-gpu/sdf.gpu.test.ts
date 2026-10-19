@@ -347,3 +347,19 @@ gpuTest('GPU SDF opt-in gradient-descent stop never stops sooner and extends rel
   }
   assert.ok(extended>0,'the opt-in runs past the released stop on some key');
 });
+
+
+gpuTest('hardmax ablation stays finite for equal-field ties with all optimizers', async device => {
+  const field=new AnalyticField({kind:'sphere',radius:1});
+  const bodies=[new SdfBody(field,[-.5,0,0]),new SdfBody(field,[.5,0,0])];
+  const pass=await SdfNarrowphasePass.create(device,[field],{maxBodies:2,maxPairs:1});
+  try{
+    for(const optimizer of [0,1,2] as const)for(let step=0;step<8;step++){
+      pass.step(bodies,[{a:0,b:1,key:42,...(step?{previous:0}:{})}],0,{...collisionParams(),optimizer,epsilon:0});
+      const [r]=await pass.readResults();
+      assert.ok(r.points.length>0);
+      for(const p of r.points)assert.ok([...p.x,...p.normal,p.separation].every(Number.isFinite));
+      assert.ok(r.points.some(p=>p.active),'overlapping spheres retain an active contact');
+    }
+  }finally{pass.destroy();}
+});

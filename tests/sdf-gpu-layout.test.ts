@@ -39,12 +39,13 @@ test('SDF GPU host packing rejects unsafe atlas sizes, unsupported fields and st
 test('SDF GPU uniforms enforce bounded workloads and preserve dimensional settings', () => {
   const params=collisionParams(), words=packSdfParams(3,7,1/60,params), f=new Float32Array(words.buffer);
   assert.equal(words.byteLength,80); assert.deepEqual(Array.from(words.slice(0,4)),[3,7,4,1]);
+  assert.equal(new Float32Array(packSdfParams(1,0,.01,{...params,epsilon:0}).buffer)[5],0);
   assert.equal(f[5],params.epsilon); assert.equal(f[8],params.margin);
   assert.equal(words[16],0); assert.equal(f[17],0);
   const sgd=packSdfParams(1,0,.01,{...params,optimizer:2,stepSize:.25}); assert.equal(sgd[16],2); assert.equal(new Float32Array(sgd.buffer)[17],.25); assert.equal(sgd[18],0);
   assert.equal(packSdfParams(1,0,.01,{...params,optimizer:2,sgdGradientStopOnly:true})[18],1);
   assert.equal(packSdfParams(1,0,.01,{...params,sgdGradientStopOnly:true})[18],0,'the SGD stop flag is only uploaded for SGD');
-  for(const patch of [{cacheSize:5},{randomSamples:2},{maxIterations:513},{epsilon:0},{tolerance:NaN}]) assert.throws(()=>packSdfParams(1,0,.01,{...params,...patch}));
+  for(const patch of [{cacheSize:5},{randomSamples:2},{maxIterations:513},{epsilon:-1},{epsilon:Infinity},{epsilon:NaN},{epsilon:1e-50},{tolerance:NaN}]) assert.throws(()=>packSdfParams(1,0,.01,{...params,...patch}));
   assert.throws(()=>packSdfParams(1,0,.01,{...params,optimizer:3 as unknown as 0}),/Unknown SDF optimizer/);
   for(const stepSize of [0,NaN,Infinity,1e-50]) {
     assert.throws(()=>packSdfParams(1,0,.01,{...params,optimizer:2,stepSize}),/stepSize/);

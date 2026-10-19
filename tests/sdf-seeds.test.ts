@@ -78,5 +78,6 @@ test('world-unit parameters preserve scaled objective and contact geometry', asy
     const value = objective(m.bodyA, m.bodyB, [{ x: [0,0,0] }], p.epsilon, p.alpha, counters())([.3 * scale,.2 * scale,.1 * scale]);
     near(value / scale, original);
   }
+  assert.equal(scaleCollisionParams(2,{...collisionParams(),epsilon:0}).epsilon,0);
   for (const bad of [0, -1, Infinity, NaN, 1e-40, 1e40]) assert.throws(() => scaleCollisionParams(bad));
 });

@@ -46,7 +46,8 @@ fn objective(p: vec3f) -> f32 {
 fn objectiveGradient(p: vec3f) -> vec4f {
   work.stats.x++; let a=worldField(bodyA,p); let b=worldField(bodyB,p);
   let root=sqrt((a.phi-b.phi)*(a.phi-b.phi)+params.values.y); var value=0.5*(a.phi+b.phi+root);
-  let t=select(0.0,(a.phi-b.phi)/root,root>0.0);
+  // Hardmax (epsilon=0) uses the midpoint subgradient at an exact tie.
+  var t=0.0; if(root>0.0) { t=(a.phi-b.phi)/root; }
   var gradient=a.gradient*(0.5*(1.0+t))+b.gradient*(0.5*(1.0-t));
   for(var i=0u;i<work.identity.w;i++) {
     let dx=p-work.points[i].x.xyz; let len=length(dx);

@@ -102,3 +102,14 @@ test('released warp scenes load every captured Table 5 strength',async()=>{
   }
   await assert.rejects(loadReleasedScene(2,read,'0.15'),/No captured warp strength/);
 });
+
+test('released measurements reject overflow in an early substep before counters reset',async()=>{
+  const {measuredFrame}=await import('../src/sdf-released/metrics.ts');
+  type Scene=Parameters<typeof measuredFrame>[0];
+  type World=Parameters<typeof measuredFrame>[1];
+  let steps=0;
+  const scene={capture:{solver:{dt:4}}} as Scene;
+  const world={dt:1,step(){steps++;},async readSdfResults(){return [];},solver:{async readCounters(){return {overflow:steps===1?1:0};}}} as unknown as World;
+  await assert.rejects(measuredFrame(scene,world,[],1),/Collision overflow 1 at substep 0/);
+  assert.equal(steps,1,'the invalid measurement stops before a later substep clears the evidence');
+});

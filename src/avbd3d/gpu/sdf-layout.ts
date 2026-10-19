@@ -104,7 +104,7 @@ export function packSdfParams(pairCount: number, step: number, dt: number, p: Co
   // Only gradient descent reads stepSize; other optimizers pack 0 so no unchecked float reaches the GPU.
   if (p.optimizer === 2 && !(Math.fround(p.stepSize) > 0 && Number.isFinite(Math.fround(p.stepSize)))) throw new Error('SDF gradient descent needs a finite positive stepSize');
   if (!Number.isInteger(p.cacheSize) || p.cacheSize < 0 || p.cacheSize > maxPoints - 1 || !Number.isInteger(p.randomSamples) || p.randomSamples < 0 || p.cacheSize + p.randomSamples > maxPoints || !Number.isInteger(p.maxIterations) || p.maxIterations < 1 || p.maxIterations > 512) throw new Error(`This GPU SDF pass supports at most ${maxPoints - 1} cached/${maxPoints} total samples and 1–512 iterations`);
-  if (![p.epsilon, p.tolerance].every(v => Math.fround(v) > 0 && Number.isFinite(Math.fround(v))) || ![p.alpha, p.margin, p.replacementThreshold].every(v => v >= 0 && Number.isFinite(Math.fround(v)))) throw new Error('Invalid SDF collision distances');
+  if (!(p.epsilon === 0 || Math.fround(p.epsilon) > 0) || ![p.tolerance].every(v => Math.fround(v) > 0 && Number.isFinite(Math.fround(v))) || ![p.epsilon, p.alpha, p.margin, p.replacementThreshold].every(v => v >= 0 && Number.isFinite(Math.fround(v)))) throw new Error('Invalid SDF collision distances');
   const data = new Uint32Array(20), f = new Float32Array(data.buffer);
   data.set([pairCount, step, p.cacheSize, p.randomSamples]);
   f.set([dt, p.epsilon, p.alpha, p.tolerance], 4);

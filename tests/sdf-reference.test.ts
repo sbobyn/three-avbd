@@ -282,3 +282,14 @@ test('signed static-box projection stays bounded where the moving gradient vanis
   }
   assert.ok(mixed>0,'exercise mixed samples');
 });
+
+
+test('hardmax ablation has a finite midpoint subgradient at equal field values', () => {
+  const a=new SdfBody(new AnalyticField({kind:'sphere',radius:1}),[-.5,0,0]);
+  const b=new SdfBody(new AnalyticField({kind:'sphere',radius:1}),[.5,0,0]);
+  const g=objectiveGradient(a,b,[],0,0,counters());
+  assert.equal(g([0,0,0]).value,-.5);
+  assert.deepEqual(g([0,0,0]).gradient,[0,0,0]);
+  assert.deepEqual(g([.1,0,0]).gradient,[1,0,0]);
+  assert.deepEqual(g([-.1,0,0]).gradient,[-1,0,0]);
+});

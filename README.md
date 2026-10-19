@@ -46,7 +46,8 @@ poses, mass and full inertia tensors.
 It starts paused and compares live metrics with the captured CPU reference.
 Mesh quality (used for every non-convex scene) activates contacts earlier with the same resting gap; Released
 settings keeps the captured collision parameters. Both use corrected sticking anchors.
-See [measured comparison and remaining gaps](docs/SDF_RELEASED_COMPARISON.md).
+See [measured comparison and remaining gaps](docs/SDF_RELEASED_COMPARISON.md) and
+[paper reproduction status](docs/SDF_REPRODUCTION_STATUS.md).
 
 ## Use it in your project
 

@@ -36,8 +36,8 @@ export function scaleCollisionParams(lengthScale: number, params: CollisionParam
   if (!Number.isFinite(lengthScale) || lengthScale <= 0) throw new Error('Collision length scale must be positive and finite');
   const scaled = { ...params, epsilon: f(params.epsilon * lengthScale * lengthScale) };
   for (const key of ['replacementThreshold', 'tolerance', 'stepSize', 'margin', 'allowedPenetration'] as const) scaled[key] = f(params[key] * lengthScale);
-  if (![scaled.epsilon, scaled.tolerance, scaled.stepSize].every(v => Number.isFinite(v) && v > 0)
-    || ![scaled.margin, scaled.allowedPenetration, scaled.replacementThreshold].every(v => Number.isFinite(v) && v >= 0)) throw new Error('Collision scale or parameters exceed supported float32 range');
+  if (!(params.epsilon === 0 || scaled.epsilon > 0) || ![scaled.tolerance, scaled.stepSize].every(v => Number.isFinite(v) && v > 0)
+    || ![scaled.epsilon, scaled.margin, scaled.allowedPenetration, scaled.replacementThreshold].every(v => Number.isFinite(v) && v >= 0)) throw new Error('Collision scale or parameters exceed supported float32 range');
   return scaled;
 }
 export interface SdfContact {

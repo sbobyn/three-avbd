@@ -1,0 +1,3067 @@
+{
+  "reference": "sdf-dcd-demo 1dcdf1e7fa07d16fda15826ad8c2e6697075a76e",
+  "frames": 360,
+  "conventions": "GPU AVBD, released parameters. Iterations/queries are frame sums divided by substeps; contacts/pairs are final-substep snapshots, each averaged over frames. No-cache disables contact sample reuse and corresponding SDF solver multiplier transport, retains 4+1 fresh searches. No-softmax uses epsilon=0 with midpoint subgradient at ties. Not the paper CPU solver or timing reproduction.",
+  "rows": [
+    {
+      "scene": 0,
+      "optimizer": 0,
+      "variant": "default",
+      "substeps": 4,
+      "paper": {
+        "contacts": 116,
+        "iterations": 1000,
+        "queries": 2500
+      },
+      "mean": {
+        "queries": 1377.8493055555555,
+        "iterations": 209.44305555555556,
+        "contacts": 196,
+        "pairs": 49
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 5527,
+            "iterations": 857
+          },
+          "kineticEnergy": 0.00205003381325388,
+          "minCenterY": 0.5109707117080688,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 5543,
+            "iterations": 860
+          },
+          "kineticEnergy": 0.00015193331623781478,
+          "minCenterY": 0.5101726055145264,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 5421,
+            "iterations": 800
+          },
+          "kineticEnergy": 1.1297925059939884e-05,
+          "minCenterY": 0.510015070438385,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 5516,
+            "iterations": 842
+          },
+          "kineticEnergy": 2.5330260699803815e-06,
+          "minCenterY": 0.5099929571151733,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 5455,
+            "iterations": 806
+          },
+          "kineticEnergy": 3.917553922183524e-06,
+          "minCenterY": 0.5099726915359497,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 5436,
+            "iterations": 795
+          },
+          "kineticEnergy": 7.697726309838793e-06,
+          "minCenterY": 0.5099429488182068,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 5502,
+            "iterations": 829
+          },
+          "kineticEnergy": 3.606385945054489e-06,
+          "minCenterY": 0.5099342465400696,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 5474,
+            "iterations": 812
+          },
+          "kineticEnergy": 4.715810287125812e-06,
+          "minCenterY": 0.5099350810050964,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 5432,
+            "iterations": 789
+          },
+          "kineticEnergy": 4.001774712468587e-06,
+          "minCenterY": 0.5099332332611084,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 5462,
+            "iterations": 805
+          },
+          "kineticEnergy": 7.933971866442117e-06,
+          "minCenterY": 0.5099325776100159,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 5495,
+            "iterations": 826
+          },
+          "kineticEnergy": 1.000822871882811e-05,
+          "minCenterY": 0.5099292993545532,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 5570,
+            "iterations": 869
+          },
+          "kineticEnergy": 6.0206499166466485e-06,
+          "minCenterY": 0.5099274516105652,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 0,
+      "optimizer": 0,
+      "variant": "no-softmax",
+      "substeps": 4,
+      "paper": {
+        "contacts": 116,
+        "iterations": 2840,
+        "queries": 7100
+      },
+      "mean": {
+        "queries": 2727.735416666667,
+        "iterations": 896.4409722222222,
+        "contacts": 196,
+        "pairs": 49
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 11046,
+            "iterations": 3690
+          },
+          "kineticEnergy": 0.0020629360198008402,
+          "minCenterY": 0.5109388828277588,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 11097,
+            "iterations": 3692
+          },
+          "kineticEnergy": 0.00015982221032783805,
+          "minCenterY": 0.5101323127746582,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 11012,
+            "iterations": 3635
+          },
+          "kineticEnergy": 1.2440933564613572e-05,
+          "minCenterY": 0.5099994540214539,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 10869,
+            "iterations": 3549
+          },
+          "kineticEnergy": 3.787678905911789e-06,
+          "minCenterY": 0.509987473487854,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 10762,
+            "iterations": 3491
+          },
+          "kineticEnergy": 1.6012019911733207e-06,
+          "minCenterY": 0.5099923610687256,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 10941,
+            "iterations": 3607
+          },
+          "kineticEnergy": 1.8033014996034832e-06,
+          "minCenterY": 0.509995698928833,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 10954,
+            "iterations": 3602
+          },
+          "kineticEnergy": 1.4131774904728432e-06,
+          "minCenterY": 0.5099998712539673,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 11010,
+            "iterations": 3629
+          },
+          "kineticEnergy": 1.9497880119706593e-06,
+          "minCenterY": 0.5099995136260986,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 10878,
+            "iterations": 3575
+          },
+          "kineticEnergy": 3.962854366790308e-06,
+          "minCenterY": 0.5099994540214539,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 10794,
+            "iterations": 3517
+          },
+          "kineticEnergy": 1.9474760602174223e-06,
+          "minCenterY": 0.509999692440033,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 10795,
+            "iterations": 3514
+          },
+          "kineticEnergy": 5.637583854808892e-07,
+          "minCenterY": 0.5100000500679016,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 10857,
+            "iterations": 3546
+          },
+          "kineticEnergy": 8.229081100332411e-07,
+          "minCenterY": 0.5100001692771912,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 0,
+      "optimizer": 0,
+      "variant": "no-cache",
+      "substeps": 4,
+      "paper": {
+        "contacts": 116,
+        "iterations": 3800,
+        "queries": 7700
+      },
+      "mean": {
+        "queries": 4251.690972222223,
+        "iterations": 1662.2368055555555,
+        "contacts": 241.90833333333333,
+        "pairs": 49
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 49,
+            "contacts": 241,
+            "queries": 18146,
+            "iterations": 7355
+          },
+          "kineticEnergy": 0.004954362820321145,
+          "minCenterY": 0.5102729797363281,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 49,
+            "contacts": 244,
+            "queries": 17553,
+            "iterations": 7049
+          },
+          "kineticEnergy": 0.003044367107436766,
+          "minCenterY": 0.5097330212593079,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 49,
+            "contacts": 243,
+            "queries": 16931,
+            "iterations": 6611
+          },
+          "kineticEnergy": 0.003681514089474453,
+          "minCenterY": 0.5099060535430908,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 49,
+            "contacts": 240,
+            "queries": 16678,
+            "iterations": 6454
+          },
+          "kineticEnergy": 0.002444537916627901,
+          "minCenterY": 0.5097754597663879,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 49,
+            "contacts": 244,
+            "queries": 16856,
+            "iterations": 6551
+          },
+          "kineticEnergy": 0.002368728440439523,
+          "minCenterY": 0.5098409652709961,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 49,
+            "contacts": 243,
+            "queries": 16873,
+            "iterations": 6530
+          },
+          "kineticEnergy": 0.0023920506984300097,
+          "minCenterY": 0.5098860859870911,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 49,
+            "contacts": 243,
+            "queries": 16813,
+            "iterations": 6522
+          },
+          "kineticEnergy": 0.0019590681229853506,
+          "minCenterY": 0.50992351770401,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 49,
+            "contacts": 242,
+            "queries": 16484,
+            "iterations": 6335
+          },
+          "kineticEnergy": 0.002000829313738997,
+          "minCenterY": 0.5098214745521545,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 49,
+            "contacts": 241,
+            "queries": 16371,
+            "iterations": 6267
+          },
+          "kineticEnergy": 0.0019611820109169055,
+          "minCenterY": 0.5098439455032349,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 49,
+            "contacts": 239,
+            "queries": 16667,
+            "iterations": 6451
+          },
+          "kineticEnergy": 0.002133497898370147,
+          "minCenterY": 0.5098733901977539,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 49,
+            "contacts": 242,
+            "queries": 16451,
+            "iterations": 6305
+          },
+          "kineticEnergy": 0.002951649865172957,
+          "minCenterY": 0.509860098361969,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 49,
+            "contacts": 243,
+            "queries": 16502,
+            "iterations": 6345
+          },
+          "kineticEnergy": 0.002583481635017885,
+          "minCenterY": 0.5098320841789246,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 0,
+      "optimizer": 1,
+      "variant": "default",
+      "substeps": 4,
+      "paper": {
+        "contacts": 116,
+        "iterations": 550,
+        "queries": 550
+      },
+      "mean": {
+        "queries": 905.8506944444445,
+        "iterations": 1054.7965277777778,
+        "contacts": 195.99444444444444,
+        "pairs": 49
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 3577,
+            "iterations": 3995
+          },
+          "kineticEnergy": 0.0019716277586801366,
+          "minCenterY": 0.5108509063720703,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 3629,
+            "iterations": 4144
+          },
+          "kineticEnergy": 0.00016851770010327375,
+          "minCenterY": 0.5101088881492615,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 3480,
+            "iterations": 3895
+          },
+          "kineticEnergy": 1.1152278660909248e-05,
+          "minCenterY": 0.5099848508834839,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 3464,
+            "iterations": 3894
+          },
+          "kineticEnergy": 5.93040852703909e-06,
+          "minCenterY": 0.5099799036979675,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 3554,
+            "iterations": 4119
+          },
+          "kineticEnergy": 1.0955248184135906e-05,
+          "minCenterY": 0.5099729299545288,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 3587,
+            "iterations": 4208
+          },
+          "kineticEnergy": 6.267790766039819e-07,
+          "minCenterY": 0.5099839568138123,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 49,
+            "contacts": 197,
+            "queries": 3823,
+            "iterations": 4530
+          },
+          "kineticEnergy": 3.777085220906692e-05,
+          "minCenterY": 0.509986400604248,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 3592,
+            "iterations": 4276
+          },
+          "kineticEnergy": 4.3883472191206606e-07,
+          "minCenterY": 0.5099883079528809,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 3612,
+            "iterations": 4315
+          },
+          "kineticEnergy": 1.4418499005730058e-08,
+          "minCenterY": 0.509986162185669,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 3595,
+            "iterations": 4236
+          },
+          "kineticEnergy": 7.729779557328673e-09,
+          "minCenterY": 0.5099871158599854,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 3617,
+            "iterations": 4273
+          },
+          "kineticEnergy": 2.49968741887087e-08,
+          "minCenterY": 0.5099871754646301,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 3578,
+            "iterations": 4222
+          },
+          "kineticEnergy": 1.776816064507473e-08,
+          "minCenterY": 0.5099872350692749,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 0,
+      "optimizer": 1,
+      "variant": "no-softmax",
+      "substeps": 4,
+      "paper": {
+        "contacts": 116,
+        "iterations": 8100,
+        "queries": 8100
+      },
+      "mean": {
+        "queries": 2111.7243055555555,
+        "iterations": 2650.5743055555554,
+        "contacts": 195.975,
+        "pairs": 49
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 49,
+            "contacts": 195,
+            "queries": 11428,
+            "iterations": 14002
+          },
+          "kineticEnergy": 0.0023683807431729657,
+          "minCenterY": 0.5108224749565125,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 8425,
+            "iterations": 10681
+          },
+          "kineticEnergy": 0.000161449665056572,
+          "minCenterY": 0.5100646018981934,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 8026,
+            "iterations": 10160
+          },
+          "kineticEnergy": 2.395205713329022e-05,
+          "minCenterY": 0.5098994374275208,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 8014,
+            "iterations": 10123
+          },
+          "kineticEnergy": 2.110096597650753e-06,
+          "minCenterY": 0.5099687576293945,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 7990,
+            "iterations": 10091
+          },
+          "kineticEnergy": 1.9520783420132547e-06,
+          "minCenterY": 0.5099351406097412,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 7960,
+            "iterations": 10012
+          },
+          "kineticEnergy": 2.1557539570998325e-07,
+          "minCenterY": 0.5099811553955078,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 8007,
+            "iterations": 10059
+          },
+          "kineticEnergy": 4.9462984959209325e-08,
+          "minCenterY": 0.5099958777427673,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 8039,
+            "iterations": 10095
+          },
+          "kineticEnergy": 2.9560267358670348e-08,
+          "minCenterY": 0.5099987387657166,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 8038,
+            "iterations": 10084
+          },
+          "kineticEnergy": 4.581108459786826e-08,
+          "minCenterY": 0.509999692440033,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 8115,
+            "iterations": 10176
+          },
+          "kineticEnergy": 6.591209781423043e-08,
+          "minCenterY": 0.5099992752075195,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 8045,
+            "iterations": 10095
+          },
+          "kineticEnergy": 2.1378609568359286e-08,
+          "minCenterY": 0.5099995136260986,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 49,
+            "contacts": 196,
+            "queries": 8028,
+            "iterations": 10088
+          },
+          "kineticEnergy": 2.0592752671831393e-08,
+          "minCenterY": 0.5099989175796509,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 0,
+      "optimizer": 1,
+      "variant": "no-cache",
+      "substeps": 4,
+      "paper": {
+        "contacts": 116,
+        "iterations": 3600,
+        "queries": 3600
+      },
+      "mean": {
+        "queries": 3563.884722222222,
+        "iterations": 4380.802083333333,
+        "contacts": 235.29444444444445,
+        "pairs": 49.397222222222226
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 49,
+            "contacts": 243,
+            "queries": 12831,
+            "iterations": 16042
+          },
+          "kineticEnergy": 0.009194828560675295,
+          "minCenterY": 0.5106118321418762,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 49,
+            "contacts": 237,
+            "queries": 13291,
+            "iterations": 16574
+          },
+          "kineticEnergy": 0.00551633650810179,
+          "minCenterY": 0.5100897550582886,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 49,
+            "contacts": 231,
+            "queries": 13970,
+            "iterations": 17276
+          },
+          "kineticEnergy": 0.005355536063851451,
+          "minCenterY": 0.5101068019866943,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 49,
+            "contacts": 234,
+            "queries": 14088,
+            "iterations": 17389
+          },
+          "kineticEnergy": 0.005615870479031694,
+          "minCenterY": 0.5100295543670654,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 49,
+            "contacts": 230,
+            "queries": 14153,
+            "iterations": 17482
+          },
+          "kineticEnergy": 0.004649328779519609,
+          "minCenterY": 0.5099971890449524,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 49,
+            "contacts": 236,
+            "queries": 14303,
+            "iterations": 17609
+          },
+          "kineticEnergy": 0.005175597025717356,
+          "minCenterY": 0.5099924206733704,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 49,
+            "contacts": 235,
+            "queries": 14582,
+            "iterations": 17855
+          },
+          "kineticEnergy": 0.0047919805465027185,
+          "minCenterY": 0.5099849104881287,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 49,
+            "contacts": 233,
+            "queries": 14428,
+            "iterations": 17478
+          },
+          "kineticEnergy": 0.005545777467842278,
+          "minCenterY": 0.5099823474884033,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 49,
+            "contacts": 235,
+            "queries": 14476,
+            "iterations": 17554
+          },
+          "kineticEnergy": 0.005161633756174294,
+          "minCenterY": 0.509988009929657,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 50,
+            "contacts": 232,
+            "queries": 15089,
+            "iterations": 18295
+          },
+          "kineticEnergy": 0.005248444777687754,
+          "minCenterY": 0.509985089302063,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 51,
+            "contacts": 235,
+            "queries": 15424,
+            "iterations": 18770
+          },
+          "kineticEnergy": 0.00450244397089268,
+          "minCenterY": 0.5099788904190063,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 52,
+            "contacts": 241,
+            "queries": 15639,
+            "iterations": 18994
+          },
+          "kineticEnergy": 0.00392864039618195,
+          "minCenterY": 0.509982168674469,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 0,
+      "optimizer": 2,
+      "variant": "default",
+      "substeps": 4,
+      "paper": {
+        "contacts": 116,
+        "iterations": 6600,
+        "queries": 6000
+      },
+      "mean": {
+        "queries": 895.3645833333334,
+        "iterations": 405.3645833333333,
+        "contacts": 244.26944444444445,
+        "pairs": 49
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 49,
+            "contacts": 244,
+            "queries": 3478,
+            "iterations": 1518
+          },
+          "kineticEnergy": 0.0023036484621610422,
+          "minCenterY": 0.5108519196510315,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 3596,
+            "iterations": 1636
+          },
+          "kineticEnergy": 0.0002515914976970909,
+          "minCenterY": 0.510159432888031,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 49,
+            "contacts": 244,
+            "queries": 3586,
+            "iterations": 1626
+          },
+          "kineticEnergy": 1.970084634407409e-05,
+          "minCenterY": 0.5100259780883789,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 49,
+            "contacts": 244,
+            "queries": 3633,
+            "iterations": 1673
+          },
+          "kineticEnergy": 6.174260739270648e-06,
+          "minCenterY": 0.5100060105323792,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 49,
+            "contacts": 243,
+            "queries": 3588,
+            "iterations": 1628
+          },
+          "kineticEnergy": 3.988452764147842e-06,
+          "minCenterY": 0.5100056529045105,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 49,
+            "contacts": 243,
+            "queries": 3559,
+            "iterations": 1599
+          },
+          "kineticEnergy": 7.627314692663117e-06,
+          "minCenterY": 0.5100035071372986,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 3632,
+            "iterations": 1672
+          },
+          "kineticEnergy": 2.4559307851068695e-06,
+          "minCenterY": 0.5100007653236389,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 49,
+            "contacts": 244,
+            "queries": 3629,
+            "iterations": 1669
+          },
+          "kineticEnergy": 1.478513625843849e-06,
+          "minCenterY": 0.5099989771842957,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 3614,
+            "iterations": 1654
+          },
+          "kineticEnergy": 7.316795784499419e-06,
+          "minCenterY": 0.5099993944168091,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 3583,
+            "iterations": 1623
+          },
+          "kineticEnergy": 2.581312861195691e-06,
+          "minCenterY": 0.509999692440033,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 49,
+            "contacts": 244,
+            "queries": 3632,
+            "iterations": 1672
+          },
+          "kineticEnergy": 1.0518506283916423e-06,
+          "minCenterY": 0.5099993944168091,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 3633,
+            "iterations": 1673
+          },
+          "kineticEnergy": 1.5899083946913049e-06,
+          "minCenterY": 0.5099990367889404,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 0,
+      "optimizer": 2,
+      "variant": "no-softmax",
+      "substeps": 4,
+      "paper": {
+        "contacts": 116,
+        "iterations": 8700,
+        "queries": 8700
+      },
+      "mean": {
+        "queries": 10311.689583333333,
+        "iterations": 10013.938194444445,
+        "contacts": 244.89166666666668,
+        "pairs": 49
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 28318,
+            "iterations": 26851
+          },
+          "kineticEnergy": 0.002212139456459183,
+          "minCenterY": 0.5106095671653748,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 35586,
+            "iterations": 34272
+          },
+          "kineticEnergy": 0.0002567885983613485,
+          "minCenterY": 0.5099608898162842,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 38111,
+            "iterations": 36830
+          },
+          "kineticEnergy": 1.3752972371893522e-05,
+          "minCenterY": 0.5099125504493713,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 39720,
+            "iterations": 38452
+          },
+          "kineticEnergy": 1.0456522589696143e-06,
+          "minCenterY": 0.5099454522132874,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 43662,
+            "iterations": 42471
+          },
+          "kineticEnergy": 0.00011518051350066665,
+          "minCenterY": 0.5096774697303772,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 47526,
+            "iterations": 46476
+          },
+          "kineticEnergy": 5.256527321843381e-06,
+          "minCenterY": 0.5096664428710938,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 48412,
+            "iterations": 47400
+          },
+          "kineticEnergy": 2.559188911627101e-06,
+          "minCenterY": 0.5099014639854431,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 48069,
+            "iterations": 47050
+          },
+          "kineticEnergy": 1.1462923316673063e-06,
+          "minCenterY": 0.5099692940711975,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 48070,
+            "iterations": 47047
+          },
+          "kineticEnergy": 7.42274911401317e-07,
+          "minCenterY": 0.5099783539772034,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 48069,
+            "iterations": 47050
+          },
+          "kineticEnergy": 3.4306531211728066e-07,
+          "minCenterY": 0.5099784135818481,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 48118,
+            "iterations": 47100
+          },
+          "kineticEnergy": 7.563506386138146e-07,
+          "minCenterY": 0.5099769234657288,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 49,
+            "contacts": 245,
+            "queries": 48314,
+            "iterations": 47300
+          },
+          "kineticEnergy": 2.0978171623164463e-07,
+          "minCenterY": 0.5099791884422302,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 0,
+      "optimizer": 2,
+      "variant": "no-cache",
+      "substeps": 4,
+      "paper": {
+        "contacts": 116,
+        "iterations": 8500,
+        "queries": 8500
+      },
+      "mean": {
+        "queries": 997.3152777777777,
+        "iterations": 483.5513888888889,
+        "contacts": 241.14166666666668,
+        "pairs": 51.38333333333333
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 49,
+            "contacts": 242,
+            "queries": 3639,
+            "iterations": 1679
+          },
+          "kineticEnergy": 0.011196565715373441,
+          "minCenterY": 0.5084775686264038,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 49,
+            "contacts": 242,
+            "queries": 3770,
+            "iterations": 1810
+          },
+          "kineticEnergy": 0.012662117789218654,
+          "minCenterY": 0.5039419531822205,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 49,
+            "contacts": 241,
+            "queries": 3856,
+            "iterations": 1896
+          },
+          "kineticEnergy": 0.013923996276114504,
+          "minCenterY": 0.5023013949394226,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 50,
+            "contacts": 240,
+            "queries": 3942,
+            "iterations": 1942
+          },
+          "kineticEnergy": 0.01830862834307151,
+          "minCenterY": 0.5029256343841553,
+          "maxContactPenetration": 0.00020834803581237793
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 52,
+            "contacts": 243,
+            "queries": 4076,
+            "iterations": 1996
+          },
+          "kineticEnergy": 0.030131834499643698,
+          "minCenterY": 0.5027244091033936,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 52,
+            "contacts": 240,
+            "queries": 4084,
+            "iterations": 2004
+          },
+          "kineticEnergy": 0.03634742151885193,
+          "minCenterY": 0.5026431679725647,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 53,
+            "contacts": 242,
+            "queries": 4187,
+            "iterations": 2067
+          },
+          "kineticEnergy": 0.0379700989367254,
+          "minCenterY": 0.5024411678314209,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 53,
+            "contacts": 245,
+            "queries": 4216,
+            "iterations": 2096
+          },
+          "kineticEnergy": 0.03653670860315414,
+          "minCenterY": 0.502647876739502,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 53,
+            "contacts": 243,
+            "queries": 4148,
+            "iterations": 2028
+          },
+          "kineticEnergy": 0.036956746379606664,
+          "minCenterY": 0.5026323199272156,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 53,
+            "contacts": 246,
+            "queries": 4167,
+            "iterations": 2047
+          },
+          "kineticEnergy": 0.025979622388649082,
+          "minCenterY": 0.503334105014801,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 53,
+            "contacts": 246,
+            "queries": 4153,
+            "iterations": 2033
+          },
+          "kineticEnergy": 0.0472138078848381,
+          "minCenterY": 0.5025705099105835,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 53,
+            "contacts": 239,
+            "queries": 4152,
+            "iterations": 2032
+          },
+          "kineticEnergy": 0.03566030338298666,
+          "minCenterY": 0.5027880072593689,
+          "maxContactPenetration": 0,
+          "penetrationWitness": {
+            "a": 4,
+            "b": 0,
+            "point": [
+              0.42131862430722045,
+              -0.0003225426107794638,
+              0.3627102290530734
+            ],
+            "contacts": [
+              {
+                "point": [
+                  -0.0327208936214447,
+                  0.0019346106564626098,
+                  0.39473193883895874
+                ],
+                "separation": 0.0019346476765349507,
+                "normal": [
+                  0.0699019655585289,
+                  -0.0013811850221827626,
+                  0.9975529313087463
+                ],
+                "cached": false
+              },
+              {
+                "point": [
+                  -0.6410199999809265,
+                  0.0057827504351735115,
+                  -0.49348360300064087
+                ],
+                "separation": 0.00578269362449646,
+                "normal": [
+                  -0.004794920329004526,
+                  -0.9999879598617554,
+                  -0.0010485599050298333
+                ],
+                "cached": false
+              },
+              {
+                "point": [
+                  -0.5525087118148804,
+                  0.0006070347153581679,
+                  0.28201279044151306
+                ],
+                "separation": 0.004545086063444614,
+                "normal": [
+                  -0.004154547117650509,
+                  -0.9999909996986389,
+                  -0.000908522168174386
+                ],
+                "cached": false
+              },
+              {
+                "point": [
+                  -0.6110975742340088,
+                  0.005191516596823931,
+                  -0.06646837294101715
+                ],
+                "separation": 0.005191534757614136,
+                "normal": [
+                  -0.004794920329004526,
+                  -0.9999879598617554,
+                  -0.0010485599050298333
+                ],
+                "cached": false
+              }
+            ]
+          },
+          "maxVertexPenetration": 0.00032252073287963867,
+          "vertexQueries": 504
+        }
+      ]
+    },
+    {
+      "scene": 1,
+      "optimizer": 0,
+      "variant": "default",
+      "substeps": 4,
+      "paper": {
+        "contacts": 12,
+        "iterations": 180,
+        "queries": 420
+      },
+      "mean": {
+        "queries": 739.73125,
+        "iterations": 270.5375,
+        "contacts": 46.78888888888889,
+        "pairs": 9.375
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 7,
+            "contacts": 35,
+            "queries": 2318,
+            "iterations": 870
+          },
+          "kineticEnergy": 12.750677425218212,
+          "minCenterY": 0.1460062712430954,
+          "maxContactPenetration": 0.005177123472094536
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3265,
+            "iterations": 1206
+          },
+          "kineticEnergy": 0.0002490659369826441,
+          "minCenterY": 0.1439492404460907,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3232,
+            "iterations": 1184
+          },
+          "kineticEnergy": 3.209675738861769e-05,
+          "minCenterY": 0.14335455000400543,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3126,
+            "iterations": 1128
+          },
+          "kineticEnergy": 3.2128313227399797e-06,
+          "minCenterY": 0.14320304989814758,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3157,
+            "iterations": 1165
+          },
+          "kineticEnergy": 4.407025165860909e-07,
+          "minCenterY": 0.14317308366298676,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3206,
+            "iterations": 1198
+          },
+          "kineticEnergy": 1.9417909086661192e-07,
+          "minCenterY": 0.1431608349084854,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3118,
+            "iterations": 1133
+          },
+          "kineticEnergy": 1.1042487131121382e-07,
+          "minCenterY": 0.14315509796142578,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3219,
+            "iterations": 1200
+          },
+          "kineticEnergy": 1.95016433903295e-08,
+          "minCenterY": 0.14315524697303772,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3115,
+            "iterations": 1136
+          },
+          "kineticEnergy": 8.445986335300613e-08,
+          "minCenterY": 0.14315412938594818,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3150,
+            "iterations": 1147
+          },
+          "kineticEnergy": 6.848464624812421e-08,
+          "minCenterY": 0.1431521624326706,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3185,
+            "iterations": 1157
+          },
+          "kineticEnergy": 3.263970475457242e-07,
+          "minCenterY": 0.14315296709537506,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3194,
+            "iterations": 1173
+          },
+          "kineticEnergy": 4.2293667582823576e-08,
+          "minCenterY": 0.14315272867679596,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 1,
+      "optimizer": 0,
+      "variant": "no-softmax",
+      "substeps": 4,
+      "paper": {
+        "contacts": 12,
+        "iterations": 460,
+        "queries": 980
+      },
+      "mean": {
+        "queries": 1182.25,
+        "iterations": 528.5548611111111,
+        "contacts": 46.75,
+        "pairs": 9.375
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 7,
+            "contacts": 32,
+            "queries": 3271,
+            "iterations": 1425
+          },
+          "kineticEnergy": 12.746522254935782,
+          "minCenterY": 0.14700902998447418,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5026,
+            "iterations": 2233
+          },
+          "kineticEnergy": 0.0005539822217961346,
+          "minCenterY": 0.14401736855506897,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 10,
+            "contacts": 49,
+            "queries": 4892,
+            "iterations": 2159
+          },
+          "kineticEnergy": 9.695633970026196e-05,
+          "minCenterY": 0.1432192325592041,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5010,
+            "iterations": 2224
+          },
+          "kineticEnergy": 2.156287454466739e-05,
+          "minCenterY": 0.1430651694536209,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5075,
+            "iterations": 2275
+          },
+          "kineticEnergy": 2.44993376107336e-06,
+          "minCenterY": 0.14302298426628113,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 4955,
+            "iterations": 2226
+          },
+          "kineticEnergy": 2.1174263828353086e-05,
+          "minCenterY": 0.14303041994571686,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5113,
+            "iterations": 2295
+          },
+          "kineticEnergy": 6.78714987188356e-06,
+          "minCenterY": 0.1430298537015915,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5188,
+            "iterations": 2331
+          },
+          "kineticEnergy": 1.6850310784697071e-06,
+          "minCenterY": 0.14296777546405792,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5169,
+            "iterations": 2324
+          },
+          "kineticEnergy": 1.814886354709144e-05,
+          "minCenterY": 0.14286354184150696,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5004,
+            "iterations": 2214
+          },
+          "kineticEnergy": 1.3648244648055136e-05,
+          "minCenterY": 0.1428545117378235,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5187,
+            "iterations": 2328
+          },
+          "kineticEnergy": 1.136496146646946e-05,
+          "minCenterY": 0.14293304085731506,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5093,
+            "iterations": 2284
+          },
+          "kineticEnergy": 1.6740753529366737e-05,
+          "minCenterY": 0.14290741086006165,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 2400
+        }
+      ]
+    },
+    {
+      "scene": 1,
+      "optimizer": 0,
+      "variant": "no-cache",
+      "substeps": 4,
+      "paper": {
+        "contacts": 12,
+        "iterations": 420,
+        "queries": 860
+      },
+      "mean": {
+        "queries": 1198.0055555555555,
+        "iterations": 495.05347222222224,
+        "contacts": 46.733333333333334,
+        "pairs": 9.375
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 7,
+            "contacts": 34,
+            "queries": 3701,
+            "iterations": 1538
+          },
+          "kineticEnergy": 12.750413033388218,
+          "minCenterY": 0.1456613540649414,
+          "maxContactPenetration": 0.003727775299921632
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5282,
+            "iterations": 2198
+          },
+          "kineticEnergy": 0.004420451835918212,
+          "minCenterY": 0.14228948950767517,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5099,
+            "iterations": 2103
+          },
+          "kineticEnergy": 0.003811734013889868,
+          "minCenterY": 0.14158713817596436,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5213,
+            "iterations": 2160
+          },
+          "kineticEnergy": 0.004486349398676679,
+          "minCenterY": 0.14111797511577606,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5075,
+            "iterations": 2069
+          },
+          "kineticEnergy": 0.0045669517978542086,
+          "minCenterY": 0.1412285715341568,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5007,
+            "iterations": 2056
+          },
+          "kineticEnergy": 0.0022385886185087842,
+          "minCenterY": 0.14134396612644196,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 4997,
+            "iterations": 2080
+          },
+          "kineticEnergy": 0.002107758855870229,
+          "minCenterY": 0.14109456539154053,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5167,
+            "iterations": 2139
+          },
+          "kineticEnergy": 0.002866231803206516,
+          "minCenterY": 0.1413395255804062,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5112,
+            "iterations": 2136
+          },
+          "kineticEnergy": 0.0014155049283601227,
+          "minCenterY": 0.1413104087114334,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5044,
+            "iterations": 2048
+          },
+          "kineticEnergy": 0.003861857633585085,
+          "minCenterY": 0.14118245244026184,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5185,
+            "iterations": 2151
+          },
+          "kineticEnergy": 0.002707228983005523,
+          "minCenterY": 0.1412617713212967,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5184,
+            "iterations": 2195
+          },
+          "kineticEnergy": 0.0019344529191805486,
+          "minCenterY": 0.14089366793632507,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 1,
+      "optimizer": 1,
+      "variant": "default",
+      "substeps": 4,
+      "paper": {
+        "contacts": 12,
+        "iterations": 160,
+        "queries": 160
+      },
+      "mean": {
+        "queries": 797.3180555555556,
+        "iterations": 763.1979166666666,
+        "contacts": 46.72222222222222,
+        "pairs": 9.377777777777778
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 8,
+            "contacts": 32,
+            "queries": 2605,
+            "iterations": 2516
+          },
+          "kineticEnergy": 12.748827423286823,
+          "minCenterY": 0.1470874547958374,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3338,
+            "iterations": 3208
+          },
+          "kineticEnergy": 0.00041770484200651667,
+          "minCenterY": 0.14403574168682098,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3353,
+            "iterations": 3216
+          },
+          "kineticEnergy": 0.00022495433395300338,
+          "minCenterY": 0.143118754029274,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 10,
+            "contacts": 48,
+            "queries": 3502,
+            "iterations": 3386
+          },
+          "kineticEnergy": 0.00023884788526711605,
+          "minCenterY": 0.1429661214351654,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3687,
+            "iterations": 3566
+          },
+          "kineticEnergy": 0.00022915791829880772,
+          "minCenterY": 0.14289724826812744,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3436,
+            "iterations": 3289
+          },
+          "kineticEnergy": 4.618377419739326e-05,
+          "minCenterY": 0.14288312196731567,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3430,
+            "iterations": 3290
+          },
+          "kineticEnergy": 0.00021079698877386383,
+          "minCenterY": 0.14282718300819397,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3373,
+            "iterations": 3206
+          },
+          "kineticEnergy": 0.00014360350740035355,
+          "minCenterY": 0.14277072250843048,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3315,
+            "iterations": 3159
+          },
+          "kineticEnergy": 0.00016474986149357928,
+          "minCenterY": 0.1428152322769165,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3430,
+            "iterations": 3284
+          },
+          "kineticEnergy": 0.00027163533103241133,
+          "minCenterY": 0.14282208681106567,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3259,
+            "iterations": 3096
+          },
+          "kineticEnergy": 0.00042890272517369626,
+          "minCenterY": 0.1428575962781906,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 3378,
+            "iterations": 3225
+          },
+          "kineticEnergy": 0.00011614378319479925,
+          "minCenterY": 0.14277023077011108,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 1,
+      "optimizer": 1,
+      "variant": "no-softmax",
+      "substeps": 4,
+      "paper": {
+        "contacts": 12,
+        "iterations": 1100,
+        "queries": 1100
+      },
+      "mean": {
+        "queries": 1399.2340277777778,
+        "iterations": 1335.6833333333334,
+        "contacts": 46.666666666666664,
+        "pairs": 9.375
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 7,
+            "contacts": 33,
+            "queries": 4156,
+            "iterations": 3984
+          },
+          "kineticEnergy": 12.749908421595068,
+          "minCenterY": 0.14709164202213287,
+          "maxContactPenetration": 0.005809136666357517
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 6456,
+            "iterations": 6161
+          },
+          "kineticEnergy": 0.0004466586502836176,
+          "minCenterY": 0.1441325694322586,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 10,
+            "contacts": 49,
+            "queries": 6251,
+            "iterations": 5981
+          },
+          "kineticEnergy": 0.00037147339422732097,
+          "minCenterY": 0.14322635531425476,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5688,
+            "iterations": 5429
+          },
+          "kineticEnergy": 8.32941403525396e-05,
+          "minCenterY": 0.14295926690101624,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5910,
+            "iterations": 5646
+          },
+          "kineticEnergy": 0.00011517232266879706,
+          "minCenterY": 0.1428668349981308,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5877,
+            "iterations": 5600
+          },
+          "kineticEnergy": 0.00013135660760867063,
+          "minCenterY": 0.1427762806415558,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5886,
+            "iterations": 5619
+          },
+          "kineticEnergy": 0.0002800187277461413,
+          "minCenterY": 0.14283277094364166,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 6008,
+            "iterations": 5735
+          },
+          "kineticEnergy": 0.0003237133043365037,
+          "minCenterY": 0.1425320953130722,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5754,
+            "iterations": 5470
+          },
+          "kineticEnergy": 0.00010577064273718432,
+          "minCenterY": 0.14277420938014984,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5798,
+            "iterations": 5532
+          },
+          "kineticEnergy": 9.961769787055052e-05,
+          "minCenterY": 0.14272674918174744,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 6200,
+            "iterations": 5940
+          },
+          "kineticEnergy": 0.00011868084080312434,
+          "minCenterY": 0.14279203116893768,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 6091,
+            "iterations": 5812
+          },
+          "kineticEnergy": 0.00018564267584251395,
+          "minCenterY": 0.1427227258682251,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 1,
+      "optimizer": 1,
+      "variant": "no-cache",
+      "substeps": 4,
+      "paper": {
+        "contacts": 12,
+        "iterations": 510,
+        "queries": 510
+      },
+      "mean": {
+        "queries": 1117.5680555555555,
+        "iterations": 1094.8555555555556,
+        "contacts": 46.73888888888889,
+        "pairs": 9.375
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 7,
+            "contacts": 32,
+            "queries": 3149,
+            "iterations": 3110
+          },
+          "kineticEnergy": 12.751249664696639,
+          "minCenterY": 0.1467185616493225,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 10,
+            "contacts": 48,
+            "queries": 4635,
+            "iterations": 4569
+          },
+          "kineticEnergy": 0.003929445574072455,
+          "minCenterY": 0.14292672276496887,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 4588,
+            "iterations": 4518
+          },
+          "kineticEnergy": 0.001957850379760375,
+          "minCenterY": 0.14193901419639587,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 4650,
+            "iterations": 4573
+          },
+          "kineticEnergy": 0.0032223396592583053,
+          "minCenterY": 0.14178189635276794,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 4808,
+            "iterations": 4730
+          },
+          "kineticEnergy": 0.003560548542581433,
+          "minCenterY": 0.14176975190639496,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 4762,
+            "iterations": 4674
+          },
+          "kineticEnergy": 0.0033810135601830306,
+          "minCenterY": 0.14176298677921295,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 4779,
+            "iterations": 4684
+          },
+          "kineticEnergy": 0.0030559455221404043,
+          "minCenterY": 0.14171162247657776,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 4958,
+            "iterations": 4860
+          },
+          "kineticEnergy": 0.0028335909981346773,
+          "minCenterY": 0.14177483320236206,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 4692,
+            "iterations": 4561
+          },
+          "kineticEnergy": 0.0028543937999621505,
+          "minCenterY": 0.14181391894817352,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 5050,
+            "iterations": 4887
+          },
+          "kineticEnergy": 0.0024878665536557194,
+          "minCenterY": 0.14181259274482727,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 4946,
+            "iterations": 4844
+          },
+          "kineticEnergy": 0.002174091748173318,
+          "minCenterY": 0.14184421300888062,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 4914,
+            "iterations": 4775
+          },
+          "kineticEnergy": 0.002267217332531813,
+          "minCenterY": 0.14169499278068542,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 16800
+        }
+      ]
+    },
+    {
+      "scene": 1,
+      "optimizer": 2,
+      "variant": "default",
+      "substeps": 4,
+      "paper": {
+        "contacts": 12,
+        "iterations": 700,
+        "queries": 700
+      },
+      "mean": {
+        "queries": 212.025,
+        "iterations": 117.1986111111111,
+        "contacts": 46.108333333333334,
+        "pairs": 9.497222222222222
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 8,
+            "contacts": 33,
+            "queries": 625,
+            "iterations": 335
+          },
+          "kineticEnergy": 12.795989972732434,
+          "minCenterY": 0.14622598886489868,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 11,
+            "contacts": 48,
+            "queries": 1167,
+            "iterations": 727
+          },
+          "kineticEnergy": 0.01988290279369831,
+          "minCenterY": 0.14376020431518555,
+          "maxContactPenetration": 0.0851229876279831
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 10,
+            "contacts": 47,
+            "queries": 921,
+            "iterations": 521
+          },
+          "kineticEnergy": 0.03716614771225925,
+          "minCenterY": 0.14272378385066986,
+          "maxContactPenetration": 0.020548515021800995
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 10,
+            "contacts": 49,
+            "queries": 920,
+            "iterations": 520
+          },
+          "kineticEnergy": 0.00018519940545449115,
+          "minCenterY": 0.1421935260295868,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 10,
+            "contacts": 49,
+            "queries": 884,
+            "iterations": 484
+          },
+          "kineticEnergy": 2.5508694045739358e-05,
+          "minCenterY": 0.1425674706697464,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 835,
+            "iterations": 435
+          },
+          "kineticEnergy": 4.648035219434117e-06,
+          "minCenterY": 0.14267601072788239,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 901,
+            "iterations": 501
+          },
+          "kineticEnergy": 9.991790119053919e-06,
+          "minCenterY": 0.1428661048412323,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 869,
+            "iterations": 469
+          },
+          "kineticEnergy": 0.00016235384854467114,
+          "minCenterY": 0.14298899471759796,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 10,
+            "contacts": 49,
+            "queries": 897,
+            "iterations": 497
+          },
+          "kineticEnergy": 4.192473543077613e-05,
+          "minCenterY": 0.1429619938135147,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 10,
+            "contacts": 49,
+            "queries": 849,
+            "iterations": 449
+          },
+          "kineticEnergy": 1.9282437166313264e-05,
+          "minCenterY": 0.14292091131210327,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 10,
+            "contacts": 49,
+            "queries": 830,
+            "iterations": 430
+          },
+          "kineticEnergy": 8.810312662793635e-05,
+          "minCenterY": 0.1429445594549179,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 861,
+            "iterations": 461
+          },
+          "kineticEnergy": 2.7638184749244535e-06,
+          "minCenterY": 0.14298208057880402,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 1,
+      "optimizer": 2,
+      "variant": "no-softmax",
+      "substeps": 4,
+      "paper": {
+        "contacts": 12,
+        "iterations": 1200,
+        "queries": 1200
+      },
+      "mean": {
+        "queries": 2258.0777777777776,
+        "iterations": 2208.117361111111,
+        "contacts": 46.647222222222226,
+        "pairs": 9.383333333333333
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 8,
+            "contacts": 32,
+            "queries": 6758,
+            "iterations": 6594
+          },
+          "kineticEnergy": 12.755181832249065,
+          "minCenterY": 0.14681591093540192,
+          "maxContactPenetration": 0.006841652095317841
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 9637,
+            "iterations": 9418
+          },
+          "kineticEnergy": 0.0014244235431189673,
+          "minCenterY": 0.14366629719734192,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 10007,
+            "iterations": 9803
+          },
+          "kineticEnergy": 0.00011717736063105328,
+          "minCenterY": 0.14262385666370392,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 9804,
+            "iterations": 9594
+          },
+          "kineticEnergy": 1.5014486845429965e-05,
+          "minCenterY": 0.142363503575325,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 9807,
+            "iterations": 9598
+          },
+          "kineticEnergy": 9.884387788241262e-06,
+          "minCenterY": 0.14232107996940613,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 9851,
+            "iterations": 9642
+          },
+          "kineticEnergy": 6.236370325888993e-06,
+          "minCenterY": 0.14232034981250763,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 10096,
+            "iterations": 9893
+          },
+          "kineticEnergy": 4.927713004067998e-06,
+          "minCenterY": 0.14231087267398834,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 10002,
+            "iterations": 9797
+          },
+          "kineticEnergy": 8.245804510738135e-06,
+          "minCenterY": 0.14230790734291077,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 9903,
+            "iterations": 9696
+          },
+          "kineticEnergy": 5.3893644785885665e-06,
+          "minCenterY": 0.14230456948280334,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 9894,
+            "iterations": 9687
+          },
+          "kineticEnergy": 1.053329339043414e-05,
+          "minCenterY": 0.14230278134346008,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 10102,
+            "iterations": 9900
+          },
+          "kineticEnergy": 5.200730183496425e-06,
+          "minCenterY": 0.14232374727725983,
+          "maxContactPenetration": 0
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 10,
+            "contacts": 50,
+            "queries": 10004,
+            "iterations": 9800
+          },
+          "kineticEnergy": 2.1548659535111102e-06,
+          "minCenterY": 0.14231672883033752,
+          "maxContactPenetration": 0,
+          "maxVertexPenetration": 0,
+          "vertexQueries": 0
+        }
+      ]
+    },
+    {
+      "scene": 1,
+      "optimizer": 2,
+      "variant": "no-cache",
+      "substeps": 4,
+      "paper": {
+        "status": "FAIL"
+      },
+      "mean": {
+        "queries": 953.2263888888889,
+        "iterations": 732.2666666666667,
+        "contacts": 35.605555555555554,
+        "pairs": 22.133333333333333
+      },
+      "samples": [
+        {
+          "frame": 30,
+          "stats": {
+            "pairs": 7,
+            "contacts": 33,
+            "queries": 722,
+            "iterations": 442
+          },
+          "kineticEnergy": 12.83995205840711,
+          "minCenterY": 0.14162909984588623,
+          "maxContactPenetration": 0.03177308291196823
+        },
+        {
+          "frame": 60,
+          "stats": {
+            "pairs": 10,
+            "contacts": 48,
+            "queries": 1058,
+            "iterations": 658
+          },
+          "kineticEnergy": 0.03325976764518413,
+          "minCenterY": 0.14064627885818481,
+          "maxContactPenetration": 0.028567008674144745
+        },
+        {
+          "frame": 90,
+          "stats": {
+            "pairs": 10,
+            "contacts": 44,
+            "queries": 1107,
+            "iterations": 707
+          },
+          "kineticEnergy": 0.03750076797428328,
+          "minCenterY": 0.1408514380455017,
+          "maxContactPenetration": 0.030769653618335724
+        },
+        {
+          "frame": 120,
+          "stats": {
+            "pairs": 12,
+            "contacts": 41,
+            "queries": 1397,
+            "iterations": 917
+          },
+          "kineticEnergy": 0.14918913248108537,
+          "minCenterY": 0.1404813826084137,
+          "maxContactPenetration": 0.013238455168902874
+        },
+        {
+          "frame": 150,
+          "stats": {
+            "pairs": 20,
+            "contacts": 38,
+            "queries": 2490,
+            "iterations": 1720
+          },
+          "kineticEnergy": 0.8117951067168941,
+          "minCenterY": 0.14015574753284454,
+          "maxContactPenetration": 0.06743429601192474
+        },
+        {
+          "frame": 180,
+          "stats": {
+            "pairs": 33,
+            "contacts": 38,
+            "queries": 6187,
+            "iterations": 4867
+          },
+          "kineticEnergy": 5.089490318244881,
+          "minCenterY": 0.1406731903553009,
+          "maxContactPenetration": 0.07125531882047653
+        },
+        {
+          "frame": 210,
+          "stats": {
+            "pairs": 35,
+            "contacts": 27,
+            "queries": 6843,
+            "iterations": 5443
+          },
+          "kineticEnergy": 1.7838292521236254,
+          "minCenterY": 0.14132679998874664,
+          "maxContactPenetration": 0.07162903249263763
+        },
+        {
+          "frame": 240,
+          "stats": {
+            "pairs": 33,
+            "contacts": 28,
+            "queries": 6652,
+            "iterations": 5332
+          },
+          "kineticEnergy": 2.7576967336725584,
+          "minCenterY": 0.14183688163757324,
+          "maxContactPenetration": 0.06879483163356781
+        },
+        {
+          "frame": 270,
+          "stats": {
+            "pairs": 31,
+            "contacts": 32,
+            "queries": 6215,
+            "iterations": 4975
+          },
+          "kineticEnergy": 0.19168271459932434,
+          "minCenterY": 0.1419585943222046,
+          "maxContactPenetration": 0.03229141980409622
+        },
+        {
+          "frame": 300,
+          "stats": {
+            "pairs": 31,
+            "contacts": 40,
+            "queries": 5394,
+            "iterations": 4154
+          },
+          "kineticEnergy": 0.2934143301068956,
+          "minCenterY": 0.14217989146709442,
+          "maxContactPenetration": 0.06460881978273392
+        },
+        {
+          "frame": 330,
+          "stats": {
+            "pairs": 28,
+            "contacts": 37,
+            "queries": 4732,
+            "iterations": 3612
+          },
+          "kineticEnergy": 0.10808560582865138,
+          "minCenterY": 0.14221598207950592,
+          "maxContactPenetration": 0.017905637621879578
+        },
+        {
+          "frame": 360,
+          "stats": {
+            "pairs": 26,
+            "contacts": 45,
+            "queries": 4060,
+            "iterations": 3020
+          },
+          "kineticEnergy": 0.0913092537978698,
+          "minCenterY": 0.14232724905014038,
+          "maxContactPenetration": 0.021964147686958313,
+          "penetrationWitness": {
+            "a": 8,
+            "b": 0,
+            "point": [
+              1.955414340492029,
+              -0.045774921153527104,
+              0.5200206543613313
+            ],
+            "contacts": [
+              {
+                "point": [
+                  1.735849380493164,
+                  -0.019560089334845543,
+                  0.6974809765815735
+                ],
+                "separation": 0.018119346350431442,
+                "normal": [
+                  0,
+                  -1,
+                  0
+                ],
+                "cached": false
+              }
+            ]
+          },
+          "maxVertexPenetration": 0.04577493667602539,
+          "vertexQueries": 51780
+        }
+      ]
+    }
+  ]
+}
