@@ -1,0 +1,51 @@
+{
+ "paper": "Giles & Andrews 2026, Table 1 Bunnies (4314 bodies); layout not published, lattice drop used",
+ "measurementVersion": 2,
+ "pauseMs": 100,
+ "penetrationSampling": "reservoir of up to 300 unordered conservative bounding-sphere pairs across all bodies, both vertex directions; sampled, not a global bound",
+ "reference": "sdf-dcd-demo 1dcdf1e7fa07d16fda15826ad8c2e6697075a76e",
+ "bodies": 4314,
+ "frames": 12,
+ "profile": "mesh-quality",
+ "substeps": 4,
+ "iterations": 20,
+ "timing": "wall clock per frame (counter readback after every substep included) (4 substeps) after onSubmittedWorkDone, on the machine that ran this; not target hardware, not t_coll",
+ "adapter": {
+  "subgroupMatrixConfigs": []
+ },
+ "setupMs": 99.98650000000004,
+ "maxPairs": "World default (8 per body, grown after overflow)",
+ "initialPairCapacity": 34520,
+ "overflowFrames": [
+  1,
+  2,
+  3
+ ],
+ "finalPairCapacity": 69040,
+ "growthError": null,
+ "frameMs": {
+  "median": 41.69183300000009,
+  "p95": 64.86729100000002,
+  "max": 64.86729100000002
+ },
+ "samples": [
+  {
+   "frame": 12,
+   "pairCapacity": 69040,
+   "pairs": 37459,
+   "contacts": 3154,
+   "overflow": 0,
+   "kineticEnergy": 1611.8762012276422,
+   "groundPenetration": 0,
+   "meshPenetration": 0.0474332831799984,
+   "probedPairs": 300,
+   "frameMsMean30": 45.79205183333337
+  }
+ ],
+ "errors": [],
+ "source": {
+  "base": "d6422fcac6fb871d48ee728bbd0e678557cfa355",
+  "witnessFix": "e6753450f050c4d262ff3fe9e9237fb6f7da8442",
+  "runnerChange": "SDF_FRAME_PAUSE_MS pause after timing and counters; no other source changes"
+ }
+}
