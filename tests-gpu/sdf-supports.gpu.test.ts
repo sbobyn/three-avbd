@@ -112,3 +112,43 @@ gpuTest('mesh-to-mesh vertex witness: exact depth, SDF normal, stable identity, 
     assert.ok(result.points.every(p=>p.id<0x40000000),'default policy never adds vertex witnesses');
   }finally{pass.destroy();geometry.dispose();}
 });
+
+gpuTest('vertex witnesses drop opposed ambiguous optimizer contacts in their pair only',async device=>{
+  const {BoxGeometry}=await import('three');
+  const {bakeVoxelSdf}=await import('../src/avbd3d/ref/sdf/bake.ts');
+  const {SdfBody}=await import('../src/avbd3d/ref/sdf/body.ts');
+  const {collisionParams}=await import('../src/avbd3d/ref/sdf/manifold.ts');
+  const {SdfNarrowphasePass}=await import('../src/avbd3d/gpu/sdf-pass.ts');
+  const {snapshotSdfField}=await import('../src/avbd3d/gpu/sdf-snapshot.ts');
+  const geometry=new BoxGeometry(),field=snapshotSdfField(bakeVoxelSdf(geometry,{resolution:8}).field,true);
+  const pass=await SdfNarrowphasePass.create(device,[field],{maxBodies:2,maxPairs:1,meshVertexContacts:true});
+  const params={...collisionParams(),meshVertexContacts:true};
+  // Deep, tilted overlaps: some optimizer points land inside both boxes with aligned gradients.
+  let state=7;const random=()=>{state=Math.imul(state^state>>>15,0x2c1b3c6d)+0x6d2b79f5>>>0;return state/2**32;};
+  let dropped=0,witnessed=0;
+  try{
+    for(let k=0;k<48;k++){
+      const q=new Quaternion().setFromEuler(new Euler(random()*6.3,random()*6.3,random()*6.3)).toArray() as [number,number,number,number];
+      const bodies=[new SdfBody(field,[0,0,0]),new SdfBody(field,[(random()-.5)*.6,.55+random()*.35,(random()-.5)*.6],q)];
+      for(const on of [true,false]){
+        pass.step(bodies,[{a:0,b:1,key:k+1}],0,{...params,meshVertexContacts:on});const [r]=await pass.readResults();
+        const w=r.points.find(p=>p.id>=0x40000000);
+        const gone=r.points.filter(p=>p.id<0x40000000&&!p.active&&p.separation<params.margin);
+        if(!on){assert.equal(gone.length,0,'without witnesses activity is separation < margin');continue;}
+        if(!w){assert.equal(gone.length,0,'no witness, no drop');continue;}
+        witnessed++;dropped+=gone.length;
+        for(const p of r.points){
+          if(p.id>=0x40000000||!p.active)continue;
+          const n=p.normal,opposed=n[0]*w.normal[0]+n[1]*w.normal[1]+n[2]*w.normal[2]<0;
+          const a=bodies[0].sample(p.x as [number,number,number]),b=bodies[1].sample(p.x as [number,number,number]);
+          const aligned=a.gradient[0]*b.gradient[0]+a.gradient[1]*b.gradient[1]+a.gradient[2]*b.gradient[2]>0;
+          // 1e-5 slack: CPU and GPU sample the same snapshot in different float orders.
+          const ambiguous=(a.phi<-1e-5&&b.phi<-1e-5&&aligned)||(a.phi>1e-5&&b.phi>1e-5);
+          assert.ok(!(opposed&&ambiguous),`pose ${k}: active point opposes the witness with an ambiguous normal`);
+        }
+        for(const p of gone)assert.ok(p.normal[0]*w.normal[0]+p.normal[1]*w.normal[1]+p.normal[2]*w.normal[2]<0,'only opposed points are dropped');
+      }
+    }
+    assert.ok(witnessed>10,`witness poses ${witnessed}`);assert.ok(dropped>0,'the sweep exercises the drop');
+  }finally{pass.destroy();geometry.dispose();}
+});

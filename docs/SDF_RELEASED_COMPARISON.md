@@ -236,8 +236,14 @@ every unique source vertex, up to 4096 per field.
 - **Two dynamic meshes:** the deepest vertex of either body inside the other's field (within
   the trigger distance) becomes one supplemental witness contact.
 
-Each supplemental contact fills the fifth slot of the five-point pair budget, keeps a
-persistent vertex ID, and leaves the four optimizer contacts unchanged. The CPU reference
+Each supplemental contact fills the fifth slot of the five-point pair budget and keeps a
+persistent vertex ID. The witness also settles the pair's contact direction. An optimizer
+contact whose normal opposes the witness is deactivated when its own normal is ambiguous:
+- it lies inside both fields with aligned gradients; or
+- it lies outside both fields, where the unsigned gap normal can flip.
+
+Other optimizer contacts are unchanged, including clearly opposed ones such as a genuine
+interlock. Those checks cost two extra field samples per opposed contact. The CPU reference
 rejects this GPU-only option. Standalone `SdfNarrowphasePass` users must also request it in
 construction options. Without the option, snapshots and atlases carry no vertex data.
 Query statistics with the option include vertex evaluations.
