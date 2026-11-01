@@ -66,7 +66,7 @@ See [paper reproduction status](docs/SDF_REPRODUCTION_STATUS.md) and
 [research reconciliation](docs/SDF_RECONCILIATION.md) for historical evidence and acceptance limits.
 
 `three-avbd/queries` provides CPU-only static triangle BVHs, nearest rays, bounded sphere
-overlaps and translational sphere sweeps, with no GPU or Three runtime import. See
+and capsule overlaps and translational sweeps, with no GPU or Three runtime import. See
 [static queries](docs/QUERIES.md) and the [Node projectile example](examples/static-projectile.ts).
 These queries are independent of solver collisions and GPU bodies.
 
