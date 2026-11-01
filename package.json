@@ -29,6 +29,10 @@
       "types": "./build/lib/sdf.d.ts",
       "import": "./build/lib/sdf.js"
     },
+    "./queries": {
+      "types": "./build/lib/queries.d.ts",
+      "import": "./build/lib/queries.js"
+    },
     "./advanced": {
       "types": "./build/lib/advanced.d.ts",
       "import": "./build/lib/advanced.js"

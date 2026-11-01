@@ -868,6 +868,7 @@ export class World {
   write(body: Body, patch: BodyPatch, fixed = false): void {
     assertOwner(this, body);
     if (!body.alive) return;
+    if (this.sliding.has(body)) patch = { velocity: [0, 0, 0], angularVelocity: [0, 0, 0], ...patch };
     this.moves.delete(body);
     this.sliding.delete(body);
     body.target = null;
