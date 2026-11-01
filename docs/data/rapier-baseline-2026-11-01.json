@@ -1,6 +1,6 @@
 {
  "schema": 5,
- "date": "2026-11-01T20:47:31.884Z",
+ "date": "2026-11-01T21:07:40.074Z",
  "rapierVersion": "0.21.0",
  "options": {
   "dt": 0.016666666666666666,
@@ -35,7 +35,7 @@
    "bodies": 1001,
    "dynamicBodies": 1000,
    "status": "completed",
-   "buildMs": 7.627958000000035,
+   "buildMs": 6.887459000000035,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -135,10 +135,10 @@
    "maxRelativeContactDepth": 0.005200158600127791,
    "contactTargetMet": true,
    "measuredContactTargetMet": true,
-   "meanMs": 1.511760074999995,
-   "medianMs": 1.4729458000000022,
-   "p95Ms": 1.7540707999999996,
-   "p99Ms": 1.7540707999999996
+   "meanMs": 1.5611364416666693,
+   "medianMs": 1.4843707999999993,
+   "p95Ms": 1.7672416999999996,
+   "p99Ms": 1.7672416999999996
   },
   {
    "scene": "rest-grid-1k",
@@ -148,7 +148,7 @@
    "bodies": 1001,
    "dynamicBodies": 1000,
    "status": "completed",
-   "buildMs": 63.672791999999845,
+   "buildMs": 13.937583000000359,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -271,10 +271,10 @@
    "maxRelativeContactDepth": 0.011141300201416016,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 1.5378235999999978,
-   "medianMs": 1.5292915999999876,
-   "p95Ms": 1.662387499999977,
-   "p99Ms": 1.662387499999977
+   "meanMs": 1.6735281249999958,
+   "medianMs": 1.6496541999999863,
+   "p95Ms": 1.7554999999999836,
+   "p99Ms": 1.7554999999999836
   },
   {
    "scene": "rest-grid-1k",
@@ -284,7 +284,7 @@
    "bodies": 1001,
    "dynamicBodies": 1000,
    "status": "completed",
-   "buildMs": 16.797709000000395,
+   "buildMs": 20.852916000000732,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -407,10 +407,10 @@
    "maxRelativeContactDepth": 0.011141300201416016,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 1.4927715249999969,
-   "medianMs": 1.4825124999999388,
-   "p95Ms": 1.5853707999999642,
-   "p99Ms": 1.5853707999999642
+   "meanMs": 1.6838715166666816,
+   "medianMs": 1.663237500000014,
+   "p95Ms": 1.8038125000000036,
+   "p99Ms": 1.8038125000000036
   },
   {
    "scene": "rest-grid-1k",
@@ -420,7 +420,7 @@
    "bodies": 1001,
    "dynamicBodies": 1000,
    "status": "completed",
-   "buildMs": 5.639834000000519,
+   "buildMs": 5.503875000000335,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -520,10 +520,10 @@
    "maxRelativeContactDepth": 0.005200158600127791,
    "contactTargetMet": true,
    "measuredContactTargetMet": true,
-   "meanMs": 1.4240687500000149,
-   "medianMs": 1.4238416999999572,
-   "p95Ms": 1.4599583000000167,
-   "p99Ms": 1.4599583000000167
+   "meanMs": 1.4893427250000135,
+   "medianMs": 1.4790208999999777,
+   "p95Ms": 1.5682042000000365,
+   "p99Ms": 1.5682042000000365
   },
   {
    "scene": "rest-grid-1k",
@@ -533,7 +533,7 @@
    "bodies": 1001,
    "dynamicBodies": 1000,
    "status": "completed",
-   "buildMs": 4.038458000000901,
+   "buildMs": 4.246291000000383,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -633,10 +633,10 @@
    "maxRelativeContactDepth": 0.005200158600127791,
    "contactTargetMet": true,
    "measuredContactTargetMet": true,
-   "meanMs": 1.4511906250000115,
-   "medianMs": 1.448120899999958,
-   "p95Ms": 1.506224999999904,
-   "p99Ms": 1.506224999999904
+   "meanMs": 1.5351385500000105,
+   "medianMs": 1.5255041999999777,
+   "p95Ms": 1.6096207999999934,
+   "p99Ms": 1.6096207999999934
   },
   {
    "scene": "rest-grid-1k",
@@ -646,7 +646,7 @@
    "bodies": 1001,
    "dynamicBodies": 1000,
    "status": "completed",
-   "buildMs": 79.73020800000086,
+   "buildMs": 21.520667000000685,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -769,10 +769,10 @@
    "maxRelativeContactDepth": 0.011141300201416016,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 2.084531966666691,
-   "medianMs": 1.8597999999999957,
-   "p95Ms": 3.0169125000000347,
-   "p99Ms": 3.0169125000000347
+   "meanMs": 2.371240983333352,
+   "medianMs": 2.1232708999999885,
+   "p95Ms": 4.485116700000072,
+   "p99Ms": 4.485116700000072
   },
   {
    "scene": "pile-1k",
@@ -782,7 +782,7 @@
    "bodies": 1001,
    "dynamicBodies": 1000,
    "status": "completed",
-   "buildMs": 3.848958999999013,
+   "buildMs": 4.063583999999537,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -885,10 +885,10 @@
    "maxRelativeContactDepth": 0.38281960888913724,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 2.779072908333334,
-   "medianMs": 2.7177874999999405,
-   "p95Ms": 3.6042083000000273,
-   "p99Ms": 3.6042083000000273
+   "meanMs": 2.999719091666687,
+   "medianMs": 2.9726708000000146,
+   "p95Ms": 3.4107749999999215,
+   "p99Ms": 3.4107749999999215
   },
   {
    "scene": "pile-1k",
@@ -898,7 +898,7 @@
    "bodies": 1001,
    "dynamicBodies": 1000,
    "status": "completed",
-   "buildMs": 57.460000000000946,
+   "buildMs": 58.09179200000108,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -1024,10 +1024,10 @@
    "maxRelativeContactDepth": 0.5818394384018557,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 1.4356097333333158,
-   "medianMs": 1.4369040999999925,
-   "p95Ms": 1.4876249999999345,
-   "p99Ms": 1.4876249999999345
+   "meanMs": 1.4890812416666903,
+   "medianMs": 1.483508299999994,
+   "p95Ms": 1.5611000000000785,
+   "p99Ms": 1.5611000000000785
   },
   {
    "scene": "pile-1k",
@@ -1037,7 +1037,7 @@
    "bodies": 1001,
    "dynamicBodies": 1000,
    "status": "completed",
-   "buildMs": 16.790999999999258,
+   "buildMs": 12.499917000001005,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -1163,10 +1163,10 @@
    "maxRelativeContactDepth": 0.5818394384018557,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 1.4417493083333435,
-   "medianMs": 1.4372459000000162,
-   "p95Ms": 1.5344583000000056,
-   "p99Ms": 1.5344583000000056
+   "meanMs": 1.6729277750000013,
+   "medianMs": 1.5871832999999242,
+   "p95Ms": 2.465279200000077,
+   "p99Ms": 2.465279200000077
   },
   {
    "scene": "pile-1k",
@@ -1176,7 +1176,7 @@
    "bodies": 1001,
    "dynamicBodies": 1000,
    "status": "completed",
-   "buildMs": 5.739125000000058,
+   "buildMs": 3.7395829999986745,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -1279,10 +1279,10 @@
    "maxRelativeContactDepth": 0.38281960888913724,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 2.7848024166666923,
-   "medianMs": 2.7818084000002274,
-   "p95Ms": 3.1365083000000595,
-   "p99Ms": 3.1365083000000595
+   "meanMs": 2.947853475000041,
+   "medianMs": 2.9258874999999533,
+   "p95Ms": 3.4991167000000134,
+   "p99Ms": 3.4991167000000134
   },
   {
    "scene": "pile-1k",
@@ -1292,7 +1292,7 @@
    "bodies": 1001,
    "dynamicBodies": 1000,
    "status": "completed",
-   "buildMs": 3.7235839999993914,
+   "buildMs": 3.7271249999976135,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -1395,10 +1395,10 @@
    "maxRelativeContactDepth": 0.38281960888913724,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 2.8588562333333054,
-   "medianMs": 2.7351041999998413,
-   "p95Ms": 3.483941599999889,
-   "p99Ms": 3.483941599999889
+   "meanMs": 2.852781241666738,
+   "medianMs": 2.86452500000014,
+   "p95Ms": 3.3069500000001426,
+   "p99Ms": 3.3069500000001426
   },
   {
    "scene": "pile-1k",
@@ -1408,7 +1408,7 @@
    "bodies": 1001,
    "dynamicBodies": 1000,
    "status": "completed",
-   "buildMs": 56.94024999999965,
+   "buildMs": 57.87083399999756,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -1534,10 +1534,10 @@
    "maxRelativeContactDepth": 0.5818394384018557,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 1.3822677083333776,
-   "medianMs": 1.3643374999999651,
-   "p95Ms": 1.4651707999997599,
-   "p99Ms": 1.4651707999997599
+   "meanMs": 1.499955916666689,
+   "medianMs": 1.5040458999999828,
+   "p95Ms": 1.5993624999999156,
+   "p99Ms": 1.5993624999999156
   },
   {
    "scene": "ring-9k",
@@ -1547,7 +1547,7 @@
    "bodies": 9132,
    "dynamicBodies": 9131,
    "status": "completed",
-   "buildMs": 31.162875000001804,
+   "buildMs": 33.315583999999944,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -1647,10 +1647,10 @@
    "maxRelativeContactDepth": 2.5649991266513803,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 59.54726354166666,
-   "medianMs": 57.19442080000008,
-   "p95Ms": 70.37512080000015,
-   "p99Ms": 70.37512080000015
+   "meanMs": 67.32032362499994,
+   "medianMs": 64.43474169999972,
+   "p95Ms": 84.00514999999977,
+   "p99Ms": 84.00514999999977
   },
   {
    "scene": "ring-9k",
@@ -1660,7 +1660,7 @@
    "bodies": 9132,
    "dynamicBodies": 9131,
    "status": "completed",
-   "buildMs": 201.24587499999325,
+   "buildMs": 276.8533749999915,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -1783,10 +1783,10 @@
    "maxRelativeContactDepth": 1.9228116363401782,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 2.032532999999724,
-   "medianMs": 1.8218874999991386,
-   "p95Ms": 3.244024999999965,
-   "p99Ms": 3.244024999999965
+   "meanMs": 2.119334725000105,
+   "medianMs": 1.9029083000001266,
+   "p95Ms": 3.305054099998961,
+   "p99Ms": 3.305054099998961
   },
   {
    "scene": "ring-9k",
@@ -1796,7 +1796,7 @@
    "bodies": 9132,
    "dynamicBodies": 9131,
    "status": "completed",
-   "buildMs": 154.33604199999536,
+   "buildMs": 154.0612919999985,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -1919,10 +1919,10 @@
    "maxRelativeContactDepth": 1.9228116363401782,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 2.2467235999999198,
-   "medianMs": 2.097966599999927,
-   "p95Ms": 3.1557500000009897,
-   "p99Ms": 3.1557500000009897
+   "meanMs": 2.009013549999751,
+   "medianMs": 1.8053750000006403,
+   "p95Ms": 3.1646166000005906,
+   "p99Ms": 3.1646166000005906
   },
   {
    "scene": "ring-9k",
@@ -1932,7 +1932,7 @@
    "bodies": 9132,
    "dynamicBodies": 9131,
    "status": "completed",
-   "buildMs": 32.75762499999837,
+   "buildMs": 36.429917000001296,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -2032,10 +2032,10 @@
    "maxRelativeContactDepth": 2.5649991266513803,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 70.05933367500013,
-   "medianMs": 66.9246374999988,
-   "p95Ms": 86.21652089999989,
-   "p99Ms": 86.21652089999989
+   "meanMs": 61.372760075000045,
+   "medianMs": 59.109625000000236,
+   "p95Ms": 71.4106375000003,
+   "p99Ms": 71.4106375000003
   },
   {
    "scene": "ring-9k",
@@ -2045,7 +2045,7 @@
    "bodies": 9132,
    "dynamicBodies": 9131,
    "status": "completed",
-   "buildMs": 38.336542000004556,
+   "buildMs": 119.93745800000033,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -2145,10 +2145,10 @@
    "maxRelativeContactDepth": 2.5649991266513803,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 112.0134999916668,
-   "medianMs": 71.49998749999796,
-   "p95Ms": 178.91319579999836,
-   "p99Ms": 178.91319579999836
+   "meanMs": 98.76712361666675,
+   "medianMs": 82.59103339999857,
+   "p95Ms": 208.54515410000167,
+   "p99Ms": 208.54515410000167
   },
   {
    "scene": "ring-9k",
@@ -2158,7 +2158,7 @@
    "bodies": 9132,
    "dynamicBodies": 9131,
    "status": "completed",
-   "buildMs": 194.1045420000155,
+   "buildMs": 208.27733400001307,
    "completedSteps": 180,
    "sampleSteps": [
     10,
@@ -2281,10 +2281,10 @@
    "maxRelativeContactDepth": 1.9228116363401782,
    "contactTargetMet": false,
    "measuredContactTargetMet": false,
-   "meanMs": 2.0120621500005655,
-   "medianMs": 1.7847083000000565,
-   "p95Ms": 3.210649999999441,
-   "p99Ms": 3.210649999999441
+   "meanMs": 2.644223958333896,
+   "medianMs": 2.117945900000632,
+   "p95Ms": 5.988058299999102,
+   "p99Ms": 5.988058299999102
   }
  ],
  "timing": "Completed batches; samples are batch wall time / steps, quantiles are batch-average quantiles, mean is step-weighted; no rendering",
@@ -2307,12 +2307,12 @@
   "runtime": "v25.2.1",
   "backend": "Node + Dawn; no browser/rendering",
   "processMemory": {
-   "rss": 882393088,
-   "heapTotal": 204029952,
-   "heapUsed": 93005280,
-   "external": 340196790,
-   "arrayBuffers": 14835327,
-   "maxRssKiB": 863888,
+   "rss": 904429568,
+   "heapTotal": 204816384,
+   "heapUsed": 111664008,
+   "external": 334498422,
+   "arrayBuffers": 9136959,
+   "maxRssKiB": 883968,
    "scope": "Process high-water RSS and final JS/external memory; includes harness and all selected engines, not GPU allocation or per-engine peak"
   },
   "os": "darwin 25.6.0",
@@ -2323,12 +2323,12 @@
   },
   "maxBufferSize": 4294967295,
   "maxStorageBufferBindingSize": 4294967292,
-  "gitHead": "eccd0fe336243b6fdedb0698910c98e733bf465c",
+  "gitHead": "8064026e012defc5eea9c50950c1b3de1f8fcce7",
   "dirty": false,
   "gitProvenance": "git"
  },
  "trimmed": {
   "note": "Scene manifests replaced by their hashes; per-step samplesMs and qualitySamples dropped. Regenerate with the command in docs/RAPIER_COMPARISON.md.",
-  "fullReportSha256": "fb3c5d78f823b2e49c5eb33d00bd55a3983e08e7f4fc0077a811d925e8fc140b"
+  "fullReportSha256": "1c27b7650151ce6ac27f01c0dfce60d28d0d077b5b7c4eef441d28cbcbd8e5f7"
  }
 }
