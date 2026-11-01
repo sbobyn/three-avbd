@@ -857,6 +857,7 @@ export class World {
   /** @internal Body.set / setFixed: merge masked assignments for the next flush. */
   write(body: Body, patch: BodyPatch, fixed = false): void {
     if (!body.alive) return;
+    if (this.sliding.has(body)) patch = { velocity: [0, 0, 0], angularVelocity: [0, 0, 0], ...patch };
     this.moves.delete(body);
     this.sliding.delete(body);
     body.target = null;
