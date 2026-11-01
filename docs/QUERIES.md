@@ -107,3 +107,59 @@ static hit and creates no physics body:
 ```sh
 node --experimental-transform-types examples/static-projectile.ts
 ```
+
+## Capsule queries
+
+`overlapCapsule({ start, end, radius }, options)` queries the entire capsule,
+including its cylindrical interior. Endpoints are the two cap centers in world
+space; the full upright height is `length(end - start) + 2 * radius`. The segment
+can have any orientation. `distance` is the unsigned closest segment-to-triangle
+distance; `point` is on the triangle and `normal` points toward the segment
+(winding normal at zero separation). Result caps, sorting, completeness, filters,
+handles and surface-only semantics match `overlapSphere`. Equal endpoints delegate
+to `overlapSphere` exactly.
+
+`sweepCapsule({ start, end, radius, translation }, options)` translates both
+endpoints without rotation. It returns the existing hit/miss shapes, or
+`{ status: 'indeterminate', fraction }`. **Indeterminate is not a miss**: the
+nearest result could not be established within the numerical/work budget.
+`fraction` is the start of an unresolved interval, not a contact time or a safe
+movement recommendation. An earlier unresolved candidate takes precedence over
+a known later hit. Equal endpoints delegate to `sweepSphere` exactly, retaining
+its closed-form behavior and unchanged result contract.
+
+General capsule sweeps use segment/triangle feature distance and conservative
+advancement: translating by fraction `dt` can reduce distance by at most
+`length(translation) * dt`. Each advance takes 90% of the separation bound;
+there is no endpoint sampling or chain of spheres. Contact accepts twice the
+length tolerance described above. This can report contact slightly before the
+mathematical surface; the reported gap is within that tolerance. Overlap accepts
+one tolerance, matching sphere overlap. Start touching uses the sweep tolerance.
+`maxIterations` defaults to 256 distance evaluations **per candidate triangle**
+and accepts integers 1–4096. Exhaustion, numerical stagnation or nonfinite
+calculation returns indeterminate. Difficult grazing motion can exhaust even the
+larger budget. Ordinary wall, step-nose, ceiling and corner fixtures converge at
+the default budget. Total work also depends on candidate triangles; result caps
+bound overlap storage, not traversal work.
+
+Broadphase uses a sphere enclosing the whole segment, enlarged by radius and
+tolerance, so long capsules may visit more triangles. The narrowphase enumerates
+endpoint/face, segment/edge and segment/face intersection features. Randomized
+BVH/brute-force tests check traversal only; separate analytic fixtures check math.
+Extreme coordinates can exceed floating-point intermediate range: overlaps throw
+when a nonfinite distance is detected; sweeps return indeterminate. Keep geometry
+near the origin and above numerical tolerance.
+
+```ts
+const capsule = { start: [0, .3, 0], end: [0, 1.5, 0], radius: .3 }; // height 1.8
+const clearance = scene.overlapCapsule(capsule);
+const motion = scene.sweepCapsule({ ...capsule, translation: [4, 0, 0] });
+if (motion.status === 'indeterminate') {
+  // Resolve conservatively in application policy; do not move as though clear.
+}
+```
+
+Meshes remain immutable snapshots placed at `addMesh` time. Prescribed platform
+pose updates are deferred to a separate slice defining BVH refit, scene revision
+and tick/temporal semantics. This API makes no moving-target CCD claim and adds no
+character controller, GPU capsule body, rotational sweep or solver integration.
