@@ -115,7 +115,7 @@ including its cylindrical interior. Endpoints are the two cap centers in world
 space; the full upright height is `length(end - start) + 2 * radius`. The segment
 can have any orientation. `distance` is the unsigned closest segment-to-triangle
 distance; `point` is on the triangle and `normal` points toward the segment
-(winding normal at zero separation). Result caps, sorting, completeness, filters,
+(winding normal within numerical tolerance). Result caps, sorting, completeness, filters,
 handles and surface-only semantics match `overlapSphere`. Equal endpoints delegate
 to `overlapSphere` exactly.
 
@@ -124,21 +124,24 @@ endpoints without rotation. It returns the existing hit/miss shapes, or
 `{ status: 'indeterminate', fraction }`. **Indeterminate is not a miss**: the
 nearest result could not be established within the numerical/work budget.
 `fraction` is the start of an unresolved interval, not a contact time or a safe
-movement recommendation. An earlier unresolved candidate takes precedence over
-a known later hit. Equal endpoints delegate to `sweepSphere` exactly, retaining
+movement recommendation. An unresolved candidate that could still contact before a known hit takes
+precedence. Equal endpoints delegate to `sweepSphere` exactly, retaining
 its closed-form behavior and unchanged result contract.
 
 General capsule sweeps use segment/triangle feature distance and conservative
-advancement: translating by fraction `dt` can reduce distance by at most
-`length(translation) * dt`. Each advance takes 90% of the separation bound;
+advancement: the closest-point normal defines a separating support plane for the
+convex segment/triangle pair. Its closing speed bounds how soon contact is possible;
+non-closing motion cannot reach the triangle. Each advance takes 90% of that bound;
 there is no endpoint sampling or chain of spheres. Contact accepts twice the
 length tolerance described above. This can report contact slightly before the
 mathematical surface; the reported gap is within that tolerance. Overlap accepts
 one tolerance, matching sphere overlap. Start touching uses the sweep tolerance.
+Radius-zero sweep normals use the winding normal near contact and are not flipped
+against motion, matching sphere sweeps.
 `maxIterations` defaults to 256 distance evaluations **per candidate triangle**
 and accepts integers 1–4096. Exhaustion, numerical stagnation or nonfinite
 calculation returns indeterminate. Difficult grazing motion can exhaust even the
-larger budget. Ordinary wall, step-nose, ceiling and corner fixtures converge at
+larger budget. Wall, shallow-floor-approach, step-nose, ceiling and corner fixtures converge at
 the default budget. Total work also depends on candidate triangles; result caps
 bound overlap storage, not traversal work.
 

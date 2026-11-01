@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { StaticQueryScene, boxMesh, type CapsuleSweepResult } from '../src/lib/queries.ts';
 import { capsuleContact } from '../src/queries/capsule.ts';
-import type { Triangle, Vec3 } from '../src/queries/geometry.ts';
+import { tolerance, type Triangle, type Vec3 } from '../src/queries/geometry.ts';
 const near = (a: number, b: number, e = 1e-7) => assert.ok(Math.abs(a - b) <= e, `${a} != ${b}`);
 const tri: Triangle = [[0, 0, 0], [4, 0, 0], [0, 4, 0]];
 const sceneFor = (t: Triangle) => { const s = new StaticQueryScene(); s.addMesh({ positions: t.flat() }); return s; };
@@ -54,7 +54,7 @@ test('edge and vertex sweeps with segment interior, grazing and near parallel', 
   hit(s.sweepCapsule({ start: [-2, -2, -3], end: [-2, -2, 3], radius: Math.SQRT2, translation: [2, 2, 0] }), .5);
   // Tangent vertex encounter may need the explicit larger bounded budget.
   const grazing = s.sweepCapsule({ start: [-2, -.5, -1], end: [-2, -.5, 1], radius: .5, translation: [4, 0, 0] }, { maxIterations: 4096 });
-  assert.notEqual(grazing.status, 'miss');
+  assert.equal(grazing.status, 'hit');
   assert.equal(s.sweepCapsule({ start: [.5, .5, .3], end: [2, .5, .3 + 1e-12], radius: .2, translation: [1, 0, -1e-12] }).status, 'miss');
 });
 
@@ -129,10 +129,25 @@ test('unresolved candidates cannot be hidden by known later hits; extreme arithm
   hit(s.sweepCapsule({ start: [-2, -1, 0], end: [-2, 1, 0], radius: .3, translation: [4, 0, 0] }, { maxIterations: 1 }), 0);
   const grazingScene = sceneFor(tri);
   grazingScene.addMesh({ positions: [1, -10, -10, 1, 10, -10, 1, 0, 10] });
-  const uncertain = grazingScene.sweepCapsule({ start: [-2, -.5, -1], end: [-2, -.5, 1], radius: .5, translation: [4, 0, 0] }, { maxIterations: 32 });
+  const uncertain = grazingScene.sweepCapsule({ start: [-2, -.5, -1], end: [-2, -.5, 1], radius: .5, translation: [4, 0, 0] }, { maxIterations: 16 });
   assert.equal(uncertain.status, 'indeterminate');
   if (uncertain.status === 'indeterminate') assert.ok(uncertain.fraction < .625);
   const huge = sceneFor(tri), c = { start: [-1e160, 1, 0], end: [1e160, 1, 0], radius: 0 };
   assert.throws(() => huge.overlapCapsule(c), /numeric range/);
   assert.equal(huge.sweepCapsule({ ...c, translation: [0, 0, 1] }).status, 'indeterminate');
+});
+
+
+test('shallow floor approaches resolve at the default budget', () => {
+  const floor: Triangle = [[-10000, 0, -10000], [0, 0, 10000], [10000, 0, -10000]];
+  const s = sceneFor(floor);
+  for (const degrees of [1, .1]) {
+    const translation = [2 / Math.tan(degrees * Math.PI / 180), -2, 0];
+    const result = s.sweepCapsule({ start: [0, 1.3, 0], end: [0, 2.5, 0], radius: .3, translation });
+    assert.equal(result.status, 'hit');
+    if (result.status !== 'hit') throw new Error('expected shallow approach hit');
+    // The floor is large: compare spatial gap to the documented scale-dependent band.
+    const gap = 1 - 2 * result.hit.fraction;
+    assert.ok(gap >= 0 && gap <= 2 * tolerance(floor, .3));
+  }
 });

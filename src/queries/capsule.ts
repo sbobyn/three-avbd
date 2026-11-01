@@ -54,7 +54,10 @@ export function sweepCapsuleTriangle(start: Vec3, end: Vec3, radius: number, tra
     if (!Number.isFinite(hit.distance) || !hit.normal.every(Number.isFinite)) return { status: 'indeterminate', fraction };
     if (hit.distance <= radius + 2 * epsilon) return { status: 'hit', fraction, point: hit.point, normal: hit.normal, startedOverlapping: fraction === 0 };
     if (speed === 0) return { status: 'miss' };
-    const step = (hit.distance - radius - epsilon) / speed;
+    // Closest-point normal defines a separating support plane for this convex pair.
+    const closing = -dot(translation, hit.normal);
+    if (!(closing > 0)) return { status: 'miss' };
+    const step = (hit.distance - radius - epsilon) / Math.min(speed, closing);
     if (step > 1 - fraction) return { status: 'miss' };
     const next = fraction + .9 * step;
     if (!(next > fraction)) return { status: 'indeterminate', fraction };
