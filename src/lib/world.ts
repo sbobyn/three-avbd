@@ -1360,7 +1360,6 @@ export class World {
     this.readingSlots = bodies ? new Set(bodies.map((b) => b.index)) : null;
     this.readingWrites = writes;
     const step = this.readingStep = this.steps;
-    const identities = this.retiredBodies.snapshot(this.bodies);
     // Joints whose state changes by itself (they break, they bend), or that were asked for
     const watched = this.jointsWanted || [...this.joints].some((j) => j.breakable || j.yieldForce < Infinity);
     this.jointsWanted = false;
@@ -1368,6 +1367,7 @@ export class World {
     const placed = this.placements;
     const watch = this.contactWatch;
     const retired = this.retiredWatch;
+    const identities = watch || retired ? this.retiredBodies.snapshot(this.bodies) : null;
     this.reading = (async () => {
       const [, joints, before, now] = await Promise.all([
         this.readBodies(bodies, writes),
@@ -1412,7 +1412,7 @@ export class World {
         this.droppedEvents += contacts.dropped;
         const events: ContactEvent[] = [];
         for (const e of orderedEvents(contacts.events)) {
-          const a = identities.get(e.a), b = identities.get(e.b);
+          const a = identities?.get(e.a), b = identities?.get(e.b);
           if (!a || !b) { this.droppedEvents++; continue; }
           events.push({ type: e.kind === BEGIN ? 'begin' : 'end', a, b, point: e.point, normal: e.normal, impulse: e.impulse, step: e.step });
         }
