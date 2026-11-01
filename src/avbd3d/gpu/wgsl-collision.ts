@@ -353,6 +353,8 @@ fn hashInsert(@builtin(global_invocation_id) gid: vec3u) {
   let m = gid.x;
   if (m >= atomicLoad(&counters[C_PREV_MANIFOLDS])) { return; }
   let ids = prevManifolds[m].ids;
+  // Rewritten slots have no contact history, even at exactly the same pose.
+  if (bodies[ids.x].initialPos.w != 0.0 || bodies[ids.y].initialPos.w != 0.0) { return; }
   var h = pairHash(ids.x, ids.y) & params.hashMask;
   var value = m + 1u;
   for (var probe = 0u; probe <= params.hashMask; probe++) {

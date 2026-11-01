@@ -6,6 +6,7 @@ import { SdfSpatialBroadphase, sdfBroadphaseOptions, type SdfBroadphaseOptions }
 import { SdfNarrowphasePass } from './sdf-pass.ts';
 import type { GpuSolver3D, GpuCollisionBackend3D, GpuCollisionContext3D } from './solver.ts';
 import { sdfPrepareWGSL, sdfExportSource, sdfFilterWGSL, sdfEventsSource } from './wgsl-sdf-bridge.ts';
+import { BindGroupCache } from './bind-group-cache.ts';
 
 import { Raycaster, type Ray } from '../../lib/raycast.ts';
 import { sdfRaycastWGSL, sdfRayLipschitz } from './sdf-raycast.ts';
@@ -41,6 +42,8 @@ export class SdfCollisionBridge implements GpuCollisionBackend3D {
   private readonly preparePipeline: GPUComputePipeline;
   private readonly exportPipeline: GPUComputePipeline;
   private readonly filterPipeline: GPUComputePipeline;
+  /** The per-step groups (filter, export, events), by the buffers they bind: those ping-pong. */
+  private readonly groups: BindGroupCache;
   /** Generate spatial candidates and remap pair history entirely on the GPU. */
   static async createAutomatic(solver: GpuSolver3D, bodies: readonly SdfBridgeBody[], params: Partial<CollisionParams> = {}, options: SdfBroadphaseOptions = {}): Promise<SdfCollisionBridge> {
     if(solver.isDestroyed) throw new Error('SDF solver was destroyed');
@@ -86,6 +89,7 @@ export class SdfCollisionBridge implements GpuCollisionBackend3D {
     this.bindings=bodies.map(b=>({...b,rotation:b.rotation?[...b.rotation] as [number,number,number,number]:undefined}));this.spatial=spatial;this.solver=solver;this.sdf=sdf;this.preparePipeline=preparePipeline;this.exportPipeline=exportPipeline;this.filterPipeline=filterPipeline;
     this.params=params;this.eventPipeline=eventPipeline;
     const d=solver.device;
+    this.groups=new BindGroupCache(d);
     try {
       this.config=d.createBuffer({size:bodies.length*32,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST}); this.buffers.push(this.config);
       this.uniform=d.createBuffer({size:32,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST}); this.buffers.push(this.uniform);
@@ -106,7 +110,7 @@ export class SdfCollisionBridge implements GpuCollisionBackend3D {
     } catch(error) {for(const b of this.buffers)b.destroy();throw error;}
   }
   private group(pipeline:GPUComputePipeline,buffers:GPUBuffer[]): GPUBindGroup {
-    return this.solver.device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:buffers.map((buffer,binding)=>({binding,resource:{buffer}}))});
+    return this.groups.get(pipeline,()=>pipeline.getBindGroupLayout(0),buffers);
   }
   /** Reorder/remove candidates without losing identities. New fields/slot occupants need new keys.
    * Capacity is fixed at construction; recreate the bridge to grow it or replace fields. */
@@ -218,6 +222,6 @@ export class SdfCollisionBridge implements GpuCollisionBackend3D {
   readBroadphaseStats() {if(!this.spatial)throw new Error('Explicit candidates have no spatial grid');return this.spatial.readStats();}
   destroy(): void {
     if(this.disposed)return;
-    this.disposed=true;this.spatial?.destroy();this.sdf.destroy();for(const buffer of this.buffers)buffer.destroy();
+    this.disposed=true;this.groups.clear();this.spatial?.destroy();this.sdf.destroy();for(const buffer of this.buffers)buffer.destroy();
   }
 }
