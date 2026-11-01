@@ -109,16 +109,22 @@ surfaces, with at most 256 rays per call. Field rotation maps into the body prin
 - A handle's `index` is its slot in the GPU buffer, for custom shaders. It's stable for the
   body's life (bodies are added at runtime, into a world that starts empty, so the solver's
   spatial reordering of an initial scene never applies).
-- `body.set({ position?, rotation?, velocity?, angularVelocity? })` (what's left out keeps its
-  value as of the last readback), `body.setFixed(fixed)` (both through `rewriteBodies`), and
-  `body.remove()` (its joints go, it's parked far off, and its slot is reused). All of these are
-  batched into the next step.
-- Kinematic bodies (0.2): `body.moveTo(position, rotation?)` on a fixed body slides it to the
-  pose over the next update's steps, pushing and carrying what it touches (platforms, doors,
-  hands); a fixed body given a velocity with `set` keeps moving (a conveyor). In the solver a
-  fixed body with a velocity is kinematic: it advances by it at the start of each step from its
-  starting pose, so contacts see it slide (teleported between steps, friction never saw it
-  move and nothing was carried).
+- `body.set({ position?, rotation?, velocity?, angularVelocity? })` copies and validates the
+  supplied fields (finite vectors; nonzero quaternions are normalized). Empty input is a no-op.
+  Only supplied fields change; contacts start afresh. Migration: omitted fields now keep the
+  body's current GPU state; pass every field to reset. Getters expose the last observation for
+  each field, or its newer explicit assignment; a late read cannot erase a later assignment.
+  `body.setFixed(fixed)` preserves the current GPU pose, changes mass/inertia and zeros velocity.
+  `body.remove()` removes its joints, parks it far away and releases its slot. Absolute changes
+  are batched into the next step or explicit read/raycast flush. A step flushes absolute fields,
+  consumes movement targets, then applies impulses and persistent forces before solving.
+- Kinematic bodies: `body.moveTo(position, rotation?)` on a fixed body slides from its actual
+  GPU pose over the next update's steps (one step for a bare `step`), pushing and carrying what
+  it touches. An omitted rotation keeps its GPU orientation. Reads and raycasts never consume a
+  pending target. Retargeting starts at the current pose; arrival snaps the pose and zeros
+  velocity after the final movement step. Dynamic `moveTo` sets the supplied pose fields instead.
+  A fixed body given a velocity with `set` keeps moving (a conveyor). Only active move commands
+  use the bounded command compute pass; worlds without commands dispatch no extra pass.
 - Collision groups (0.2): `group` and `collidesWith` bitmasks (32 groups) on a body, or
   `body.setCollisionGroups(group, collidesWith)` later; two bodies collide when each is in a group
   the other collides with (default: group 1, colliding with all). The broadphase reads them from a

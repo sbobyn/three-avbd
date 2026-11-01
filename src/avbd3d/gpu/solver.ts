@@ -11,6 +11,7 @@
 // the CPU owns: body shapes (broadphase configuration), joint endpoints and no-collide pairs.
 
 import { makeArgsWGSL, ARGS_WORDS, BIG, COLOR_WG, C_CLASHES, C_CONTACTS, C_NUM_COLORS, C_OVERFLOW, C_PAIRS, COUNTER_WORDS, IA_COLOR, IA_CONSTRAINTS, IA_CONTACTS, IA_PAIRS, IA_PREV, MAX_COLORS, NO_COLOR, PASS_STRIDE, T_NONE, WORKGROUP_SIZE } from '../../avbd2d/gpu/layout.ts';
+import type { BodyField } from '../../lib/body-commands.ts';
 import { PrefixScan } from '../../avbd2d/gpu/scan.ts';
 import { type GpuCounters, PHASES, type StepProfile } from '../../avbd2d/gpu/layout.ts';
 import { makeTopologyWGSL } from '../../avbd2d/gpu/wgsl-topology.ts';
@@ -887,6 +888,33 @@ export class GpuSolver3D {
       this.bodies[first + k] = info;
     });
     this.device.queue.writeBuffer(this.bodyBuffer, first * BODY_FLOATS * 4, f, 0, bodies.length * BODY_FLOATS);
+  }
+
+  /** Masked public-body command. Preserve all unrelated lanes and the existing hull slot. */
+  patchBody(index: number, fields: ReadonlySet<BodyField>, body: Rigid, fixed = false, marker = true): void {
+    const f = new Float32Array(BODY_FLOATS);
+    const info = this.pack(body, f, 0, this.bodies[index]?.hull);
+    const write = (offset: number, count: number) => this.device.queue.writeBuffer(this.bodyBuffer, (index * BODY_FLOATS + offset) * 4, f, offset, count);
+    if (fields.has('position')) {
+      for (const offset of [B_POS, B_INITIAL_POS, B_INERTIAL_POS]) {
+        f.set(body.positionLin, offset); write(offset, 3);
+      }
+    }
+    if (fields.has('rotation')) {
+      for (const offset of [B_ROT, B_INITIAL_ROT, B_INERTIAL_ROT]) {
+        f.set(body.positionAng, offset); write(offset, 4);
+      }
+    }
+    if (fields.has('velocity')) write(B_VEL, 3);
+    if (fields.has('angularVelocity')) write(B_ANGVEL, 3);
+    if (fixed) {
+      write(B_SIZE + 3, 1); write(B_MOMENT, 3);
+      this.bodies[index].dynamic = info.dynamic;
+      this.radiiDirty = true;
+      this.device.queue.writeBuffer(this.colorBuffer, index * 4, new Uint32Array([NO_COLOR]));
+    }
+    if (marker) write(B_INITIAL_POS + 3, 1);
+    this.manifoldsValid = false;
   }
 
   /**
