@@ -150,12 +150,20 @@ surfaces, with at most 256 rays per call. Field rotation maps into the body prin
   `world.track(bodies)` (null: all) points `readbackEvery` at a subset,
   the player and what's near it, say.
 
+`read()` returns `{ step }`, the submitted simulation step at its copy boundary (not a
+capture of subsequent commands). In-flight reads coalesce only at the same submitted step
+and when their bodies/writes cover the request. Newer per-field assignments survive late reads.
+All World methods accepting body handles reject handles from another World.
+
 ### Queries (0.2)
 
 - `await world.raycast(origin, direction, { maxDistance?, ignore? })` gives the first body along
   a ray and where: `{ body, distance, point, normal }`, or null. `world.raycasts(rays)` casts many
   at once (up to 65,535). Against boxes, spheres and hulls (as they collide), where the GPU has
   them after the steps taken so far; the answer comes back a frame or two later, like a readback.
+- Ray results retain the queried body handle even if its slot is reused or the world is
+  destroyed while the query is pending; they never resolve to its replacement. `ignore`
+  accepts only handles from this World. Reads and rays do not consume pending `moveTo` targets.
 - On the GPU (`src/lib/raycast.ts`): every ray against every body, the nearest hit per ray by an
   atomic minimum on the distance's bits, ties to the lowest body index, then the normal. Brute
   force, so the cost grows with rays × bodies; a pass through the broadphase grid can come later.
@@ -174,7 +182,21 @@ surfaces, with at most 256 rays per call. Field rotation maps into the body prin
   begin or end is missed between readbacks. The events come back with the next readback
   (`read()` or `readbackEvery`), in step order. `maxContactPairs` (default 8192) sizes the sets
   and `maxContactEvents` (4096) the events kept between readbacks; `world.droppedContactEvents`
-  counts any lost.
+  counts event-buffer loss and events suppressed because an identity is no longer available.
+- `body.id` is a readonly lifetime identity, unique within its World, monotonically allocated
+  from 1 through `0x7fffffff`, never reused; exhaustion throws instead of wrapping. Bit 31 of
+  the contact watch word is reserved for reporting. `body.index` remains the reusable GPU slot.
+  Pair sets and event payloads use lifetime IDs, including non-reporting partners. Replacing
+  a body against the same partner produces end then begin in that step. Event ordering is by
+  step, with ends before begins; order within either kind is GPU-dependent. Delivery captures
+  the event handles and listeners before callbacks run, so listener/body mutations affect
+  subsequent batches.
+- Removed identities are retained for up to eight generations per slot. A read drains only
+  identities removed before its submitted step: the next step must first compare the previous
+  active pair table and emit ends. A read without that intervening step cannot drain them.
+  When churn exceeds the bound, unverifiable events are suppressed and counted individually
+  in `droppedContactEvents`; no event is attached to a replacement. This is bounded reporting,
+  not lossless event history. Worlds with no reporting bodies add no contact readback.
 - Contact set overflow: more pairs touching reporting bodies at once than a set holds (about
   twice `maxContactPairs`) is counted in `world.contactSetOverflows` (readbacks that found a set
   had overflowed since the one before). Events in such a window are unreliable: a pair left out
