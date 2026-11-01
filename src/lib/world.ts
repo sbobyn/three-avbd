@@ -8,6 +8,7 @@ import type { SdfCollisionBridge } from '../avbd3d/gpu/sdf-bridge.ts';
 
 import * as THREE from 'three/webgpu';
 import { bodyFields, copyBodyPatch, observedField, assignBodyPatch, type BodyField, type BodyPatch } from './body-commands.ts';
+import { deviceCapabilities, worldCapabilities, checkRequiredHulls, type WorldCapabilities } from './capabilities.ts';
 import { BodyMover } from '../avbd3d/gpu/body-mover.ts';
 import { B_ANGVEL, B_POS, B_ROT, B_VEL, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
 import { decodeJoint, type JointState } from '../avbd3d/gpu/joints.ts';
@@ -38,6 +39,8 @@ export interface WorldOptions {
   device?: GPUDevice;
   /** Room for this many bodies at once (removed bodies' slots are reused). */
   maxBodies: number;
+  /** Reject before World GPU allocations unless the supplied device supports true convex hull collisions. */
+  requireHulls?: boolean;
   /** m/s², y-up by default. */
   gravity?: Vec3;
   /** Seconds per step. */
@@ -652,6 +655,7 @@ export class World {
         get(object: object): { buffer?: GPUBuffer };
       };
       if (!backend.device) throw new Error('World.create: the renderer has no WebGPU device (WebGPU unavailable, or the WebGL fallback in use)');
+      checkRequiredHulls(deviceCapabilities(backend.device), options.requireHulls);
       // The attribute's buffer, made now on the renderer's device, so the solver writes the very
       // buffer Three.js draws from (it would otherwise be made at the first draw)
       const attribute = new THREE.StorageInstancedBufferAttribute(new Float32Array(options.maxBodies * BODY_FLOATS), 4);
@@ -661,7 +665,16 @@ export class World {
       return new World(backend.device, options, attribute, buffer);
     }
     if (!options.device) throw new Error('World.create: pass a renderer or a device');
+    checkRequiredHulls(deviceCapabilities(options.device), options.requireHulls);
     return new World(options.device, options, null, undefined);
+  }
+
+  /** Snapshot of the installed backend; old snapshots do not change after SDF/custom transitions.
+   * During asynchronous SDF preparation, this describes the previously installed backend.
+   * Advanced custom backends have unknown shape support. */
+  get capabilities(): Readonly<WorldCapabilities> {
+    const backend = this.solver.activeCollisionBackend;
+    return worldCapabilities(deviceCapabilities(this.device), backend ? backend === this.sdfBridge ? 'sdf' : 'custom' : 'standard', this.solver.hulls);
   }
 
   // --- Parameters ------------------------------------------------------------------------------
@@ -820,7 +833,9 @@ export class World {
     const c = rotate(q, shape.center);
     const position: Vec3 = [p[0] + c[0], p[1] + c[1], p[2] + c[2]];
     const rotation = multiply(q, shape.rotation);
-    return this.add('hull', shape.size, { ...options, position, rotation }, shape);
+    const body = this.add('hull', shape.size, { ...options, position, rotation }, shape);
+    if (body && this.capabilities.hullCollisions === 'box-fallback') this.warnOnce('hull-fallback', 'addHull: this GPUDevice supports only bounding-box hull collisions; use requireHulls: true to reject this fallback at World.create');
+    return body;
   }
 
   /** Whether hulls collide as hulls (the device allows a ninth storage buffer per shader stage). */

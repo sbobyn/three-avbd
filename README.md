@@ -104,7 +104,9 @@ await world.read();
 ```
 
 - **Bodies**: `addBox`, `addSphere`, `addHull({ points })` (convex hulls; pass the renderer
-  `requiredLimits: await recommendedLimits()` so they collide as hulls), with position, rotation,
+  `requiredLimits: await recommendedLimits()` so they collide as hulls;
+  use `World.create({ ..., requireHulls: true })` to reject unsupported devices and
+  `world.capabilities` to inspect the installed collision backend), with position, rotation,
   velocity, density, friction, `fixed`;
   `body.applyImpulse(J, point)`, `applyForce(F, point)` (every step until `clearForces()`),
   `applyTorque`, collision groups (`group`, `collidesWith`), `body.moveTo(position, rotation)` (a

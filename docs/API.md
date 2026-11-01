@@ -333,3 +333,56 @@ All World methods accepting body handles reject handles from another World.
 - `pnpm build:lib` then `pnpm pack`: installed into a blank Vite project, it typechecks with
   full library checking on TypeScript 5.9 (with `@webgpu/types`) and 7, and builds. The first
   publish is `0.1.0`, with the README's section on using it.
+
+### Collision capability preflight
+
+`deviceCapabilities(device)` is a synchronous, allocation-free, frozen snapshot of
+**negotiated GPUDevice limits**. `standardHullCollisions` means the standard
+narrowphase can use native convex hull SAT (nine storage buffers per shader stage).
+Adapter support alone is insufficient: request the limit when creating the device,
+or pass `requiredLimits: await recommendedLimits()` to Three's renderer constructor.
+World and its solver use the supplied device; neither requests nor upgrades it.
+
+```ts
+const world = await World.create({ device, maxBodies: 256, requireHulls: true });
+const capabilities = world.capabilities;
+// capabilities.backend === 'standard'; capabilities.hullCollisions === 'native'
+```
+
+`requireHulls: true` rejects unsupported standard hull collisions before World
+allocates solver buffers or renderer storage attributes. A renderer must first be
+initialized to discover its actual device, so renderer initialization may itself
+allocate resources. Caller devices and renderer resources remain caller-owned.
+Omitting the option (or using false) preserves legacy behavior: hulls collide as
+principal-frame bounding boxes on eight-buffer devices. The first successful
+`addHull` using that fallback warns once per World. Hull mass and visual geometry
+remain hull-derived; the warning concerns collision geometry.
+
+`world.capabilities` returns a new frozen snapshot of the **installed** backend.
+Re-read after enabling/disabling SDF; retained snapshots never change. While SDF
+setup is pending, it reports the previous installed backend (operations still obey
+SDF preparation guards). Failed setup retains the previous backend. The creation
+option checks initial standard support, and does not prohibit later backend switches.
+`standardHullCollisions` remains a device capability across those switches;
+`hullCollisions` describes actual backend semantics:
+
+| backend | hullCollisions | geometry |
+|---|---|---|
+| standard | native or box-fallback | Boxes, spheres and device-dependent convex hulls |
+| sdf | explicit-sdf-field | Analytic boxes/spheres; hull bodies need explicit SDF bindings |
+| custom | unknown | Advanced caller backend; shape support is not inferred |
+
+`sdfFields` means the experimental SDF collision backend is installed, not that
+native hull SAT is running. SDF fields replace collision geometry only; mass,
+inertia and meshes remain caller-owned. `boxes`/`spheres` report built-in support
+and are false (unverified) for custom backends. `capsules`, `compounds`, `sensors`
+remain false: there are no native body helpers/encodings for those features. An
+analytic capsule SDF field does not provide a native capsule body API.
+`hullsEnabled` retains its historical meaning (standard solver hull support), even
+while SDF is installed. Direct advanced backend installation is reflected as
+`custom`; capabilities do not certify arbitrary shaders or device health.
+
+A separate collider handle/view is deferred: hull poses already use principal
+mass frames, and SDF bindings have independent field frames and transactional
+refresh ownership. A useful view needs explicit resource/lifetime and geometry
+semantics across those paths. C1 leaves existing body layouts and shape codes intact.

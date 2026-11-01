@@ -462,6 +462,8 @@ export interface GpuCollisionContext3D {
 export class GpuSolver3D {
   readonly device: GPUDevice;
   private collisionBackend: GpuCollisionBackend3D | null = null;
+  /** Currently installed advanced backend, or null for the standard narrowphase. */
+  get activeCollisionBackend(): GpuCollisionBackend3D | null { return this.collisionBackend; }
   readonly params: GpuParams3D = gpuParams3D();
 
   bodyCount = 0;

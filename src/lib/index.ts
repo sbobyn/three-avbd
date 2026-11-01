@@ -9,3 +9,6 @@ export { convexHull, type HullShape } from '../avbd3d/shapes.ts';
 export type { BodyMeshOptions } from './mesh.ts';
 
 export type { SdfBroadphaseOptions } from '../avbd3d/gpu/sdf-broadphase.ts';
+
+export { deviceCapabilities } from './capabilities.ts';
+export type { DeviceCapabilities, WorldCapabilities } from './capabilities.ts';
