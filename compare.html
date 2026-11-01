@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rapier and three-avbd comparison</title>
+    <style>
+      :root { color-scheme: light dark; font: 15px/1.5 system-ui, sans-serif; }
+      body { max-width: 1100px; margin: 32px auto; padding: 0 20px; }
+      h1 { font-size: 24px; } label { display: inline-block; margin: 8px; }
+      button, input, select { font: inherit; padding: 6px; } input[type=number] { width: 70px; }
+      #output { overflow-x: auto; } table { border-collapse: collapse; width: 100%; }
+      th, td { padding: 8px; border-bottom: 1px solid #888; text-align: left; }
+      #status { margin: 20px 0; } a { color: inherit; }
+    </style>
+  </head>
+  <body>
+    <a href="/">Back to demo</a> · <a href="/compare-frame.html">Rendered workflow benchmark</a>
+    <h1>Rapier and three-avbd comparison</h1>
+    <p>Preliminary physics-only measurements on identical box and sphere scenes. Timing waits once per batch (use batch size 1 for serialized latency).
+      A separate replay checks every step and must reproduce the timed final state exactly.
+      The floor target is penetration ≤1% of each body's smallest dimension throughout the replay;
+      The contact target also checks box/box, sphere/box and sphere/sphere overlap using an independent candidate search. Neither establishes overall physical accuracy.</p>
+    <p>Keep this tab visible. Runs default to 60 lead-in steps and alternate engine order between repeats. Large cases may take minutes
+      and require substantial memory. Both default to four iterations; equal iteration counts represent different amounts of work.</p>
+    <label>Scene <select id="case"></select></label>
+    <label>Lead-in steps <input id="lead" type="number" min="0" value="60" /></label>
+    <label>Timestep (s) <input id="dt" type="number" min="0.000001" step="any" value="0.016666666666666666" /></label>
+    <label>Measured steps <input id="steps" type="number" min="1" value="120" /></label>
+    <label>Batch size <input id="batch" type="number" min="1" value="10" /></label>
+    <label>AVBD iterations <input id="avbd" type="number" min="1" value="4" /></label>
+    <label>Rapier iterations <input id="rapier" type="number" min="1" value="4" /></label>
+    <label>Repeats <input id="repeats" type="number" min="1" value="3" /></label>
+    <label><input id="ccd" type="checkbox" /> Enable Rapier CCD</label>
+    <label><input id="sleep" type="checkbox" /> Allow Rapier sleeping (AVBD has no sleeping)</label>
+    <label>Machine <input id="machine" placeholder="e.g. M4 Max" /></label>
+    <button id="run">Run comparison</button>
+    <button id="download" disabled>Download raw report</button>
+    <div id="status" role="status"></div>
+    <div id="output"></div>
+    <script type="module" src="/src/comparison/main.ts"></script>
+  </body>
+</html>

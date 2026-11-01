@@ -209,6 +209,7 @@ URL parameters: `?scene=Pyramid`, `&backend=gpu` or `cpu`, `&paused`.
 Benchmarks and studies, headless through Dawn (the `webgpu` package):
 
 ```bash
+pnpm compare:rapier # experimental Rapier/AVBD batched-throughput comparison (Node + Dawn)
 pnpm bench3d:gpu # 3D suite: the paper's large scenes and small ones (args: tiers or case names)
 pnpm bench2d:gpu # 2D GPU benchmark with per-phase timing
 pnpm bench2d     # 2D CPU scaling baseline
@@ -218,6 +219,10 @@ pnpm scaling2d   # box rain 10k-250k, writes docs/data/scaling2d-<adapter>.json
 
 `pnpm bench3d:gpu <tiers> --json <file> --machine <name>` writes a report for the results
 page (they live in `docs/data/bench3d/`). Keep a browser benchmark's tab visible while it runs.
+
+The experimental [Rapier comparison](docs/RAPIER_COMPARISON.md) also runs at `/compare.html`
+(`/compare-frame.html` for a rendered workflow). Its completed-batch timing is not a rendered FPS
+comparison, and the numbers in that document are historical (see its header).
 
 ## Layout
 
