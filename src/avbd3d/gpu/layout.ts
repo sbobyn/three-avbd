@@ -180,7 +180,7 @@ const NEAREST_FRACTION = ${NEAREST_FRACTION};
 struct Body {
   pos: vec4f,          // xyz, w: friction
   rot: vec4f,          // orientation quaternion (x, y, z, w)
-  initialPos: vec4f,   // pose at the start of the step (x-)
+  initialPos: vec4f,   // xyz: pose at the start of the step (x-); w: rewritten, discard contact history
   initialRot: vec4f,
   size: vec4f,         // full widths, w: mass (0 = static)
   moment: vec4f,       // principal moments, w: bounding radius

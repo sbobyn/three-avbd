@@ -3,6 +3,7 @@ import type { GpuCollisionContext3D } from './solver.ts';
 import type { SdfNarrowphasePass } from './sdf-pass.ts';
 import { checkSdfPointCapacity, sdfResultWords, SDF_MAX_POINTS } from './sdf-layout.ts';
 import { sdfBroadphaseSource } from './wgsl-sdf-broadphase.ts';
+import { BindGroupCache } from './bind-group-cache.ts';
 
 export interface SdfBroadphaseOptions {
   /** Grid cell width in world units; default is median field bounding diagonal. */
@@ -40,6 +41,8 @@ export class SdfSpatialBroadphase {
   private readonly size:ReturnType<typeof sdfBroadphaseOptions>;
   private readonly bodyCount:number;
   private disposed=false;
+  /** The step's group, by the buffers it binds (the narrowphase output ping-pongs). */
+  private readonly groups:BindGroupCache;
   static async create(device:GPUDevice,bodyCount:number,size:ReturnType<typeof sdfBroadphaseOptions>) {
     const module=device.createShaderModule({label:'sdf spatial broadphase',code:sdfBroadphaseSource(size.maxPoints)});
     const info=await module.getCompilationInfo(),errors=info.messages.filter(m=>m.type==='error');
@@ -52,7 +55,7 @@ export class SdfSpatialBroadphase {
     return new SdfSpatialBroadphase(device,bodyCount,size,layout,pipelines);
   }
   private constructor(device:GPUDevice,bodyCount:number,size:ReturnType<typeof sdfBroadphaseOptions>,layout:GPUBindGroupLayout,pipelines:GPUComputePipeline[]) {
-    this.device=device;this.bodyCount=bodyCount;this.size=size;this.layout=layout;this.pipelines=pipelines;
+    this.device=device;this.bodyCount=bodyCount;this.size=size;this.layout=layout;this.pipelines=pipelines;this.groups=new BindGroupCache(device);
     this.grid=device.createBuffer({label:'sdf spatial grid/cache',size:size.words*4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
     try {this.uniform=device.createBuffer({size:48,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});}
     catch(error){this.grid.destroy();throw error;}
@@ -71,8 +74,7 @@ export class SdfSpatialBroadphase {
     data.set([n,s.maxPairs,s.tableSize,s.cacheSize,s.tableSize,s.tableSize+n,s.tableSize+n+1,s.tableSize+n+4]);f.set([s.cellSize,margin],8);
     this.device.queue.writeBuffer(this.uniform,0,data);
     const buffers=[context.params,this.uniform,sdf.storage.bodies,this.grid,sdf.storage.pairs,sdf.storage.current,context.statics,context.joints,context.filters,context.counters];
-    const group=this.device.createBindGroup({layout:this.layout,entries:buffers.map((buffer,binding)=>({binding,resource:{buffer}}))});
-    pass.setBindGroup(0,group);
+    pass.setBindGroup(0,this.groups.get(this.layout,()=>this.layout,buffers));
     [Math.max(s.words,s.maxPairs),n,s.maxPairs,n].forEach((count,i)=>{pass.setPipeline(this.pipelines[i]);pass.dispatchWorkgroups(Math.ceil(count/64));});
   }
   /** Explicit diagnostic readback; never needed for stepping. */
@@ -85,5 +87,5 @@ export class SdfSpatialBroadphase {
       const data=new Uint32Array(read.getMappedRange());return {pairs:data[0],testedPairs:data[1],largeBodies:data[2],capacity:this.size.maxPairs,cellSize:this.size.cellSize};
     } finally {read.destroy();}
   }
-  destroy() {if(!this.disposed){this.disposed=true;this.grid.destroy();this.uniform.destroy();}}
+  destroy() {if(!this.disposed){this.disposed=true;this.groups.clear();this.grid.destroy();this.uniform.destroy();}}
 }

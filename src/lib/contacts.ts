@@ -141,6 +141,8 @@ export class ContactWatch {
   private readonly params: GPUBuffer;
   /** Slots per set (a power of two). */
   private readonly setSlots: number;
+  /** The pairs it was sized for (each set holds at least twice as many). */
+  readonly pairs: number;
   readonly capacity: number;
   private group: GPUBindGroup | null = null;
   private bound: GPUBuffer[] = [];
@@ -152,6 +154,7 @@ export class ContactWatch {
     this.device = device;
     this.bodies = bodies;
     this.capacity = capacity;
+    this.pairs = pairs;
     this.setSlots = 2 ** Math.ceil(Math.log2(Math.max(64, 2 * pairs)));
     const module = device.createShaderModule({ label: 'contact events', code: WGSL });
     const types: GPUBufferBindingType[] = ['read-only-storage', 'read-only-storage', 'read-only-storage', 'read-only-storage', 'read-only-storage', 'storage', 'storage', 'uniform'];
@@ -164,6 +167,12 @@ export class ContactWatch {
     this.table = device.createBuffer({ label: 'contact sets', size: (HEAD_WORDS + 4 * this.setSlots) * 4, usage: storage });
     this.events = device.createBuffer({ label: 'contact events', size: capacity * EVENT_VEC4S * 16, usage: storage });
     this.params = device.createBuffer({ label: 'contact params', size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  }
+
+  /** The most pairs a watch can be sized for whose sets fit in `bytes` (one binding). */
+  static maxPairs(bytes: number): number {
+    const slots = Math.floor((bytes / 4 - HEAD_WORDS) / 4);
+    return slots >= 64 ? 2 ** Math.floor(Math.log2(slots)) / 2 : 0;
   }
 
   /** Which bodies report their contacts. */
@@ -196,7 +205,11 @@ export class ContactWatch {
     d.queue.submit([encoder.finish()]);
   }
 
-  /** The events since the last read (and how many didn't fit), clearing them. */
+  /**
+   * The events since the last read (and how many didn't fit), clearing them. `full`: a step since
+   * the last read had more touching pairs than a set holds; those steps' events are unreliable
+   * (a pair left out of a set reads as beginning again, or as ending, at the next step).
+   */
   async read(): Promise<{ events: RawContactEvent[]; dropped: number; full: boolean }> {
     const d = this.device;
     const size = 16 + this.capacity * EVENT_VEC4S * 16;

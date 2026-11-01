@@ -18,6 +18,9 @@ import { Rigid } from '../src/avbd3d/ref/body.ts';
 import { sceneByName } from '../src/avbd3d/ref/scenes.ts';
 import { Solver } from '../src/avbd3d/ref/solver.ts';
 import { gpuTest } from './device.ts';
+import { SdfCollisionBridge } from '../src/avbd3d/gpu/sdf-bridge.ts';
+import { AnalyticField } from '../src/avbd3d/ref/sdf/shapes.ts';
+import { World } from '../src/lib/world.ts';
 
 const TRACE_3D = '498931f2a6fc470b3b7adfc03623adbba9286ae7b55a4724e61fc29e416460ce';
 const TRACE_3D_SPARSE = 'a2dfbef9e93ec1e7c3397054d73dc18a57e4868b635de467d14fa9347863d248';
@@ -289,3 +292,63 @@ gpuTest('2D step: same uploads, offsets and dispatches, from re-used buffers', a
   assert.equal(args.size, 1, 'every dynamic offset is passed in the same array');
   assert.equal(digest(logs), TRACE_2D, `2D trace ${digest(logs)}`);
 });
+
+/** createBindGroup calls on `device` while `run` runs. */
+function countBindGroups(device: GPUDevice, run: () => void): number {
+  const original = device.createBindGroup;
+  let made = 0;
+  device.createBindGroup = function (this: GPUDevice, descriptor: GPUBindGroupDescriptor) {
+    made++;
+    return original.call(this, descriptor);
+  };
+  try {
+    run();
+  } finally {
+    device.createBindGroup = original;
+  }
+  return made;
+}
+
+// The SDF bridge bound its filter, export and event groups anew every step (audit AC3); its
+// buffers ping-pong, so after a few warm-up steps every group it needs exists
+gpuTest('SDF steps make no bind groups once warm (automatic candidates, contact events)', async (device) => {
+  const world = await World.create({ device, maxBodies: 8 });
+  try {
+    world.addBox({ size: [8, 0.4, 8], position: [0, -0.2, 0], fixed: true });
+    world.addSphere({ radius: 0.4, position: [-1, 0.39, 0], reportContacts: true });
+    world.addSphere({ radius: 0.4, position: [1, 0.39, 0] });
+    await world.enableSdfCollisions([], { cacheSize: 1, randomSamples: 0 });
+    steps3D(world, 4);
+    assert.equal(countBindGroups(device, () => steps3D(world, 6)), 0, 'no bind groups per step');
+  } finally {
+    world.destroy();
+  }
+});
+
+gpuTest('SDF steps make no bind groups once warm (explicit candidates, event storage)', async (device) => {
+  const ref = new Solver();
+  ref.gravity = 0;
+  ref.iterations = 0;
+  new Rigid(ref, [1, 1, 1], 1, 0.6, [0.3, 0, 0]);
+  new Rigid(ref, [1, 1, 1], 1, 0.6, [0, 0, 0]);
+  const gpu = new GpuSolver3D(device, ref, { spatialSort: false });
+  const sphere = new AnalyticField({ kind: 'sphere', radius: 0.4 });
+  const bridge = await SdfCollisionBridge.create(gpu, [{ field: sphere }, { field: sphere }], [{ a: 1, b: 0, key: 1 }]);
+  try {
+    gpu.setCollisionBackend(bridge);
+    const step = () => {
+      gpu.step();
+      bridge.contactEventStorage();
+    };
+    for (let k = 0; k < 4; k++) step();
+    assert.equal(countBindGroups(device, () => { for (let k = 0; k < 6; k++) step(); }), 0, 'no bind groups per step');
+  } finally {
+    gpu.setCollisionBackend(null);
+    bridge.destroy();
+    gpu.destroy();
+  }
+});
+
+function steps3D(world: World, n: number): void {
+  for (let k = 0; k < n; k++) world.step();
+}

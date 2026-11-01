@@ -73,7 +73,12 @@ renderer.setAnimationLoop(() => {
   retain the last detecting step's broadphase results; contact counts describe the current step.
 - `params`: `gravity` (a vector, default `[0, -9.81, 0]`), `dt`, `iterations`, and the solver's stiffness
   terms (`alpha`, `betaLin`, `betaAng`, `gamma`), with the paper's defaults.
-- `destroy()` releases the GPU buffers.
+- `destroy()` releases the GPU buffers. After it, `step`, `update`, adding or removing bodies and
+  joints (also through retained `Body`/`Joint` handles), `read`, `readJoints` and `raycasts`
+  throw or reject with "World destroyed"; a read in flight at `destroy()` rejects without
+  applying anything. Calling `destroy()` again does nothing. Handle setters (`body.set`,
+  `applyImpulse`, ...) also throw before changing CPU-side state. Raycasts submitted before
+  destruction may still resolve with their captured inputs and body identity.
 
 ### Experimental SDF mode (0.4 release candidate; API may change)
 
@@ -132,7 +137,11 @@ surfaces, with at most 256 rays per call. Field rotation maps into the body prin
 - Tracked readback (0.2): `world.read(bodies)` copies only those bodies' records (160 bytes
   each; runs of neighbouring slots in one copy) into a small staging buffer, where a full read
   is 16 MB at 100k bodies. The rest keep their last readback: each body remembers when it was
-  last read, not the world. `world.track(bodies)` (null: all) points `readbackEvery` at a subset,
+  last read, not the world. One read runs at a time: a `read(bodies)` call while one is in
+  flight gets that read when it holds every body asked for as written by then; otherwise it
+  waits for it and then reads them itself, so after it resolves those bodies are read. (Before
+  the 2026-10-31 fix it returned the read in flight, which might not hold them.)
+  `world.track(bodies)` (null: all) points `readbackEvery` at a subset,
   the player and what's near it, say.
 
 ### Queries (0.2)
@@ -160,6 +169,15 @@ surfaces, with at most 256 rays per call. Field rotation maps into the body prin
   (`read()` or `readbackEvery`), in step order. `maxContactPairs` (default 8192) sizes the sets
   and `maxContactEvents` (4096) the events kept between readbacks; `world.droppedContactEvents`
   counts any lost.
+- Contact set overflow: more pairs touching reporting bodies at once than a set holds (about
+  twice `maxContactPairs`) is counted in `world.contactSetOverflows` (readbacks that found a set
+  had overflowed since the one before). Events in such a window are unreliable: a pair left out
+  of a set reads as beginning again, or as ending. The world then resizes the sets before the
+  next step, up to the solver's pair capacity (`solver.manifoldCapacity`, the most pairs a step
+  can hold) and the device's storage-binding limit; at that bound the overflow stays counted.
+  The resize is not lossless: the new sets start empty, so pairs already touching begin again
+  and a pair that stops touching at that step reports no end. Unread events of the replaced
+  sets are delivered with the next readback, before the new ones.
 
 ### Joints
 
@@ -250,7 +268,7 @@ surfaces, with at most 256 rays per call. Field rotation maps into the body prin
   mesh sets its own nodes on it). A colour per body: `bodyMesh.setColor(body, color)`.
 - Several `BodyMesh`es can share one world, for different materials per group of bodies.
 
-## Decisions to make now
+## Decisions made (historical)
 
 1. **Up axis: decided, y-up.** The GPU solver now has an `up` parameter, `[0, 1, 0]` by
    default, and gravity pulls against it (it used to act on z only). A solver seeded from the

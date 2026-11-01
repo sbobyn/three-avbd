@@ -295,7 +295,8 @@ fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
   let slow = length(vel.xyz) + length(angVel) * bodies[i].moment.w < REST_SPEED;
   let atRest = (params.flags & FLAG_START_AT_REST) != 0u && slow;
 
-  bodies[i].initialPos = pos;
+  // Collision has consumed the rewritten-slot flag.
+  bodies[i].initialPos = vec4f(pos.xyz, 0.0);
   bodies[i].initialRot = rot;
   if (dynamic && !atRest) {
     bodies[i].pos = vec4f(pos.xyz + vel.xyz * dt + params.up.xyz * (g * (w * dt * dt)), pos.w);
