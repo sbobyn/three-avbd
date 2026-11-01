@@ -152,3 +152,18 @@ gpuTest('observations: worlds without reporting bodies create no contact watch o
     assert.equal(world.droppedContactEvents, 0);
   } finally { world.destroy(); }
 });
+
+
+gpuTest('observations: ignoring a removed lifetime does not hide its replacement slot', async device => {
+  const world = await create(device);
+  try {
+    const old = box(world, 0);
+    world.step();
+    old.remove();
+    const replacement = box(world, 0);
+    assert.equal(replacement.index, old.index);
+    const hit = await world.raycast([-3, 0, 0], [1, 0, 0], { ignore: [old] });
+    assert.equal(hit?.body, replacement);
+    assert.equal(await world.raycast([-3, 0, 0], [1, 0, 0], { ignore: [replacement] }), null);
+  } finally { world.destroy(); }
+});

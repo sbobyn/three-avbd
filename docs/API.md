@@ -163,7 +163,7 @@ All World methods accepting body handles reject handles from another World.
   them after the steps taken so far; the answer comes back a frame or two later, like a readback.
 - Ray results retain the queried body handle even if its slot is reused or the world is
   destroyed while the query is pending; they never resolve to its replacement. `ignore`
-  accepts only handles from this World. Reads and rays do not consume pending `moveTo` targets.
+  accepts only handles from this World; removed handles do not exclude replacement bodies. Reads and rays do not consume pending `moveTo` targets.
 - On the GPU (`src/lib/raycast.ts`): every ray against every body, the nearest hit per ray by an
   atomic minimum on the distance's bits, ties to the lowest body index, then the normal. Brute
   force, so the cost grows with rays × bodies; a pass through the broadphase grid can come later.
