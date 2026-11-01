@@ -7,6 +7,31 @@
 > neither). Commands that use them do not run here. Current results need a new dated baseline
 > from this branch.
 
+## Main-era baseline (2026-11-01)
+
+The first current result, measured on this branch's harness commit (`eccd0fe`, main `cd3ce90` plus
+the port, clean tree). Machine: M4 Max, Node and Dawn. Rapier 0.21.0. Settings: 1/60 s, 4 iterations
+each, 60 lead steps, 120 measured steps, batch size 10, 3 repeats, Rapier sleeping and CCD off.
+
+```bash
+pnpm compare:rapier rest-grid-1k,pile-1k,ring-9k --repeats 3 --machine "M4 Max" --json report.json
+```
+
+| Scene (bodies) | Engine | Mean ms/step, median (range) | Worst floor penetration (m) | Pair penetration (m) | Contact target |
+|---|---|---|---|---|---|
+| rest-grid-1k (1,001) | Rapier | 1.45 (1.42–1.51) | 0.0008 | 0.0052 | met |
+| rest-grid-1k (1,001) | AVBD | 1.54 (1.49–2.08) | 0.0113 | 0.0111 | missed |
+| pile-1k (1,001) | Rapier | 2.78 (2.78–2.86) | 0.1136 | 0.2053 | missed |
+| pile-1k (1,001) | AVBD | 1.44 (1.38–1.44) | 0.1801 | 0.3234 | missed |
+| ring-9k (9,132) | Rapier | 70.06 (59.55–112.01) | 0.4285 | 1.2825 | missed |
+| ring-9k (9,132) | AVBD | 2.03 (2.01–2.25) | 0.4280 | 0.9614 | missed |
+
+No scene met the shared quality target for both engines, so none of these timings is a matched speed
+comparison. AVBD's resting overlap (about 0.011 m) is its fixed contact margin (`COLLISION_MARGIN = 0.01`),
+which main does not expose as an option. Rapier's ring-9k timings varied widely between repeats. Every validation replay
+matched its timed run. The trimmed report is [data/rapier-baseline-2026-11-01.json](data/rapier-baseline-2026-11-01.json)
+(scene manifests reduced to hashes, per-step samples dropped; the full report's sha256 is recorded in it).
+
 Current harness: schema 5, with independent box/sphere penetration checks, initial-overlap reporting, joint-anchor errors and analytic motion diagnostics. The sections below retain the progression of experiments and their limitations.
 
 Research snapshot: 2026-09-29. three-avbd baseline: `b3675de`, package version `0.2.1`.
