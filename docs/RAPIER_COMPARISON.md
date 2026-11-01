@@ -33,6 +33,14 @@ matched its timed run. An earlier run on `cd3ce90` (before the audit fixes) gave
 figures and timings within 4–9% for both engines, which is within run-to-run noise on this machine. The trimmed report is [data/rapier-baseline-2026-11-01.json](data/rapier-baseline-2026-11-01.json)
 (scene manifests reduced to hashes, per-step samples dropped; the full report's sha256 is recorded in it).
 
+Browser check (2026-11-01, Chrome on the same machine, `/compare-frame.html`, `sphere-pile-100`,
+120 frames, contact events on): both engines ran twice with no errors and the spheres draw as
+spheres. After the 30 warm-up frames Rapier reported no contact events (260 during warm-up, then
+the pile settled). AVBD reported 174 more (475 during warm-up), identical in both repeats, so its
+sphere contacts keep beginning and ending on a pile that should be at rest. That is a
+contact-quality finding, not a harness fault. With events on, AVBD's frame work was 4.4–4.9 ms
+against Rapier's 1.2–1.4 ms, most of it the event readback (3.7–4.1 ms).
+
 Current harness: schema 5, with independent box/sphere penetration checks, initial-overlap reporting, joint-anchor errors and analytic motion diagnostics. The sections below retain the progression of experiments and their limitations.
 
 Research snapshot: 2026-09-29. three-avbd baseline: `b3675de`, package version `0.2.1`.
