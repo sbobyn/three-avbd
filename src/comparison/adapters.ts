@@ -113,7 +113,8 @@ export async function createAdapter(engine: Engine, scene: Scene, config: Settin
   return {
     watchContacts: () => {
       contactWatch ??= new ContactWatch(device, solver.bodyBuffer, n, capacity.manifolds, n * 8);
-      contactWatch.setWatched(scene.bodies.map((_, i) => solver.gpuIndex(i)), scene.bodies.map(() => true));
+      // IDs are nonzero; the harness only counts events, so manifest order + 1 will do
+      contactWatch.setWatched(scene.bodies.map((_, i) => solver.gpuIndex(i)), scene.bodies.map((_, i) => i + 1), scene.bodies.map(() => true));
     },
     readContactEvents: async () => {
       if (!contactWatch) return 0;
