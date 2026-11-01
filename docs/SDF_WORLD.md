@@ -125,9 +125,12 @@ hierarchical solution for every size distribution.
   normal is force-weighted (a contact normal is used when forces cancel or are zero).
   Solver normals, anchors, penalties and warm starts are not modified. Reporting
   respects masks, joint exclusions, separation and reporting toggles. Like standard
-  World events, pair identity uses slots: remove/reuse in the same step while
-  touching the same partner can appear continuous. Force history nevertheless
-  invalidates on reuse; events do not yet carry body generations.
+  World events, pair identity uses non-reused `Body.id` lifetimes (1..0x7fffffff):
+  same-slot replacement against the same partner produces end then begin. Up to eight
+  removed generations per slot survive until a read includes the following step's end
+  pass; events with evicted identities are suppressed and counted in
+  `world.droppedContactEvents`, never attributed to a replacement. Force history
+  still invalidates on reuse.
 - `raycast`/`raycasts` query the **SDF surface**, including non-convex holes, with
   current GPU poses, COM offsets and uniform scale. Masks/ignored bodies and nearest
   ties follow the standard query API. Pending queries retain the submitted rays

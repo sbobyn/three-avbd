@@ -15,6 +15,7 @@ import { checkBreakBend, GpuSolver3D, gpuParams3D, unitRotation, type GpuCounter
 import { Rigid } from '../avbd3d/ref/body.ts';
 import { Solver } from '../avbd3d/ref/solver.ts';
 import { convexHull, hull, type HullShape, sphere } from '../avbd3d/shapes.ts';
+import { BodyIds, RetiredBodies, assertOwner, sameReadStep, orderedEvents } from './identity.ts';
 import { BEGIN, ContactWatch } from './contacts.ts';
 import { addImpulse, noPush, Pusher, type Pushes } from './push.ts';
 import { type Ray, Raycaster } from './raycast.ts';
@@ -239,7 +240,11 @@ function rotate(q: ArrayLike<number>, v: ArrayLike<number>): Vec3 {
   return [v[0] + w * t[0] + (y * t[2] - z * t[1]), v[1] + w * t[1] + (z * t[0] - x * t[2]), v[2] + w * t[2] + (x * t[1] - y * t[0])];
 }
 
+export interface ReadResult { step: number }
+
 export class Body {
+  /** Nonzero lifetime identity in this World; never reused (1..0x7fffffff). */
+  readonly id: number;
   readonly world: World;
   /** The body's slot in the GPU buffer (for custom shaders): stable for its life. */
   readonly index: number;
@@ -273,6 +278,7 @@ export class Body {
       this.massProperties = Object.freeze({ mass, moments: Object.freeze([...moments] as Vec3) });
     }
     this.world = world;
+    this.id = world.allocateBodyId();
     this.index = index;
     this.shape = shape;
     this.hull = hullShape;
@@ -581,8 +587,8 @@ export class World {
   /** The pass ran last step (so it runs once more when the last reporting body goes, for the ends). */
   private contactsLive = false;
   private droppedEvents = 0;
-  /** Each slot's last removed body (an event may come back after its slot was reused). */
-  private readonly gone: (Body | null)[] = [];
+  private readonly bodyIds = new BodyIds();
+  private readonly retiredBodies = new RetiredBodies<Body>();
   private readonly contactOptions: { pairs: number; events: number };
   /** Bodies whose collision groups go to the GPU at the next step (every new body, so a reused slot's are reset). */
   private readonly refilters = new Set<Body>();
@@ -604,10 +610,11 @@ export class World {
   private writes = 0;
   private steps = 0;
   private owed = 0;
-  private reading: Promise<void> | null = null;
+  private reading: Promise<ReadResult> | null = null;
   /** What the read in flight holds: every body (null) or these slots, as of this write count. */
   private readingSlots: Set<number> | null = null;
   private readingWrites = 0;
+  private readingStep = 0;
   /** The next read reads the joints (readJoints). */
   private jointsWanted = false;
   private adapting = false;
@@ -821,6 +828,9 @@ export class World {
     return this.solver.hulls;
   }
 
+  /** @internal */
+  allocateBodyId(): number { return this.bodyIds.allocate(); }
+
   private add(shape: 'box' | 'sphere' | 'hull', size: Vec3, options: BodyOptions, hullShape: HullShape | null = null): Body | null {
     this.assertMutableTopology();
     // A removed body's slot first, else the next one past the end
@@ -834,7 +844,7 @@ export class World {
     body.written = ++this.writes;
     for (const field of bodyFields) body.revisions[field] = body.written;
     body.addedAt = this.steps + 1;
-    if (body.reportContacts) this.rewatches.add(body);
+    this.rewatches.add(body);
     // Reuse an unflushed slot in place; appending twice would shift GPU body IDs.
     if (index >= this.solver.bodyCount) this.appends[index-this.solver.bodyCount]=body;
     else this.rewrites.add(body);
@@ -856,6 +866,7 @@ export class World {
 
   /** @internal Body.set / setFixed: merge masked assignments for the next flush. */
   write(body: Body, patch: BodyPatch, fixed = false): void {
+    assertOwner(this, body);
     if (!body.alive) return;
     if (this.sliding.has(body)) patch = { velocity: [0, 0, 0], angularVelocity: [0, 0, 0], ...patch };
     this.moves.delete(body);
@@ -872,6 +883,7 @@ export class World {
 
   /** @internal Body.remove: its joints go, and it's parked out of the way. */
   removeBody(body: Body): void {
+    assertOwner(this, body);
     this.assertMutableTopology();
     for (const j of [...this.joints, ...this.pendingJoints]) if (j.a === body || j.b === body) j.remove();
     this.patches.delete(body);
@@ -881,9 +893,9 @@ export class World {
     this.impulses.delete(body);
     this.forces.delete(body);
     this.slots[body.index] = null;
-    this.gone[body.index] = body;
+    this.retiredBodies.retire(body, this.steps);
     this.free.push(body.index);
-    if (body.reportContacts) this.rewatches.add(body);
+    this.rewatches.add(body);
     // Parked: fixed, small, far off, a slot of space each
     body.state = { position: [PARK + 2 * body.index, PARK, PARK], rotation: [0, 0, 0, 1], velocity: [0, 0, 0], angularVelocity: [0, 0, 0] };
     body.written = ++this.writes;
@@ -959,8 +971,9 @@ export class World {
 
   private checkPair(a: Body, b: Body, what: string): void {
     this.assertLive(what);
+    assertOwner(this, a);
+    assertOwner(this, b);
     if (!a.alive || !b.alive) throw new Error(`${what}: both bodies must be in the world`);
-    if (a.world !== this || b.world !== this) throw new Error(`${what}: bodies of another world`);
   }
 
   /** Called with each joint seen broken (at a readback). Returns a function that unsubscribes. */
@@ -998,6 +1011,7 @@ export class World {
 
   /** @internal Body.reportContacts. */
   rewatch(body: Body): void {
+    assertOwner(this, body);
     if (body.alive) this.rewatches.add(body);
   }
 
@@ -1086,8 +1100,8 @@ export class World {
     const pairs = this.contactGrowTo;
     this.contactGrowTo = 0;
     const next = new ContactWatch(this.device, this.solver.bodyBuffer, this.maxBodies, pairs, this.contactOptions.events);
-    const watched = [...this.reporting].map((b) => b.index);
-    next.setWatched(watched, watched.map(() => true));
+    const bodies = this.bodies;
+    next.setWatched(bodies.map(b => b.index), bodies.map(b => b.id), bodies.map(b => b.reportContacts));
     this.retiredWatch = old;
     this.contactWatch = next;
     this.contactOptions.pairs = pairs;
@@ -1106,6 +1120,7 @@ export class World {
 
   /** @internal A body's pushes: this step's impulses, or its standing forces. */
   pushesOf(body: Body, standing: boolean): Pushes {
+    assertOwner(this, body);
     const map = standing ? this.forces : this.impulses;
     let p = map.get(body);
     if (!p) map.set(body, (p = noPush()));
@@ -1114,17 +1129,20 @@ export class World {
 
   /** @internal Body.moveTo on a fixed body. */
   move(body: Body, position: Vec3, rotation?: Quat): void {
+    assertOwner(this, body);
     body.target = { position, rotation };
     this.moves.add(body);
   }
 
   /** @internal Body.setCollisionGroups. */
   refilter(body: Body): void {
+    assertOwner(this, body);
     if (body.alive) this.refilters.add(body);
   }
 
   /** @internal Body.clearForces. */
   clearForces(body: Body): void {
+    assertOwner(this, body);
     this.forces.delete(body);
   }
 
@@ -1168,13 +1186,18 @@ export class World {
     this.patches.clear();
     if (this.rewatches.size) {
       const list = [...this.rewatches];
-      this.contactWatch ??= new ContactWatch(this.device, this.solver.bodyBuffer, this.maxBodies, this.contactOptions.pairs, this.contactOptions.events);
-      const on = list.map((b) => b.alive && b.reportContacts);
-      this.contactWatch.setWatched(
-        list.map((b) => b.index),
-        on,
-      );
-      list.forEach((b, k) => (on[k] ? this.reporting.add(b) : this.reporting.delete(b)));
+      for (const b of list) {
+        if (b.alive && b.reportContacts) this.reporting.add(b);
+        else this.reporting.delete(b);
+      }
+      const creating = !this.contactWatch && this.reporting.size > 0;
+      if (creating) this.contactWatch = new ContactWatch(this.device, this.solver.bodyBuffer, this.maxBodies, this.contactOptions.pairs, this.contactOptions.events);
+      if (this.contactWatch) {
+        // Every partner needs an ID, including bodies that do not themselves report.
+        const indices = creating ? this.bodies.map(b => b.index) : [...new Set(list.map(b => b.index))];
+        const bodies = indices.map(index => this.slots[index]);
+        this.contactWatch.setWatched(indices, bodies.map(b => b?.id ?? 0), bodies.map(b => !!b?.reportContacts));
+      }
       this.rewatches.clear();
     }
     if (this.refilters.size) {
@@ -1293,18 +1316,20 @@ export class World {
   /** Many rays at once: up to 65,535 for standard shapes, 256 in SDF mode. */
   async raycasts(rays: Ray[], options: { ignore?: Body[]; collidesWith?: number } = {}): Promise<(RayHit | null)[]> {
     this.assertLive('raycasts');
+    for (const body of options.ignore ?? []) assertOwner(this, body);
     this.assertSdfReady();
     this.flush();
     // A slot can be removed/reused while the query readback is pending.
     const queriedBodies=this.slots.slice(0,this.solver.bodyCount);
+    const ignored = (options.ignore ?? []).filter(b => b.alive && queriedBodies[b.index] === b).map(b => b.index);
     if(!this.sdfBridge) this.raycaster ??= new Raycaster(this.device);
-    const raw = await (this.sdfBridge ? this.sdfBridge.raycasts(rays, (options.ignore ?? []).map(b=>b.index), options.collidesWith ?? 0xffffffff) : this.raycaster!.cast(
+    const raw = await (this.sdfBridge ? this.sdfBridge.raycasts(rays, ignored, options.collidesWith ?? 0xffffffff) : this.raycaster!.cast(
       this.solver.bodyBuffer,
       this.solver.hullStorage,
       this.solver.filterStorage,
       this.solver.bodyCount,
       rays,
-      (options.ignore ?? []).map((b) => b.index),
+      ignored,
       options.collidesWith ?? 0xffffffff,
     ));
     return raw.map((h) => (h ? { body: queriedBodies[h.index] ?? null, distance: h.distance, point: h.point, normal: h.normal } : null));
@@ -1314,14 +1339,17 @@ export class World {
 
   /**
    * Read the bodies' poses and velocities back from the GPU (and see which joints broke): after
-   * it resolves, Body.position and the rest are as of now. `bodies`: only these (a body's record
+   * it resolves, Body.position and the rest reflect its submitted `{ step }` boundary, overlaid
+   * by newer field assignments. `bodies`: only these (a body's record
    * is 160 bytes; all of them, at 100k bodies, 16 MB), the rest keeping their last readback. One
    * read at a time: a call while one is running gets that read when it holds every body asked for
-   * (as written by then), else waits for it and then reads them itself. The joints are read too,
+   * (as written by then, with no intervening step), else waits and reads them itself. The joints are read too,
    * when any can break or yield: then Joint.force and Joint.bend are fresh (else, readJoints).
    * Rejects once the world is destroyed, also for a read in flight when it is.
    */
-  read(bodies?: Body[]): Promise<void> {
+  read(bodies?: Body[]): Promise<ReadResult> {
+    for (const body of bodies ?? []) assertOwner(this, body);
+    bodies = bodies?.slice();
     if (this.destroyed) return Promise.reject(new Error('World destroyed: read after destroy()'));
     if (this.reading) {
       if (this.readCovers(bodies)) return this.reading;
@@ -1332,6 +1360,7 @@ export class World {
     const writes = this.writes;
     this.readingSlots = bodies ? new Set(bodies.map((b) => b.index)) : null;
     this.readingWrites = writes;
+    const step = this.readingStep = this.steps;
     // Joints whose state changes by itself (they break, they bend), or that were asked for
     const watched = this.jointsWanted || [...this.joints].some((j) => j.breakable || j.yieldForce < Infinity);
     this.jointsWanted = false;
@@ -1339,6 +1368,7 @@ export class World {
     const placed = this.placements;
     const watch = this.contactWatch;
     const retired = this.retiredWatch;
+    const identities = watch || retired ? this.retiredBodies.snapshot(this.bodies) : null;
     this.reading = (async () => {
       const [, joints, before, now] = await Promise.all([
         this.readBodies(bodies, writes),
@@ -1381,22 +1411,18 @@ export class World {
       }
       if (contacts) {
         this.droppedEvents += contacts.dropped;
-        // A slot's body then: the one in it now, unless it came after (then the one removed from it)
-        const at = (index: number, step: number) => {
-          const now = this.slots[index];
-          if (now && now.addedAt <= step) return now;
-          const gone = this.gone[index];
-          return gone && gone.addedAt <= step ? gone : null;
-        };
-        for (const e of contacts.events) {
-          // (An end is of a pair that touched the step before: its bodies as they were then)
-          const then = e.kind === BEGIN ? e.step : e.step - 1;
-          const [a, b] = [at(e.a, then), at(e.b, then)];
-          if (!a || !b) continue;
-          const event: ContactEvent = { type: e.kind === BEGIN ? 'begin' : 'end', a, b, point: e.point, normal: e.normal, impulse: e.impulse, step: e.step };
-          for (const listener of this.contactListeners) listener(event);
+        const events: ContactEvent[] = [];
+        for (const e of orderedEvents(contacts.events)) {
+          const a = identities?.get(e.a), b = identities?.get(e.b);
+          if (!a || !b) { this.droppedEvents++; continue; }
+          events.push({ type: e.kind === BEGIN ? 'begin' : 'end', a, b, point: e.point, normal: e.normal, impulse: e.impulse, step: e.step });
         }
+        // Capture both identities and listeners before callbacks can mutate the world.
+        const listeners = [...this.contactListeners];
+        for (const event of events) for (const listener of listeners) listener(event);
       }
+      this.retiredBodies.drain(step);
+      return { step };
     })().finally(() => {
       this.reading = null;
       this.readingSlots = null;
@@ -1406,6 +1432,7 @@ export class World {
 
   /** The read in flight holds `bodies` (all of them: undefined), each as of after its last write. */
   private readCovers(bodies: Body[] | undefined): boolean {
+    if (!sameReadStep(this.steps, this.readingStep)) return false;
     if (!bodies) return this.readingSlots === null && this.readingWrites === this.writes;
     return bodies.every((b) => !b.alive || (b.written <= this.readingWrites && (this.readingSlots === null || this.readingSlots.has(b.index))));
   }
@@ -1425,7 +1452,8 @@ export class World {
 
   /** Which bodies the automatic readback (readbackEvery) reads: these only, or (null) all. */
   track(bodies: Body[] | null): void {
-    this.tracked = bodies;
+    for (const body of bodies ?? []) assertOwner(this, body);
+    this.tracked = bodies?.slice() ?? null;
   }
 
   /** Bodies' records into the snapshot: all of them, or runs of these copied out one by one. */
@@ -1462,6 +1490,7 @@ export class World {
 
   /** @internal A body's state: from the last readback, unless it was written since. */
   stateOf(body: Body, offset: number, n: number): number[] {
+    assertOwner(this, body);
     const field: BodyField = offset === B_POS ? 'position' : offset === B_ROT ? 'rotation' : offset === B_VEL ? 'velocity' : 'angularVelocity';
     const o = body.index * BODY_FLOATS + offset;
     return observedField(body.state[field], body.revisions[field], this.snapshot.subarray(o, o + n), this.readAt[body.index]);
