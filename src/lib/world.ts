@@ -7,6 +7,8 @@ import type { SdfCollisionBridge } from '../avbd3d/gpu/sdf-bridge.ts';
 // live in a buffer Three.js draws from directly (BodyMesh): no copies, no readback to draw.
 
 import * as THREE from 'three/webgpu';
+import { bodyFields, copyBodyPatch, observedField, assignBodyPatch, type BodyField, type BodyPatch } from './body-commands.ts';
+import { BodyMover } from '../avbd3d/gpu/body-mover.ts';
 import { B_ANGVEL, B_POS, B_ROT, B_VEL, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
 import { decodeJoint, type JointState } from '../avbd3d/gpu/joints.ts';
 import { checkBreakBend, GpuSolver3D, gpuParams3D, unitRotation, type GpuCounters3D, type GpuStepOptions } from '../avbd3d/gpu/solver.ts';
@@ -253,6 +255,8 @@ export class Body {
   state: Required<BodyState>;
   /** @internal The world's write count when this body was last written. */
   written = 0;
+  /** @internal Per-field assignments, so late reads can update other fields. */
+  revisions: Record<BodyField, number> = { position: 0, rotation: 0, velocity: 0, angularVelocity: 0 };
   /** @internal The first step it's in. */
   addedAt = 0;
   private reports: boolean;
@@ -334,17 +338,13 @@ export class Body {
 
   /**
    * Move it, turn it or set it moving (from the next step). What's left out keeps its value
-   * as of the last readback. Its contacts start afresh.
+   * on the GPU. Its contacts start afresh.
    */
   set(state: BodyState): void {
     this.world.assertLive('Body.set');
-    this.state = {
-      position: state.position ?? this.position,
-      rotation: state.rotation ?? this.rotation,
-      velocity: state.velocity ?? this.velocity,
-      angularVelocity: state.angularVelocity ?? this.angularVelocity,
-    };
-    this.world.write(this);
+    const patch = copyBodyPatch(state);
+    if (!Object.keys(patch).length || !this.alive) return;
+    this.world.write(this, patch);
   }
 
   /**
@@ -357,19 +357,20 @@ export class Body {
     this.world.assertLive('Body.moveTo');
     if (!this.isAlive) return;
     if (!this.isFixed) return this.set({ position, rotation });
-    this.world.move(this, position, rotation ?? this.state.rotation);
+    const patch = copyBodyPatch({ position, rotation });
+    this.world.move(this, patch.position as Vec3, patch.rotation as Quat | undefined);
   }
 
-  /** @internal Where a moved fixed body is going (World.flush turns it into a velocity). */
-  target: { position: Vec3; rotation: Quat } | null = null;
+  /** @internal Where a moved fixed body is going (consumed only by simulation steps). */
+  target: { position: Vec3; rotation?: Quat } | null = null;
 
   /** Pin it where it is (fixed) or let it go. */
   setFixed(fixed: boolean): void {
     this.world.assertLive('Body.setFixed');
     if (fixed === this.isFixed) return;
-    this.state = { position: this.position, rotation: this.rotation, velocity: [0, 0, 0], angularVelocity: [0, 0, 0] };
+    if (!this.alive) return;
     this.isFixed = fixed;
-    this.world.write(this);
+    this.world.write(this, { velocity: [0, 0, 0], angularVelocity: [0, 0, 0] }, true);
   }
 
   /** A push (N·s) at a point in the world (none: through its centre of mass), at the next step. */
@@ -558,6 +559,8 @@ export class World {
   private readonly free: number[] = [];
   private appends: Body[] = [];
   private readonly rewrites = new Set<Body>();
+  private readonly patches = new Map<Body, { fields: Set<BodyField>; fixed: boolean }>();
+  private mover: BodyMover | null = null;
   private pendingJoints: Joint[] = [];
   private readonly joints = new Set<Joint>();
   /** Joints placed in the solver so far (Joint.placed). */
@@ -829,6 +832,7 @@ export class World {
     for (const old of this.rewrites) if (old.index === index) this.rewrites.delete(old);
     this.slots[index] = body;
     body.written = ++this.writes;
+    for (const field of bodyFields) body.revisions[field] = body.written;
     body.addedAt = this.steps + 1;
     if (body.reportContacts) this.rewatches.add(body);
     // Reuse an unflushed slot in place; appending twice would shift GPU body IDs.
@@ -850,17 +854,30 @@ export class World {
     return this.liveVersion;
   }
 
-  /** @internal Body.set / setFixed: rewrite it at the next step. */
-  write(body: Body): void {
+  /** @internal Body.set / setFixed: merge masked assignments for the next flush. */
+  write(body: Body, patch: BodyPatch, fixed = false): void {
     if (!body.alive) return;
+    if (this.sliding.has(body)) patch = { velocity: [0, 0, 0], angularVelocity: [0, 0, 0], ...patch };
+    this.moves.delete(body);
+    this.sliding.delete(body);
+    body.target = null;
     body.written = ++this.writes;
-    if (!this.appends.includes(body)) this.rewrites.add(body);
+    assignBodyPatch(body.state, body.revisions, patch, body.written);
+    if (this.appends.includes(body) || this.rewrites.has(body)) return;
+    const pending = this.patches.get(body) ?? { fields: new Set<BodyField>(), fixed: false };
+    for (const field of bodyFields) if (patch[field]) pending.fields.add(field);
+    pending.fixed ||= fixed;
+    this.patches.set(body, pending);
   }
 
   /** @internal Body.remove: its joints go, and it's parked out of the way. */
   removeBody(body: Body): void {
     this.assertMutableTopology();
     for (const j of [...this.joints, ...this.pendingJoints]) if (j.a === body || j.b === body) j.remove();
+    this.patches.delete(body);
+    this.moves.delete(body);
+    this.sliding.delete(body);
+    body.target = null;
     this.impulses.delete(body);
     this.forces.delete(body);
     this.slots[body.index] = null;
@@ -1023,10 +1040,12 @@ export class World {
   step(options: StepOptions = {}): void {
     this.assertLive('step');
     this.assertSdfReady();
-    const movingKinematics = this.moves.size > 0;
+    const movingKinematics = this.moves.size > 0 || this.sliding.size > 0;
     this.flush();
+    this.slide();
     this.push();
     this.solver.step(movingKinematics ? {} : options);
+    this.arrive();
     this.steps++;
     if (this.contactGrowTo && !this.reading && !this.retiredWatch) this.growContactWatch();
     if (this.contactWatch && (this.reporting.size || this.contactsLive)) {
@@ -1094,14 +1113,8 @@ export class World {
   }
 
   /** @internal Body.moveTo on a fixed body. */
-  move(body: Body, position: Vec3, rotation: Quat): void {
-    if (this.appends.includes(body) || this.rewrites.has(body)) {
-      // Waiting to be written whole: it's simply put there
-      body.state = { ...body.state, position, rotation };
-      body.written = ++this.writes;
-      return;
-    }
-    body.target = { position, rotation: normalised(rotation) };
+  move(body: Body, position: Vec3, rotation?: Quat): void {
+    body.target = { position, rotation };
     this.moves.add(body);
   }
 
@@ -1149,7 +1162,10 @@ export class World {
       );
       this.rewrites.clear();
     }
-    this.slide();
+    for (const [body, patch] of this.patches) {
+      if (body.alive) this.solver.patchBody(body.index, patch.fields, this.rigid(body), patch.fixed);
+    }
+    this.patches.clear();
     if (this.rewatches.size) {
       const list = [...this.rewatches];
       this.contactWatch ??= new ContactWatch(this.device, this.solver.bodyBuffer, this.maxBodies, this.contactOptions.pairs, this.contactOptions.events);
@@ -1218,40 +1234,31 @@ export class World {
    * sees it slide); stopped again once there.
    */
   private slide(): void {
-    const buffer = this.solver.bodyBuffer;
-    const writeVelocity = (b: Body, v: ArrayLike<number>, w: ArrayLike<number>) => {
-      const o = b.index * BODY_FLOATS;
-      this.device.queue.writeBuffer(buffer, (o + B_VEL) * 4, new Float32Array([v[0], v[1], v[2]]));
-      this.device.queue.writeBuffer(buffer, (o + B_ANGVEL) * 4, new Float32Array([w[0], w[1], w[2]]));
-    };
-    // Arrived: stop (unless moved again)
-    for (const [b, left] of this.sliding) {
-      if (left > 1) this.sliding.set(b, left - 1);
-      else {
-        this.sliding.delete(b);
-        if (b.alive && !this.moves.has(b)) {
-          writeVelocity(b, [0, 0, 0], [0, 0, 0]);
-          b.state = { ...b.state, velocity: [0, 0, 0], angularVelocity: [0, 0, 0] };
-        }
-      }
-    }
     for (const b of this.moves) {
-      if (!b.alive || !b.target) continue;
-      const time = this.stepsThisUpdate * this.dt;
-      const [p, q] = [b.state.position, b.state.rotation];
-      const { position, rotation } = b.target;
-      const v: Vec3 = [(position[0] - p[0]) / time, (position[1] - p[1]) / time, (position[2] - p[2]) / time];
-      // The turn from q to the target, the short way: ω = 2 vec(target q⁻¹) / time
-      let d = multiply(rotation, [-q[0], -q[1], -q[2], q[3]]);
-      if (d[3] < 0) d = [-d[0], -d[1], -d[2], -d[3]];
-      const w: Vec3 = [(2 * d[0]) / time, (2 * d[1]) / time, (2 * d[2]) / time];
-      writeVelocity(b, v, w);
-      b.state = { position, rotation, velocity: v, angularVelocity: w };
-      b.written = ++this.writes;
-      b.target = null;
-      this.sliding.set(b, this.stepsThisUpdate);
+      if (b.alive && b.target) this.sliding.set(b, this.stepsThisUpdate);
     }
     this.moves.clear();
+    if (!this.sliding.size) return;
+    this.mover ??= new BodyMover(this.device, this.solver.bodyBuffer, this.maxBodies);
+    this.mover.apply([...this.sliding].map(([body, left]) => ({ index: body.index, ...body.target!, left, dt: this.dt })));
+  }
+
+  /** Cleanup is queued after the arrival step, never before its contact response. */
+  private arrive(): void {
+    for (const [body, left] of this.sliding) {
+      if (left > 1) { this.sliding.set(body, left - 1); continue; }
+      const target = body.target!;
+      const patch = { position: target.position, ...(target.rotation ? { rotation: target.rotation } : {}), velocity: [0, 0, 0], angularVelocity: [0, 0, 0] };
+      const fields = new Set<BodyField>(['position', 'velocity', 'angularVelocity']);
+      if (target.rotation) fields.add('rotation');
+      // patchBody reads only the selected record fields; don't derive omitted pose from CPU state.
+      body.state = { ...body.state, ...patch } as Required<BodyState>;
+      this.solver.patchBody(body.index, fields, this.rigid(body), false, false);
+      body.written = ++this.writes;
+      for (const field of fields) body.revisions[field] = body.written;
+      body.target = null;
+      this.sliding.delete(body);
+    }
   }
 
   /** A body as the solver takes it (built in a scratch reference solver, then let go). */
@@ -1455,12 +1462,9 @@ export class World {
 
   /** @internal A body's state: from the last readback, unless it was written since. */
   stateOf(body: Body, offset: number, n: number): number[] {
-    if (this.readAt[body.index] >= body.written) {
-      const o = body.index * BODY_FLOATS + offset;
-      return Array.from(this.snapshot.subarray(o, o + n));
-    }
-    const { position, rotation, velocity, angularVelocity } = body.state;
-    return [...(offset === B_POS ? position : offset === B_ROT ? rotation : offset === B_VEL ? velocity : angularVelocity)];
+    const field: BodyField = offset === B_POS ? 'position' : offset === B_ROT ? 'rotation' : offset === B_VEL ? 'velocity' : 'angularVelocity';
+    const o = body.index * BODY_FLOATS + offset;
+    return observedField(body.state[field], body.revisions[field], this.snapshot.subarray(o, o + n), this.readAt[body.index]);
   }
 
   /**
@@ -1471,6 +1475,7 @@ export class World {
     if (this.destroyed) return;
     this.destroyed=true;
     this.pusher.destroy();
+    this.mover?.destroy();
     this.contactWatch?.destroy();
     this.retiredWatch?.destroy();
     this.retiredWatch = null;
