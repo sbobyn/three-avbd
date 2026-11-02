@@ -139,6 +139,39 @@ gpuTest('device loss rejects in-flight reads and future work, fresh device recre
   fresh.destroy();
 });
 
+// Paired qualification G0: losing the device while only the periodic counter map (every tenth
+// step) is pending left an unhandled AbortError and a step that did not fail fast.
+gpuTest('device loss during the periodic counter read is handled and fails fast', async () => {
+  const rejections: unknown[] = [];
+  const onRejection = (reason: unknown) => { rejections.push(reason); };
+  process.on('unhandledRejection', onRejection);
+  const adapter = await create([]).requestAdapter();
+  assert.ok(adapter);
+  const device = await adapter.requestDevice();
+  try {
+    const world = await World.create({ device, maxBodies: 8 });
+    world.addBox({ size: [1, 1, 1] });
+    assert.equal(world.readbackEvery, 0, 'no automatic body read: the counter map is the only one');
+    const counterReads: Promise<unknown>[] = [];
+    const readCounters = world.solver.readCounters.bind(world.solver);
+    world.solver.readCounters = () => { const read = readCounters(); counterReads.push(read); return read; };
+    for (let i = 0; i < 10; i++) world.step();
+    assert.equal(counterReads.length, 1, 'tenth step submitted the counter read');
+    device.destroy();
+    await device.lost;
+    await Promise.allSettled(counterReads);
+    for (let i = 0; i < 3; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(rejections.map(String), [], 'no unhandled rejection');
+    assert.ok(world.error, 'loss recorded on the world');
+    assert.throws(() => world.step(), /lost|map|destroy|abort/i);
+    await assert.rejects(world.read(), /lost|map|destroy|abort/i);
+    world.destroy();
+    world.destroy();
+  } finally {
+    process.off('unhandledRejection', onRejection);
+  }
+});
+
 gpuTest('SDF automatic growth failure remains recoverable', async device => {
   const world = await World.create({ device, maxBodies: 4, gravity: [0, 0, 0], iterations: 0 });
   try {
