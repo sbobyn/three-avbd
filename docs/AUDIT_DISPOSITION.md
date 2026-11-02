@@ -1,4 +1,4 @@
-# Audit disposition ledger — 2026-11-01 candidate
+# Audit disposition ledger — 0.4.0 (opened 2026-11-01)
 
 Scope: the original AVBD audit IDs in [audit-remediation](audit-remediation.md),
 plus remaining cross-project findings explicitly required by the release roadmap.
@@ -38,8 +38,8 @@ in audit-remediation; do not treat those measurements as newly executed here.
 | Callback/worker/setup teardown | Partially fixed AVBD; downstream qualification open | world-contracts/sdf-lifecycle GPU and CPU SDF async/worker tests cover AVBD cases; destruction worker death, setup abort and pending fracture disposal require R0-D browser fixture |
 | Deformation/fracture ordering | Open downstream / R0-D owner | Must reproduce ordered handoff on current destruction candidate; not established by solver tests or PR merges |
 | Controller interaction under sustained stall | Open downstream / R0-D owner | Need presentation and tier/dynamic-resolution/shed interaction fixture. No performance benchmark in this slice |
-| Removed-handle pose getters can alias a reused slot | Open correctness finding; P0 Slice A owner | Independent P0 review F6 traces dead getters through the reused snapshot. Freeze last-known own fields at removal in Slice A and add real-GPU reuse/in-flight-read coverage before closing. This release cleanup slice does not close it |
-| Device loss and recovery | Open qualification | World observes device.lost, retains it on world.error and rejects later GPU work. Dawn induced-loss/automatic-read and fresh-recreation tests pass; no automatic recovery. Recreate from application definitions; corrected-candidate browser/loss-time checks remain required |
+| Removed-handle pose getters can alias a reused slot | Fixed; GPU rerun open | Independent P0 review F6. 426762a freezes the last known own observation at removal (lib/world.ts `Body.frozen`); tests-gpu/body-activation.gpu.test.ts covers outstanding reads and same-slot replacement |
+| Device loss and recovery | Open qualification | World observes device.lost, retains it on world.error and rejects later GPU work. Dawn induced-loss/automatic-read and fresh-recreation tests pass; no automatic recovery. The paired-qualification AbortError (loss while only `World.step`'s periodic counter map is pending) is handled since 426762a and pinned in tests-gpu/lib-lifecycle.gpu.test.ts (#58). Recreate from application definitions; browser/loss-time checks remain required |
 
 The downstream open rows are ownership handoffs, not claims of reproduced defects
 in the current destruction head. Any reproduced silent correctness defect in an
