@@ -27,8 +27,31 @@ export interface Scene {
   groundTop: number;
   bodies: BodySpec[];
 }
-export const CASES = ['impact-train', 'free-fall', 'slide', 'spin', 'rest-grid-100', 'rest-grid-1k', 'rest-grid-10k', 'stack-50', 'stack-heavy', 'chain-20', 'chain-heavy', 'sphere-pile-100', 'impact-graze', 'impact-rotate', 'impact-1', 'impact-100', 'impact-1000', 'drop-box', 'rest-stack', 'pile-100', 'pile-1k', 'pile-10k', 'ring-9k', 'ring-110k'] as const;
+export const CASES = ['impact-train', 'free-fall', 'slide', 'spin', 'rest-grid-100', 'rest-grid-1k', 'rest-grid-10k', 'stack-50', 'stack-heavy', 'chain-20', 'chain-heavy', 'sphere-pile-100', 'sphere-pile-hcp-100', 'impact-graze', 'impact-rotate', 'impact-1', 'impact-100', 'impact-1000', 'drop-box', 'rest-stack', 'pile-100', 'pile-1k', 'pile-10k', 'pile-1k-settled', 'pile-10k-settled', 'ring-9k', 'ring-110k'] as const;
 export type CaseName = (typeof CASES)[number];
+
+/**
+ * What a resting or pile scene can support. `valid` scenes start with no interpenetration and
+ * have a stable rest state, reached as built or (Rapier, CPU) within `lead` steps at 1/60 s;
+ * only they back resting-quality claims. Whether an engine settles one is the measurement. `sphere-pile-100` is 25 single-file sphere columns, an unstable equilibrium that any
+ * perturbation topples. The original piles start overlapping and their default 60 + 120 step
+ * window ends mid-collapse in both engines. Both stay for continuity with earlier reports.
+ */
+export const SCENE_VALIDITY: Partial<Record<CaseName, {
+  kind: 'rest' | 'pile'; status: 'valid' | 'unstable equilibrium' | 'mid-collapse window'; lead?: number; steps?: number;
+}>> = {
+  'rest-stack': { kind: 'rest', status: 'valid' },
+  'rest-grid-100': { kind: 'rest', status: 'valid' },
+  'rest-grid-1k': { kind: 'rest', status: 'valid' },
+  'rest-grid-10k': { kind: 'rest', status: 'valid' },
+  'sphere-pile-100': { kind: 'rest', status: 'unstable equilibrium' },
+  'sphere-pile-hcp-100': { kind: 'rest', status: 'valid' },
+  'pile-100': { kind: 'pile', status: 'mid-collapse window' },
+  'pile-1k': { kind: 'pile', status: 'mid-collapse window' },
+  'pile-10k': { kind: 'pile', status: 'mid-collapse window' },
+  'pile-1k-settled': { kind: 'pile', status: 'valid', lead: 600, steps: 600 },
+  'pile-10k-settled': { kind: 'pile', status: 'valid', lead: 600, steps: 600 },
+};
 
 export function makeScene(name: string, impactOffset = 0): Scene {
   const ref = new Solver();
@@ -87,6 +110,26 @@ export function makeScene(name: string, impactOffset = 0): Scene {
         [i % 5, Math.floor(i / 5) % 5, 1 + Math.floor(i / 25)]);
       break;
     }
+    case 'sphere-pile-hcp-100': {
+      // A 100-sphere close-packed stack: triangular layers of side 8, 7, 6, 5, each sphere in a
+      // pocket of three below (ABC stacking). Fixed walls 1 mm outside the base hold its
+      // perimeter, as a cannonball stack's frame does; every upper sphere is then cradled.
+      new Rigid(ref, [200, 200, 1], 0, 0.5, [0, 0, 0]);
+      const side = 8, h = Math.sqrt(3) / 2, cx = (side - 1) / 2, cy = (side - 1) * h / 3;
+      for (let k = 0; k < 4; k++) for (let j = 0; j < side - k; j++) for (let i = 0; i < side - k - j; i++) {
+        sphere(ref, 0.5, 1, 0.5, [i + j / 2 + k / 2 - cx, j * h + k * h / 3 - cy, 1 + k * Math.sqrt(2 / 3)]);
+      }
+      // Each wall's inner face lies 0.501 m outside a base edge's line of centres.
+      const offset = 0.501, thickness = 0.5, length = side - 1 + 2 * Math.sqrt(3) * offset + 2 * thickness;
+      for (let e = 0; e < 3; e++) {
+        const angle = (2 * Math.PI * e) / 3, nx = Math.sin(angle), ny = -Math.cos(angle);
+        // Distance from the base centroid to an edge's line of centres is the inradius.
+        const d = (side - 1) / (2 * Math.sqrt(3)) + offset + thickness / 2;
+        const wall = new Rigid(ref, [length, thickness, 1], 0, 0.5, [nx * d, ny * d, 1]);
+        wall.positionAng.set([0, 0, Math.sin(angle / 2), Math.cos(angle / 2)]);
+      }
+      break;
+    }
     case 'impact-graze': {
       ref.gravity = 0;
       new Rigid(ref, [200, 200, 1], 0, 0, [0, 0, 0]);
@@ -124,6 +167,9 @@ export function makeScene(name: string, impactOffset = 0): Scene {
     case 'pile-100': boxPile(ref, 5, 4); break;
     case 'pile-1k': boxPile(ref, 10, 10); break;
     case 'pile-10k': boxPile(ref, 25, 16); break;
+    // 2.1 m spacing clears the largest box's diagonal (2 × 1.04 m): no initial overlap.
+    case 'pile-1k-settled': boxPile(ref, 10, 10, 2.1); break;
+    case 'pile-10k-settled': boxPile(ref, 25, 16, 2.1); break;
     case 'ring-9k': brickRing(ref, 12, 20, 2, 10); break;
     case 'ring-110k': brickRing(ref); break;
     default: throw new Error(`Unknown case ${name}; choose ${CASES.join(', ')}`);
@@ -137,6 +183,19 @@ export function makeScene(name: string, impactOffset = 0): Scene {
       mass: b.mass, inertia: [...b.moment], friction: b.friction,
     })),
   };
+}
+
+/**
+ * A copy with every dynamic body moved horizontally by up to `amount` m per axis (uniform,
+ * seeded): enough to break a symmetric equilibrium that a symmetric solve would keep.
+ */
+export function jitterScene(scene: Scene, amount: number, seed = 1): Scene {
+  if (!amount) return scene;
+  let s = seed >>> 0;
+  const random = () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 2 ** 32);
+  return { ...scene, bodies: scene.bodies.map((b) => b.mass > 0 ? {
+    ...b, position: [b.position[0] + (2 * random() - 1) * amount, b.position[1] + (2 * random() - 1) * amount, b.position[2]],
+  } : b) };
 }
 
 /** Rebuild from the manifest, including explicitly shared mass properties. */

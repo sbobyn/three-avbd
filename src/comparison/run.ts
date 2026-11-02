@@ -3,19 +3,23 @@ import { contactQuality } from './contact-quality.ts';
 // Timings wait for completed batches. An independent replay checks EVERY step outside the
 // timer, then must reproduce the timed final snapshot exactly before a result is accepted.
 import { createAdapter, initializeRapier, type Adapter, type Engine, type Settings } from './adapters.ts';
-import { makeScene, sceneHash, type Scene } from './scenes.ts';
+import { jitterScene, makeScene, SCENE_VALIDITY, sceneHash, type CaseName, type Scene } from './scenes.ts';
 import { FLOOR_TARGET, percentile, quality, passesFloorTarget, type Quality, STATE_SIZE } from './quality.ts';
 
 export interface Options extends Settings {
   lead: number; steps: number; repeats: number; timeoutMs: number; batchSize: number; impactPhase: number;
+  /** Seeded horizontal position jitter (m) applied to every dynamic body; 0 is none. */
+  jitter: number; jitterSeed: number;
 }
 export const DEFAULTS: Options = { dt: 1 / 60, avbdIterations: 4, rapierIterations: 4,
-  rapierPgsIterations: 1, rapierSleeping: false, rapierCcd: false, rapierCcdSubsteps: 1, lead: 60, steps: 120, repeats: 3,
-  timeoutMs: 300_000, batchSize: 10, impactPhase: 0 };
+  rapierPgsIterations: 1, rapierSleeping: false, rapierCcd: false, rapierCcdSubsteps: 1, avbdMargin: 0.01, lead: 60, steps: 120, repeats: 3,
+  timeoutMs: 300_000, batchSize: 10, impactPhase: 0, jitter: 0, jitterSeed: 1 };
 export function validateOptions(o: Options): void {
   for (const k of ['lead', 'steps', 'repeats', 'avbdIterations', 'rapierIterations', 'rapierPgsIterations', 'rapierCcdSubsteps', 'batchSize'] as const) {
     if (!Number.isInteger(o[k]) || o[k] < (k === 'lead' ? 0 : 1)) throw new Error(`Invalid ${k}`);
   }
+  if (!Number.isFinite(o.jitter) || o.jitter < 0 || !Number.isInteger(o.jitterSeed)) throw new Error('Invalid jitter');
+  if (!Number.isFinite(o.avbdMargin) || o.avbdMargin < 0) throw new Error('Invalid avbdMargin');
   if (!Number.isFinite(o.impactPhase) || o.impactPhase < 0 || o.impactPhase >= 1) throw new Error('Invalid impactPhase');
   if (!Number.isFinite(o.dt) || o.dt <= 0 || !Number.isFinite(o.timeoutMs) || o.timeoutMs <= 0) throw new Error('Invalid dt or timeout');
 }
@@ -166,8 +170,9 @@ export async function runComparison(device: GPUDevice, cases: string[], options:
   const results: Result[] = [];
   const manifests = [];
   for (const name of cases) {
-    const scene = makeScene(name, name.startsWith('impact-') ? 30 * options.dt * options.impactPhase : 0);
-    manifests.push({ ...scene, hash: sceneHash(scene) });
+    const scene = jitterScene(makeScene(name, name.startsWith('impact-') ? 30 * options.dt * options.impactPhase : 0),
+      options.jitter, options.jitterSeed);
+    manifests.push({ ...scene, hash: sceneHash(scene), validity: SCENE_VALIDITY[name as CaseName] ?? null });
     for (let repeat = 0; repeat < options.repeats; repeat++) {
       const order = repeat % 2 ? [...engines].reverse() : engines;
       for (const engine of order) {

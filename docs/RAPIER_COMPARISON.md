@@ -2,10 +2,11 @@
 
 > **Historical record.** Every number below was measured on `b3675de` (0.2.1), before #39, with
 > an unmerged speculative-contact branch. None is a current result. This port did not bring over
-> the `docs/data/*.json` reports these sections link, the `--avbd-margin` and `--speculative`
-> options, or the solver's contact-margin and speculative sphere-box parameters (main has
-> neither). Commands that use them do not run here. Current results need a new dated baseline
-> from this branch.
+> the `docs/data/*.json` reports these sections link, the `--speculative` option or the
+> speculative sphere-box parameter, so commands that use `--speculative` do not run here.
+> (`--avbd-margin` now sets the GPU `contactMargin` added in #55.) Current results need a new
+> dated baseline from this branch. For which scenes can back a quality claim, see
+> [Settling status](#settling-status-2026-11-02).
 
 ## Main-era baseline (2026-11-01)
 
@@ -44,6 +45,142 @@ against Rapier's 1.2–1.4 ms, most of it the event readback (3.7–4.1 ms).
 Current harness: schema 5, with independent box/sphere penetration checks, initial-overlap reporting, joint-anchor errors and analytic motion diagnostics. The sections below retain the progression of experiments and their limitations.
 
 Research snapshot: 2026-09-29. three-avbd baseline: `b3675de`, package version `0.2.1`.
+
+## Settling status (2026-11-02)
+
+Which resting and pile scenes can back a quality claim, and why the earlier "piles do not
+settle" finding is mostly about the scenes. Everything in this section ran on the CPU (the
+reference solver in Node, Rapier as WASM); no GPU device was opened. GPU runs of the corrected
+scenes are **pending** (commands at the end). Per-step traces:
+[data/settling-h1-2026-11-02.json](data/settling-h1-2026-11-02.json).
+
+### The earlier evidence, re-read
+
+From the 2026-11-02 margin runs (AVBD GPU at margins 0.01 and 0.001, 60 lead + 120 steps) and the
+main-era baseline above:
+
+- **`sphere-pile-100` is not a pile.** It is 25 single-file columns of 4 spheres (r = 0.5 on a
+  1 m grid, z = 1–4), an unstable equilibrium with no initial overlap. AVBD's per-step max speed
+  sat at about 0.02 m/s for about 60 steps, then grew exponentially from 0.03 to 1 m/s over about
+  60 steps (e-fold about 0.3 s; an inverted pendulum of L = 0.5 m has √(L/g) ≈ 0.22 s), then rose
+  by exactly g·dt = 0.167 m/s per step (free fall) and bounced at about 6 m/s: the columns
+  toppled. Rapier reported 0.000 m/s because its symmetric solve never perturbs the equilibrium.
+- **`pile-1k` starts interpenetrating and is measured mid-collapse.** It begins with 119
+  overlapping pairs (worst 10.3 cm) and drops from up to 16 m; at the end of the 180 steps Rapier
+  was at 10.2 m/s / 1,163 J and AVBD at 8.7 m/s / 989 J. Neither had settled.
+- **`rest-grid-1k` does settle in AVBD** (0.008 m/s). Its 11 mm depth is the 1 cm margin; at
+  `--avbd-margin 0.001` it met the contact target (4.4 mm floor, 7.1 mm pair).
+- The browser observation above (AVBD contact events keep starting and ending on
+  `sphere-pile-100` after warm-up) fits the same toppling after about 1 s.
+
+### H1(a): the CPU reference solver on `sphere-pile-100`
+
+The CPU reference (`src/avbd3d/ref`, unchanged) collides every body as a box, so it sees the
+spheres as 1 m cubes (`src/avbd3d/shapes.ts`). It was run two ways: as is (a box-column control),
+and with the reference's opt-in CPU SDF contacts (`SdfCollisionAdapter`, analytic sphere and box
+fields), which keep the same AVBD solver but collide real spheres. 600 steps at 1/60 s:
+
+| Solver (CPU) | Iterations | First step > 0.1 / > 1 m/s | Peak max speed | Top layer z, start → end | Bodies fallen > 0.25 m | Toppled |
+|---|---|---|---|---|---|---|
+| Reference, box contacts (spheres as cubes) | 4 | 1 / never | 0.65 m/s (step 4) | 4.00 → 3.91–3.96 | 0 | no |
+| Reference, box contacts (spheres as cubes) | 10 | 1 / never | 0.33 m/s (step 2) | 4.00 → 3.93–3.96 | 0 | no |
+| Reference + CPU SDF sphere contacts | 4 | 1 / 55 | 6.28 m/s (step 143) | 4.00 → 0.13–0.89 | 94 | **yes** |
+| Reference + CPU SDF sphere contacts | 10 | 1 / 59 | 5.72 m/s (step 101) | 4.00 → 0.67–1.01 | 80 | **yes** |
+
+With sphere contacts the CPU reference topples at both iteration counts, starting at the same
+time as the GPU solver did (step 55–59), with growth of about e per 0.28 s (0.13 → 0.41 m/s
+between steps 20 and 40 at 4 iterations). The cause is the scene and the AVBD algorithm's
+asymmetric (Gauss–Seidel) solve, not the GPU port. The box-contact control does not topple
+because cube columns are stable. Caveat: after the collapse the CPU SDF backend lets rolling
+spheres sink into the 200 m floor (the lowest centre is at z = 0.42, under the floor top at 0.5,
+by step 240, with speeds held near 5 m/s);
+that is a limit of that research backend on this floor, it starts only after the columns have
+fallen and does not affect the onset.
+
+```bash
+T="node --experimental-transform-types --no-warnings scripts/settling-trace.ts"
+$T sphere-pile-100 --engine ref --iterations 4      # also --iterations 10
+$T sphere-pile-100 --engine ref-sdf --iterations 4  # also --iterations 10
+```
+
+### H1(b): Rapier with 1 mm of jitter
+
+The same scene in Rapier 0.21.0 (CPU, WASM), with and without a seeded horizontal jitter of up
+to 1 mm per sphere per axis (`--jitter 0.001`, seed 1; initial worst pair overlap 1.9 mm):
+
+| Rapier | Iterations | First step > 0.1 / > 1 m/s | Peak max speed | Top layer z, start → end | Bodies fallen | Toppled |
+|---|---|---|---|---|---|---|
+| no jitter | 4 | never / never | 0.05 m/s | 4.00 → 4.00 | 0 | no |
+| no jitter | 10 | never / never | 0.01 m/s | 4.00 → 4.00 | 0 | no |
+| 1 mm jitter | 4 | 104 / 145 | 7.35 m/s (step 256) | 4.00 → 1.00 | 75 | **yes** |
+| 1 mm jitter | 10 | 104 / 145 | 6.59 m/s (step 254) | 4.00 → 1.00–1.63 | 75 | **yes** |
+
+Rapier topples too once the symmetry is broken, so its "settled" `sphere-pile-100` is an
+artefact of exact symmetry, not a resting-quality result. During the collapse Rapier (CCD off)
+reached 0.081 m floor and 0.048 m pair penetration at 4 iterations. The harness CLI gives the
+same trace (it now opens no GPU device when only Rapier runs):
+
+```bash
+$T sphere-pile-100 --engine rapier --iterations 4 --jitter 0.001   # also 10, and without --jitter
+$T sphere-pile-hcp-100 --engine rapier --iterations 4 --jitter 0.001   # also ref-sdf; 4 and 10
+$T pile-1k-settled --engine rapier --iterations 4 --steps 1200        # also ref, pile-10k-settled; 4 and 10
+pnpm compare:rapier sphere-pile-100 --engines rapier --rapier-iterations 4 --jitter 0.001 --lead 0 --steps 600 --repeats 1 --json rapier-jitter.json
+```
+
+### Scene labels
+
+`SCENE_VALIDITY` in `src/comparison/scenes.ts` records these labels, and the CLI copies them into
+each report manifest. `tests/comparison.test.ts` checks that every scene marked valid starts
+with no overlapping pair and nothing in the floor.
+
+| Scene | Label | Use for resting/quality claims |
+|---|---|---|
+| `rest-stack`, `rest-grid-100/1k/10k` | valid (independent box columns, built touching) | yes, as resting columns; they do not test interacting piles |
+| `sphere-pile-100` | **unstable equilibrium** (single-file sphere columns) | no; kept for continuity with earlier reports |
+| `pile-100`, `pile-1k`, `pile-10k` | **mid-collapse window** (start overlapping; the default 60 + 120 steps end while bodies still fall) | no; timing at a dynamic moment only |
+| `sphere-pile-hcp-100` (new) | valid | yes |
+| `pile-1k-settled` (new) | valid with `--lead 600 --steps 600` | yes |
+| `pile-10k-settled` (new) | valid with `--lead 600 --steps 600` | yes |
+
+- **`sphere-pile-hcp-100`**: 100 spheres in four close-packed triangular layers of side 8, 7, 6
+  and 5 (36 + 28 + 21 + 15), each upper sphere in a pocket of three (ABC stacking), inside three
+  fixed walls 1 mm outside the base, like a cannonball stack's frame. CPU checks, 600 steps:
+  Rapier at 4 and 10 iterations, with and without 1 mm jitter, peaks at 0.04–0.06 m/s in the
+  first steps, then ≤ 0.0001 m/s, top layer unmoved (3.449 → 3.447–3.448). The reference with
+  SDF sphere contacts also holds (peak 0.46 / 0.19 m/s at steps 2–3 while its 2 cm SDF margin
+  pushes the layers apart, final 0.002–0.003 m/s, nothing fallen).
+- **`pile-1k-settled`, `pile-10k-settled`**: the same random boxes as `pile-1k`/`pile-10k`
+  (seed 12345) at 2.1 m spacing instead of 1.6 m, which clears the largest box's diagonal
+  (2 × 1.04 m), so nothing overlaps at the start. The top layer starts at 20.9 m (1k) and 33.5 m
+  (10k). Rapier (CPU, 1,200 steps) is below 0.05 m/s from step 462–485 (1k) and 537 (10k, 4
+  iterations); in steps 601–1,200 its max speed stays ≤ 0.005 m/s, except 10k at 10 iterations,
+  which has isolated events in that window up to 0.09 m/s (steps 601–633, 734–752 and 813–822)
+  and a late one from about step 1,140 that reaches 0.25 m/s.
+- **AVBD on `pile-1k-settled`, CPU reference (box contacts are exact here)**: it does *not*
+  settle within 1,200 steps at 4 or 10 iterations. In steps 601–1,200 the max speed stays between
+  0.07 and 3.8 m/s. The motion is a slowly decaying tail of bodies, not one stray body:
+
+  | Reference | Step | Median speed | Bodies > 1 cm/s | Bodies > 5 cm/s | Translational KE |
+  |---|---|---|---|---|---|
+  | 4 iterations | 600 | 4.1 mm/s | 276 | 49 | 1.75 J |
+  | 4 iterations | 1,200 | 2.3 mm/s | 115 | 17 | 0.099 J |
+  | 10 iterations | 600 | 1.2 mm/s | 89 | 16 | 0.27 J |
+  | 10 iterations | 1,200 | 0.6 mm/s | 61 | 14 | 0.038 J |
+
+  Rapier at both iteration counts had no body above 1 cm/s at steps 600 and 1,200 (KE ≤ 3 × 10⁻⁷ J).
+  The reference uses the demo's adaptive warm start, not the GPU solver's `startAtRest`, so this
+  says nothing about the GPU solver yet. It does make the scene a real test of H3 and H5 (iteration
+  count, rest threshold), which the GPU runs below will start to answer.
+
+```bash
+for it in 4 10; do for m in 0.01 0.001; do
+  pnpm compare:rapier sphere-pile-hcp-100 --avbd-iterations $it --rapier-iterations $it --avbd-margin $m --lead 120 --steps 600 --repeats 3 --machine "M4 Max" --json hcp-$it-$m.json
+  pnpm compare:rapier pile-1k-settled,pile-10k-settled --avbd-iterations $it --rapier-iterations $it --avbd-margin $m --lead 600 --steps 600 --repeats 3 --machine "M4 Max" --json piles-$it-$m.json
+done; done
+```
+
+Until they run, AVBD's behaviour on a valid settled pile is unknown and no resting-quality claim
+should rest on `sphere-pile-100` or the `pile-*` scenes.
 
 ## Decision
 

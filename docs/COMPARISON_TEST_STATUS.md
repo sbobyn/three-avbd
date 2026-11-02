@@ -2,10 +2,12 @@
 
 > **Historical record.** Every number below was measured on `b3675de` (0.2.1), before #39, with
 > an unmerged speculative-contact branch. None is a current result. This port did not bring over
-> the `docs/data/*.json` reports these sections link, the `--avbd-margin` and `--speculative`
-> options, or the solver's contact-margin and speculative sphere-box parameters (main has
-> neither). Commands that use them do not run here. Current results need a new dated baseline
-> from this branch.
+> the `docs/data/*.json` reports these sections link, the `--speculative` option or the
+> speculative sphere-box parameter, so commands that use `--speculative` do not run here.
+> (`--avbd-margin` now sets the GPU `contactMargin` added in #55.) Current results need a new
+> dated baseline from this branch. Scene validity (2026-11-02): `sphere-pile-100` is an unstable
+> equilibrium and `pile-100/1k/10k` a mid-collapse window; see "Settling status" in
+> RAPIER_COMPARISON.md.
 
 Scope: local M4 Max, pinned Rapier WASM and three-avbd WebGPU. Measurements of
 errors are distinct from execution status. A successful process or gate is not a
@@ -15,12 +17,12 @@ physical-quality pass. No publishing or commits are part of this work.
 |---|---|---|
 | Fast translation | Head-on mass ratios, shifted impacts, grazing, small/oblique GPU regressions | Wider angle/size/speed sweeps; finite numerical sweep resolution |
 | Angular contact | `impact-rotate`, 1/60–1/960 timestep sweep; Rapier CCD explicitly requested | Both coarse configurations fail; AVBD angular CCD remains unimplemented |
-| Settled scaling | `rest-grid-100`, `rest-grid-1k`, `rest-grid-10k`: independent 10-box columns | Interacting piles/rings must still meet a shared target; independent columns do not establish that |
+| Settled scaling | `rest-grid-100`, `rest-grid-1k`, `rest-grid-10k`: independent 10-box columns | Interacting piles/rings must still meet a shared target; `pile-1k-settled`/`pile-10k-settled` (no initial overlap, `--lead 600`) are the valid piles, GPU runs pending |
 | Tall/heavy loads | 50-box stack, 1,000× top load, 20-link chain, 1,000× end load; iteration sweep | Minimum-cost tuning for each engine, swinging chains and wider mass ratios |
 | Analytic accuracy | Free fall, Coulomb sliding, isotropic principal-axis spin; two timesteps | General tumbling, non-isotropic angular momentum; free-fall precision diagnosis |
 | Long duration | Two-minute resting-stack, heavy-chain and spin runs | Longer endurance, runtime adds/removals and repeated wake transitions |
 | Multiple impacts | `impact-train`, five projectiles and a box pile | Count actual impacts; further geometries |
-| Many spheres | 100-sphere pile, speculative mode on/off | Larger mixed-shape counts and broadphase profiling |
+| Many spheres | `sphere-pile-100` (unstable equilibrium: single-file columns that topple once perturbed), speculative mode on/off | `sphere-pile-hcp-100` (framed close-packed stack) is the valid sphere pile, GPU runs pending; larger mixed-shape counts and broadphase profiling |
 | Application cost | `compare-frame.html`: identical renderer, two alternating repeats, ray batches and optional pose readback | Larger scenes and more devices; event buffers are bounded and overflow fails |
 | Memory | CLI reports process RSS high-water and final JS/external memory | Portable peak GPU memory; isolate engines/processes before attributing RSS |
 | Other hardware | Same scripts/page are portable | M1 and older discrete GPU access unavailable in this session |
