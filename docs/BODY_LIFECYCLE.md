@@ -4,8 +4,8 @@ Development Slice A; these APIs are not in the frozen 0.4 release candidate.
 
 Built-in box, sphere and hull worlds support same-life activation and reset. Check
 `world.capabilities.bodyActivation` / `bodyReset`; both are false for SDF/custom
-collision backends and custom shader overrides. These APIs do not implement sleep
-or a pool. `bodyPooling` and `nativeSleeping` remain false.
+collision backends and custom shader overrides. These APIs do not implement sleep;
+`nativeSleeping` remains false. Pools are below ([Body pools](#body-pools)).
 
 ```ts
 const prop = world.addBox({ size: [1, 1, 1], enabled: false })!;
@@ -63,7 +63,7 @@ automatic GPU-map failure; stop, destroy and recreate explicitly.
 
 `world.bodyStats` is an immutable snapshot of capacity, live/enabled/disabled,
 available, allocated high-water slots and remaining non-reused 31-bit IDs.
-`reserved` / `reservedAvailable` are zero. Disabled bodies still occupy slots;
+`reserved` / `reservedAvailable` count pool reservations (zero without pools). Disabled bodies still occupy slots;
 `maxBodies` must be a positive safe integer; fractional capacities are rejected.
 Ordinary adds return null at capacity. Dispatch still traverses high-water slots,
 and contacts/joints/queries can allocate independently. No whole-engine memory,
@@ -82,3 +82,90 @@ lifecycle needs a separate implementation, rather than interpreting its differen
 record lanes as production flags.
 
 Public device-only example: [body-lifecycle.ts](../examples/body-lifecycle.ts).
+
+## Body pools
+
+Development slice C (`three-avbd/pool`); not in the frozen 0.4 candidate. A pool needs a
+**fixed-storage** World: every solver and helper capacity explicit, checked against the
+device's negotiated limits before anything is allocated, and never grown afterwards.
+
+```ts
+import { World } from 'three-avbd';
+import { BodyPool } from 'three-avbd/pool';
+
+const world = await World.create({ renderer, maxBodies: 33, storage: {
+  growth: 'fixed', pairs: 4096, contacts: 8192, manifolds: 4096, joints: 256, hullVec4s: 4096 } });
+const created = await BodyPool.create(world, { capacity: 32,
+  template: { kind: 'sphere', options: { radius: 0.1, density: 7800, reportContacts: true } } });
+if (!created.ok) throw new Error(created.reason);
+const pool = created.pool;
+const shot = pool.tryAcquire({ position: [0, 1, 0], rotation: [0, 0, 0, 1], velocity: [0, 0, -40] });
+if (shot.ok) setTimeout(() => pool.release(shot.body), 2000); // or shot.body.remove()
+```
+
+**Fixed storage.** `storage: { growth: 'fixed', pairs, contacts, manifolds, joints, hullVec4s }`.
+P1 policy floors (the adaptive solver's own startup minimums, not numerical necessities):
+pairs ≥ max(4096, 4N), contacts ≥ max(8192, 4N), manifolds ≥ max(4096, N) and ≤ pairs,
+joints ≥ 256, hullVec4s ≥ 4096. Requested counts are kept exactly; a smaller, malformed or
+device-exceeding plan throws `StorageLimitError` from `World.create` before any attribute or
+buffer exists. `world.storageInfo` reports the resolved plan: the counts, `maxContactPairs` /
+`maxContactEvents`, derived sizes (watch slots, grid and manifold hashes, statics, 64 colours,
+65 pass entries, 8 retired identities per slot) and per-buffer and total retained bytes. That
+total excludes driver overhead, renderer meshes and per-call read/ray staging: it is not a
+VRAM budget. Fixed means bounded retained physics storage, not zero allocation: reads, rays,
+JS handles and results still allocate.
+
+A fixed World never grows: past `joints` (placed plus queued), `addJoint`/`addSpring` throw
+`StorageCapacityError`, and an ordinary hull whose geometry doesn't fit the remaining hull
+storage throws it from `addHull` (hull room is taken when the body is added, and a removed
+hull body's room is freed when its removal is flushed: the next step, read or `flushCommands()`;
+`BodyPool.create` flushes first when a hull template doesn't fit). Contact, pair and
+contact-event overflow are dropped and counted as before (`contactSetOverflows`,
+`droppedContactEvents`) but never repaired by resizing: size them for the worst case. A fixed
+World stays on built-in standard collisions for its life: SDF and custom backends are refused;
+create an adaptive World for those. All helpers (pushes, `moveTo`, reset, contact events) are
+made at full size at creation, with the ray pipeline; each raycast still makes its own small
+buffers and bind group, as reads make their staging.
+
+**Pools.** `BodyPool.create(world, { capacity, template })` resolves `{ ok: true, pool }` or
+`{ ok: false, reason }`: `'fixed-storage-required'`, `'capacity'` (not enough free slots),
+`'unsupported-backend'`, or `'resource-limit'` (a hull template on a device without native
+hull collisions, or hull storage that can't fit it). A failure reserves nothing; an invalid
+template or capacity rejects. It reserves free holes first, then tail slots (ordinary adds
+never take reserved slots), pins a hull template's geometry once, submits its vacant records
+(parked, disabled, no filters or report ID) and waits for the GPU. A GPU error during setup
+rejects and invalidates the World (`world.error`): submitted work can't be rolled back.
+
+Templates are copied and validated once: shape (`box` size, `sphere` radius, or a cooked
+`hull` shape from `convexHull`), density or `massProperties`, friction, `fixed`, filters and
+`reportContacts`. Pose, velocity and `enabled` are per spawn and rejected in a template.
+Later changes to the objects passed in don't affect the pool.
+
+`tryAcquire({ position, rotation, velocity?, angularVelocity? })` validates the spawn (finite
+f32, nonzero rotation, normalized) then returns `{ ok: true, body }` — a **new** `Body` with a new
+lifetime ID, enabled, in one of the pool's vacant slots — or `{ ok: false, reason }`:
+`'capacity'`, `'id-exhausted'` or `'disposed'`. A hull spawn places the body itself (its centre
+of mass on its principal axes, as `Body.position`/`rotation` read), not the points' frame. Old
+handles stay dead and frozen; IDs are never reused. `pool.release(body)` (or `body.remove()`)
+ends the life: its joints go, its pending forces, impulses and targets are cancelled, and its
+slot returns to the pool. Releasing another pool's or World's body throws `BodyLifecycleError`;
+releasing an already released one is ignored. Disabled leases still occupy pool slots.
+`pool.stats` is `{ capacity, leased, enabled, disabled, available }`. `pool.dispose()` removes
+the live leases, returns the slots to ordinary use and drops the hull pin; idempotent.
+`World.destroy()` or device loss invalidates every pool (`tryAcquire` returns `'disposed'`).
+
+Acquire and release only queue CPU commands. After `BodyPool.create` resolves, acquire, release,
+flush and step create no GPU buffers, bind groups, shader modules or pipelines and upload no
+hull geometry (tests-gpu/pool.gpu.test.ts asserts this over warmed churn and a 10,000-life run).
+No speedup over ordinary add/remove is claimed.
+
+A hull lease's `body.hull` is its own copy (the pinned geometry stays private), so
+`new BodyMesh(world, { bodies: shape })` doesn't select pooled hulls by identity: select with a
+predicate over your leases, e.g. `bodies: b => leases.has(b)`, with `geometry: hullGeometry(shape)`,
+made before churn.
+
+Not covered: per-pool helper limits, sharing one hull pin between pools, compaction of
+fragmented hull storage (a fragmented fixed World can refuse a hull that would fit in total),
+query/read admission limits, and any whole-engine memory or no-GC guarantee.
+
+Device-only example: [body-pool.ts](../examples/body-pool.ts).

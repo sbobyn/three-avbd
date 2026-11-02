@@ -36,6 +36,10 @@
     "./advanced": {
       "types": "./build/lib/advanced.d.ts",
       "import": "./build/lib/advanced.js"
+    },
+    "./pool": {
+      "types": "./build/lib/pool.d.ts",
+      "import": "./build/lib/pool.js"
     }
   },
   "files": [

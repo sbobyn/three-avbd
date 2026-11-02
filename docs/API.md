@@ -26,7 +26,9 @@ preparation API also include the reference utilities they depend on.
   exported constant.
 - **`three-avbd/sdf`**: experimental analytic/voxel fields, baking, curvature seeds, mass/inertia
   preparation and collision parameters; see [baking](SDF_BAKING.md) and [World integration](SDF_WORLD.md).
-- Built by `tsc` from the four public entry points and their transitive dependencies into `build/`
+- **`three-avbd/pool`** (development, not in the frozen 0.4 candidate): `BodyPool`, fixed-template
+  pools in a fixed-storage World (`WorldOptions.storage`); see [Body pools](BODY_LIFECYCLE.md#body-pools).
+- Built by `tsc` from the five public entry points and their transitive dependencies into `build/`
   (the site builds to `dist/`). The tarball includes that runtime, declarations, README, license
   and third-party notices. Demo assets, benchmarks and test fixtures are excluded.
 

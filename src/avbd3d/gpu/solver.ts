@@ -31,6 +31,7 @@ import { broadphaseWGSL, contactsHullWGSL, contactsWGSL, refsWGSL } from './wgsl
 import { solveWGSL } from './wgsl-solve.ts';
 import { LARGE_FACTOR, largestSmall } from './radii.ts';
 import { IGNORE_SLOT, NoCollideTable } from './no-collide.ts';
+import { type FixedStoragePlan, hullVec4s as hullSize, StorageCapacityError } from '../../lib/storage-budget.ts';
 
 export { PHASES, type StepProfile };
 
@@ -255,6 +256,15 @@ export interface GpuSolverOptions {
   shaders?: { contacts?: string; solve?: string };
   /** Collide hull shapes as hulls (default: when the device can bind nine storage buffers per stage; see GpuSolver3D.hulls). */
   hulls?: boolean;
+  /**
+   * Fixed retained storage (../../lib/storage-budget.ts resolveFixedStorage): every buffer is
+   * allocated once, at exactly the plan's capacities, and never grows or is replaced. Work past
+   * a topology capacity (joints, hull storage) throws StorageCapacityError, leaving the solver
+   * as it was; contacts, pairs and manifolds past theirs are dropped and counted (overflow).
+   * Collision backends are refused. `bodyCapacity` and `capacity` are the plan's. Default: none
+   * (storage adapts as before).
+   */
+  fixed?: FixedStoragePlan;
 }
 
 /** Per-body static data the host needs: broadphase radius and whether the body moves. */
@@ -272,6 +282,23 @@ interface HullSlot {
   offset: number;
   size: number;
   refs: number;
+}
+
+type HullBlock = { offset: number; size: number };
+
+/** Where a hull of `size` vec4s goes: the first free block it fits (index into `free`), else the top (-1). */
+const hullBlock = (free: readonly HullBlock[], size: number): number => free.findIndex((b) => b.size >= size);
+
+/** `free` with `block` returned and neighbouring blocks merged, sorted by offset (new objects). */
+function mergeFree(free: readonly HullBlock[], block: HullBlock): HullBlock[] {
+  const sorted = [...free, block].sort((a, b) => a.offset - b.offset);
+  const merged: HullBlock[] = [];
+  for (const b of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && last.offset + last.size === b.offset) last.size += b.size;
+    else merged.push({ ...b });
+  }
+  return merged;
 }
 
 /** The hull buffer layout of wgsl-hull.ts, as vec4s, at header offset `at`. */
@@ -468,6 +495,12 @@ export interface GpuCollisionContext3D {
 
 export class GpuSolver3D {
   readonly device: GPUDevice;
+  /** The fixed storage plan this solver was built with, or null when its storage adapts. */
+  readonly fixed: FixedStoragePlan | null;
+  /** Construction done: a fixed solver allocates and rebinds nothing after this. */
+  private assembled = false;
+  /** Hull references held by pins (pinHull), so an unpin can never release a body's reference. */
+  private readonly hullPins = new Map<HullShape, number>();
   private collisionBackend: GpuCollisionBackend3D | null = null;
   /** Currently installed advanced backend, or null for the standard narrowphase. */
   get activeCollisionBackend(): GpuCollisionBackend3D | null { return this.collisionBackend; }
@@ -566,6 +599,16 @@ export class GpuSolver3D {
     const last = 1 - this.parity;
     return { manifolds: this.manifoldBuffers[last], contacts: this.contactBuffers[last], counters: this.counterBuffer };
   }
+  /**
+   * @internal Both contact storages a step can leave (`contactStorage` is entry 1 − parity), so a
+   * pass over them can make its bind groups for either before stepping (ContactWatch.prewarm).
+   */
+  contactStorages(): [{ manifolds: GPUBuffer; contacts: GPUBuffer; counters: GPUBuffer }, { manifolds: GPUBuffer; contacts: GPUBuffer; counters: GPUBuffer }] {
+    return [0, 1].map((i) => ({ manifolds: this.manifoldBuffers[i], contacts: this.contactBuffers[i], counters: this.counterBuffer })) as [
+      { manifolds: GPUBuffer; contacts: GPUBuffer; counters: GPUBuffer },
+      { manifolds: GPUBuffer; contacts: GPUBuffer; counters: GPUBuffer },
+    ];
+  }
   private readonly argsBuffer: GPUBuffer;
   private adjBuffer: GPUBuffer | null = null;
   private readonly colorBuffer: GPUBuffer;
@@ -646,11 +689,17 @@ export class GpuSolver3D {
     Object.assign(this.params, { dt, gravity, iterations, alpha, betaLin, betaAng, gamma, up: REF_UP });
     this.bodyCount = ref.bodies.length;
     this.colorRounds = options.colorRounds ?? 16;
+    const plan = (this.fixed = options.fixed ?? null);
+    // Only where the device can bind them, whatever the option says (else layouts are invalid)
+    this.hulls = (options.hulls ?? true) && device.limits.maxStorageBuffersPerShaderStage >= 9;
+    if (plan) this.checkFixedScene(plan, ref, options);
 
     this.ownsBodyBuffer = !options.bodyBuffer;
-    this.bodyCapacity = options.bodyBuffer
-      ? Math.floor(options.bodyBuffer.size / (BODY_FLOATS * 4))
-      : Math.max(options.bodyCapacity ?? this.bodyCount + 1024, this.bodyCount, 1);
+    this.bodyCapacity = plan
+      ? plan.bodies
+      : options.bodyBuffer
+        ? Math.floor(options.bodyBuffer.size / (BODY_FLOATS * 4))
+        : Math.max(options.bodyCapacity ?? this.bodyCount + 1024, this.bodyCount, 1);
     this.lifecycle = new Uint8Array(this.bodyCapacity);
     if (this.bodyCapacity < this.bodyCount) throw new Error('body buffer too small');
     this.bodyBuffer = options.bodyBuffer ?? device.createBuffer({ label: 'bodies 3d', size: bodyBufferSize(this.bodyCapacity), usage: storageUsage() });
@@ -667,8 +716,7 @@ export class GpuSolver3D {
     this.colorBuffer = device.createBuffer({ label: 'colours', size: (3 * cap + 65 + MAX_COLORS * this.colorGroups + 1) * 4, usage: storageUsage() });
     this.paramsBuffer = device.createBuffer({ label: 'params 3d', size: PARAM_WORDS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.refBuffer = device.createBuffer({ label: 'reference poses', size: cap * 32, usage: storageUsage() });
-    // Only where the device can bind them, whatever the option says (else layouts are invalid)
-    this.hulls = (options.hulls ?? true) && device.limits.maxStorageBuffersPerShaderStage >= 9;
+    if (plan) this.hullCapacity = plan.hullVec4s;
     this.hullBuffer = device.createBuffer({ label: 'hulls', size: this.hullCapacity * 16, usage: storageUsage() });
     device.queue.writeBuffer(this.colorBuffer, 0, new Uint32Array(cap).fill(NO_COLOR));
 
@@ -685,6 +733,16 @@ export class GpuSolver3D {
     this.createPipelines(options.shaders ?? {});
     this.gridScan = new PrefixScan(device, this.gridBuffer, 0, this.tableSize + 1);
     this.colorHistScan = new PrefixScan(device, this.colorBuffer, this.colorHistOffset, MAX_COLORS * this.colorGroups + 1);
+    if (plan) {
+      // Allocated once at their most: every body large plus a triple per joint, and every colour
+      this.staticBuffer = device.createBuffer({ label: 'statics', size: plan.staticWords * 4, usage: storageUsage() });
+      this.passBuffer = device.createBuffer({ label: 'pass constants', size: plan.passEntries * PASS_STRIDE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      this.passEntries = plan.passEntries;
+      this.passGroup = device.createBindGroup({ layout: this.layouts.pass, entries: [{ binding: 0, resource: { buffer: this.passBuffer, size: 16 } }] });
+      this.passData = new ArrayBuffer(plan.passEntries * PASS_STRIDE);
+      this.passU32 = new Uint32Array(this.passData);
+      this.passF32 = new Float32Array(this.passData);
+    }
 
     // Joints and springs in the reference's creation order; IgnoreCollision only filters pairs
     const order = options.spatialSort === false ? ref.bodies.map((_, i) => i) : mortonOrder(ref.bodies);
@@ -698,7 +756,7 @@ export class GpuSolver3D {
       const b = index.get(f.bodyB)!;
       this.noCollideTable.add(a, b, IGNORE_SLOT);
     }
-    this.allocateJoints(Math.max(joints.length + 256, options.capacity?.joints ?? 0));
+    this.allocateJoints(plan ? plan.joints : Math.max(joints.length + 256, options.capacity?.joints ?? 0));
     for (const f of joints) this.writeJoint(this.jointCount++, f, index);
     // Size pair and contact storage from the scene's actual starting pairs: overflowing on the
     // first steps drops pairs, and a freshly built wall then sinks into itself for good
@@ -724,12 +782,40 @@ export class GpuSolver3D {
     // and the most points those pairs can have. Floors for scenes that start apart (a falling
     // pile): a manifold and four contacts per body.
     const least = options.capacity ?? {};
-    this.allocateContacts(
-      Math.max(8192, 4 * cap, MAX_MANIFOLD_POINTS * touching, least.contacts ?? 0),
-      Math.max(4096, 4 * cap, 2 * pairs, least.pairs ?? 0),
-      Math.max(4096, cap, START_HEADROOM * touching, least.manifolds ?? 0),
-    );
+    if (plan) this.allocateContacts(plan.contacts, plan.pairs, plan.manifolds, true);
+    else {
+      this.allocateContacts(
+        Math.max(8192, 4 * cap, MAX_MANIFOLD_POINTS * touching, least.contacts ?? 0),
+        Math.max(4096, 4 * cap, 2 * pairs, least.pairs ?? 0),
+        Math.max(4096, cap, START_HEADROOM * touching, least.manifolds ?? 0),
+      );
+    }
     this.writeBodies(0, order.map((r) => ref.bodies[r]));
+    this.assembled = true;
+  }
+
+  /**
+   * A fixed plan's checks on the scene and options, before anything is allocated: the bodies,
+   * joints and hulls it starts with fit, it has no IgnoreCollision (a fixed plan budgets no
+   * permanent exclusions outside joints), and a supplied body buffer holds exactly the plan's bodies.
+   */
+  private checkFixedScene(plan: FixedStoragePlan, ref: Solver, options: GpuSolverOptions): void {
+    if (options.bodyBuffer && Math.floor(options.bodyBuffer.size / (BODY_FLOATS * 4)) !== plan.bodies) {
+      throw new Error(`GpuSolver3D: a fixed plan's body buffer holds exactly ${plan.bodies} bodies, not ${Math.floor(options.bodyBuffer.size / (BODY_FLOATS * 4))}`);
+    }
+    if (options.bodyCapacity !== undefined && options.bodyCapacity !== plan.bodies) {
+      throw new Error(`GpuSolver3D: bodyCapacity ${options.bodyCapacity} differs from the fixed plan's ${plan.bodies} bodies`);
+    }
+    if (ref.bodies.length > plan.bodies) throw new StorageCapacityError('bodies', ref.bodies.length, plan.bodies);
+    if (ref.forces.some((f) => f instanceof IgnoreCollision)) {
+      throw new Error('GpuSolver3D: a fixed plan budgets no IgnoreCollision pairs (only joints keep bodies apart)');
+    }
+    const joints = ref.forces.filter((f) => f instanceof Joint || f instanceof Spring).length;
+    if (joints > plan.joints) throw new StorageCapacityError('joints', joints, plan.joints);
+    if (!this.hulls) return;
+    let need = 0;
+    for (const shape of new Set(ref.bodies.map(hullOf))) if (shape) need += hullSize(shape);
+    if (need > plan.hullVec4s) throw new StorageCapacityError('hullVec4s', need, plan.hullVec4s);
   }
 
   /** GPU index of the reference solver's body `i` (bodies added later keep their index). */
@@ -795,7 +881,13 @@ export class GpuSolver3D {
     ` }), [L.args], ['argsPrev', 'argsPairs', 'argsContacts', 'argsColors']);
   }
 
+  /** A fixed solver's storage is made once, while it is assembled: past that, a bug. */
+  private assertCanAllocate(what: string): void {
+    if (this.fixed && this.assembled) throw new Error(`GpuSolver3D: fixed storage cannot reallocate (${what})`);
+  }
+
   private allocateJoints(capacity: number): void {
+    this.assertCanAllocate('joints');
     const d = this.device;
     const joints = d.createBuffer({ label: 'joints 3d', size: Math.max(capacity, 1) * JOINT_FLOATS * 4, usage: storageUsage() });
     const infoBuffer = d.createBuffer({ label: 'joint info', size: Math.max(capacity, 1) * 16, usage: storageUsage() });
@@ -820,14 +912,16 @@ export class GpuSolver3D {
    * (Re)allocate pair, manifold and contact storage. When growing, the ping-pong buffers are
    * copied over and the counters are left alone, so warm starts survive the reallocation.
    */
-  private allocateContacts(requestedContacts: number, requestedPairs: number, requestedManifolds: number): void {
+  private allocateContacts(requestedContacts: number, requestedPairs: number, requestedManifolds: number, exact = false): void {
+    this.assertCanAllocate('contacts');
     this.manifoldsValid = false;
     const d = this.device;
     const maxBinding = d.limits.maxStorageBufferBindingSize;
-    const capacity = Math.min(Math.ceil(requestedContacts), Math.floor(maxBinding / (CONTACT_WORDS * 4)));
-    const pairCapacity = Math.min(Math.ceil(requestedPairs), Math.floor(maxBinding / 8));
+    // Exact: a fixed plan's counts, already checked against the device's limits (manifolds <= pairs)
+    const capacity = exact ? requestedContacts : Math.min(Math.ceil(requestedContacts), Math.floor(maxBinding / (CONTACT_WORDS * 4)));
+    const pairCapacity = exact ? requestedPairs : Math.min(Math.ceil(requestedPairs), Math.floor(maxBinding / 8));
     // Every manifold comes from a broadphase pair
-    const manifoldCapacity = Math.min(Math.ceil(requestedManifolds), pairCapacity, Math.floor(maxBinding / (MANIFOLD_WORDS * 4)));
+    const manifoldCapacity = exact ? requestedManifolds : Math.min(Math.ceil(requestedManifolds), pairCapacity, Math.floor(maxBinding / (MANIFOLD_WORDS * 4)));
     const old = { contacts: this.contactBuffers, manifolds: this.manifoldBuffers, contactCapacity: this.contactCapacity, manifoldCapacity: this.manifoldCapacity };
     for (const b of [this.pairBuffer, this.tableBuffer]) b?.destroy();
     this.contactCapacity = capacity;
@@ -857,12 +951,17 @@ export class GpuSolver3D {
 
   /** Adjacency storage and every bind group (they reference reallocated buffers). */
   private rebuildBindings(): void {
+    this.assertCanAllocate('bindings');
     const d = this.device;
     const cap = this.bodyCapacity;
     this.adjBuffer?.destroy();
     this.adjBuffer = d.createBuffer({ label: 'adjacency', size: (2 * cap + 1 + 2 * (this.jointCapacity + this.manifoldCapacity)) * 4, usage: storageUsage() });
     this.adjScan?.destroy();
-    this.adjScan = new PrefixScan(d, this.adjBuffer, 0, this.bodyCount + 1);
+    // Fixed: over every slot, so appended bodies need no new scan. Bodies past bodyCount have no
+    // constraints (every endpoint is a body below it), so their counts stay the step's cleared
+    // zeros and the exclusive sums below bodyCount + 1 are the ones a bodyCount + 1 scan makes;
+    // past it they all equal the total, which nothing reads (adj[b], adj[b + 1] for b < bodyCount).
+    this.adjScan = new PrefixScan(d, this.adjBuffer, 0, (this.fixed ? cap : this.bodyCount) + 1);
     this.staticBuffer ??= d.createBuffer({ label: 'statics', size: 16, usage: storageUsage() });
 
     const group = (layout: GPUBindGroupLayout, buffers: GPUBuffer[]) =>
@@ -908,6 +1007,7 @@ export class GpuSolver3D {
 
   /** Masked public-body command. Preserve all unrelated lanes and the existing hull slot. */
   patchBody(index: number, fields: ReadonlySet<BodyField>, body: Rigid, fixed = false, marker = true): void {
+    this.preflightHulls(1, () => index, () => body);
     const f = new Float32Array(BODY_FLOATS);
     const info = this.pack(body, f, 0, this.bodies[index]?.hull);
     const write = (offset: number, count: number) => this.device.queue.writeBuffer(this.bodyBuffer, (index * BODY_FLOATS + offset) * 4, f, offset, count);
@@ -1103,6 +1203,9 @@ export class GpuSolver3D {
     data.set(large, 0);
     entries.forEach((e, k) => data.set(e, large.length + 3 * k));
     if (this.staticBuffer!.size < data.byteLength) {
+      // (A fixed plan holds every body as large and a triple per joint slot: unreachable unless
+      // seedFrom, a validation hook, re-adds joints it already has)
+      if (this.fixed) throw new StorageCapacityError('statics', data.length, this.fixed.staticWords);
       this.staticBuffer!.destroy();
       this.staticBuffer = this.device.createBuffer({ label: 'statics', size: data.byteLength, usage: storageUsage() });
       this.rebuildBindings();
@@ -1119,6 +1222,7 @@ export class GpuSolver3D {
   seedFrom(ref: Solver): void {
     if (this.refToGpu.some((g, i) => g !== i)) throw new Error('seedFrom needs spatialSort: false');
     const index = new Map<Rigid, number>(ref.bodies.map((b, i) => [b, i]));
+    this.preflightHulls(ref.bodies.length, (k) => k, (k) => ref.bodies[k]);
     // The matching contact history is imported below, so keep it for these bodies.
     this.writeBodies(0, ref.bodies, false);
     let slot = 0;
@@ -1172,18 +1276,20 @@ export class GpuSolver3D {
 
   /** A hull's header offset in the hull buffer, uploading it on first use. */
   private acquireHull(shape: HullShape): number {
+    const slot = this.hullSlots.get(shape);
+    // Fixed: refused before anything changes (the hull pipeline compiled, the allocator)
+    if (!slot && this.fixed) this.fixedHullFit(this.hullFree, this.hullTop, hullSize(shape));
     if (!this.hullShaders && !this.contactShaders.custom) {
       this.contactShaders.make(contactsHullWGSL);
       this.hullShaders = true;
     }
-    const slot = this.hullSlots.get(shape);
     if (slot) {
       slot.refs++;
       return slot.offset;
     }
-    const size = 2 + shape.vertices.length / 3 + 2 * shape.faces.length + Math.ceil(shape.faces.reduce((n, f) => n + f.verts.length, 0) / 4) + shape.edges.length;
+    const size = hullSize(shape);
     let offset = -1;
-    const free = this.hullFree.findIndex((b) => b.size >= size);
+    const free = hullBlock(this.hullFree, size);
     if (free >= 0) {
       const block = this.hullFree[free];
       offset = block.offset;
@@ -1205,19 +1311,112 @@ export class GpuSolver3D {
     const slot = this.hullSlots.get(shape);
     if (!slot || --slot.refs > 0) return;
     this.hullSlots.delete(shape);
-    this.hullFree.push({ offset: slot.offset, size: slot.size });
     // Merge neighbouring free blocks so big hulls fit again
-    this.hullFree.sort((a, b) => a.offset - b.offset);
-    const merged: Array<{ offset: number; size: number }> = [];
-    for (const b of this.hullFree) {
-      const last = merged[merged.length - 1];
-      if (last && last.offset + last.size === b.offset) last.size += b.size;
-      else merged.push({ ...b });
+    this.hullFree = mergeFree(this.hullFree, { offset: slot.offset, size: slot.size });
+  }
+
+  /**
+   * @internal Whether `shape` can be pinned now without growing anything: it is resident (in
+   * use or pinned), or a free block or the room above the top fits it. Changes nothing. False
+   * where hulls collide as boxes (GpuSolver3D.hulls). An adaptive solver grows to fit.
+   */
+  canPinHull(shape: HullShape): boolean {
+    if (!this.hulls) return false;
+    if (this.hullSlots.has(shape)) return true;
+    if (!this.fixed) return true;
+    try {
+      this.fixedHullFit(this.hullFree, this.hullTop, hullSize(shape));
+      return true;
+    } catch (error) {
+      if (error instanceof StorageCapacityError) return false;
+      throw error;
     }
-    this.hullFree = merged;
+  }
+
+  /**
+   * @internal Hold `shape` resident: one reference, as a body using it takes, keyed by object
+   * identity. Compiles the hull narrowphase now if no hull has yet and uploads the shape on its
+   * first use, so bodies packed with it later neither compile nor upload. Throws
+   * StorageCapacityError (fixed storage, changing nothing) if it does not fit, and an Error
+   * where hulls collide as boxes.
+   */
+  pinHull(shape: HullShape): void {
+    if (!this.hulls) throw new Error('GpuSolver3D.pinHull: hulls collide as boxes on this device (GpuSolver3D.hulls)');
+    this.acquireHull(shape);
+    this.hullPins.set(shape, (this.hullPins.get(shape) ?? 0) + 1);
+  }
+
+  /** @internal Release one pinHull reference to `shape` (its storage goes once no body uses it either). */
+  unpinHull(shape: HullShape): void {
+    const pins = this.hullPins.get(shape);
+    if (!pins) throw new Error('GpuSolver3D.unpinHull: this shape is not pinned');
+    if (pins > 1) this.hullPins.set(shape, pins - 1);
+    else this.hullPins.delete(shape);
+    this.releaseHull(shape);
+  }
+
+  /**
+   * Fixed storage: where a new hull of `size` vec4s would go in this free list and top, without
+   * changing them; throws StorageCapacityError (requested: `size`, capacity: the largest run of
+   * free vec4s, a block or the room above the top) if it fits nowhere. No compaction: free vec4s
+   * split over blocks can be too fragmented for a hull that fits their sum.
+   */
+  private fixedHullFit(free: readonly HullBlock[], top: number, size: number): number {
+    const block = hullBlock(free, size);
+    const offset = block >= 0 ? free[block].offset : top;
+    if (block < 0 && top + size > this.hullCapacity) {
+      throw new StorageCapacityError('hullVec4s', size, Math.max(this.hullCapacity - top, ...free.map((b) => b.size)));
+    }
+    if (offset + SHAPE_HULL >= 2 ** 24) throw new StorageCapacityError('hullOffset', offset + SHAPE_HULL, 2 ** 24 - 1);
+    return offset;
+  }
+
+  /**
+   * Fixed storage: throws StorageCapacityError, changing nothing, unless the hulls `count` body
+   * writes take fit. Write k puts `body(k)` in slot `slot(k)`, in order, as pack does: the slot's
+   * old hull released (to the free list once nothing uses it), then its new one taken. Run
+   * against a copy of the allocator, so a batch that frees space before it takes some fits.
+   */
+  private preflightHulls(count: number, slot: (k: number) => number, body: (k: number) => Rigid): void {
+    if (!this.fixed || !this.hulls) return;
+    let sim: { slots: Map<HullShape, HullSlot>; free: HullBlock[]; top: number; written: Map<number, HullShape | undefined> } | null = null;
+    for (let k = 0; k < count; k++) {
+      const index = slot(k);
+      const shape = hullOf(body(k));
+      const old = sim?.written.has(index) ? sim.written.get(index) : this.bodies[index]?.hull;
+      if (old === shape) continue;
+      sim ??= {
+        slots: new Map([...this.hullSlots].map(([s, h]) => [s, { ...h }])),
+        free: this.hullFree.map((b) => ({ ...b })),
+        top: this.hullTop,
+        written: new Map(),
+      };
+      sim.written.set(index, shape);
+      // releaseHull
+      const was = old && sim.slots.get(old);
+      if (was && --was.refs <= 0) {
+        sim.slots.delete(old);
+        sim.free = mergeFree(sim.free, { offset: was.offset, size: was.size });
+      }
+      if (!shape) continue;
+      // acquireHull
+      const held = sim.slots.get(shape);
+      if (held) {
+        held.refs++;
+        continue;
+      }
+      const size = hullSize(shape);
+      const offset = this.fixedHullFit(sim.free, sim.top, size);
+      const block = hullBlock(sim.free, size);
+      if (block < 0) sim.top += size;
+      else if (sim.free[block].size === size) sim.free.splice(block, 1);
+      else Object.assign(sim.free[block], { offset: sim.free[block].offset + size, size: sim.free[block].size - size });
+      sim.slots.set(shape, { offset, size, refs: 1 });
+    }
   }
 
   private growHulls(needed: number): void {
+    this.assertCanAllocate('hulls');
     let capacity = this.hullCapacity;
     while (capacity < needed) capacity *= 2;
     const buffer = this.device.createBuffer({ label: 'hulls', size: capacity * 16, usage: storageUsage() });
@@ -1239,15 +1438,19 @@ export class GpuSolver3D {
 
   /**
    * Append bodies (as many as fit), returning the first one's index (-1 if none fit). One
-   * call for a batch: each call rebuilds the adjacency scan.
+   * call for a batch: each call rebuilds the adjacency scan (not with fixed storage, whose scan
+   * covers every slot). Fixed storage: throws StorageCapacityError, changing nothing, if the
+   * batch's hulls do not fit.
    */
   addBodies(bodies: Rigid[]): number {
     const n = Math.min(bodies.length, this.bodyCapacity - this.bodyCount);
     if (n <= 0) return -1;
     const first = this.bodyCount;
+    this.preflightHulls(n, (k) => first + k, (k) => bodies[k]);
     this.bodyCount += n;
     this.writeBodies(first, bodies.slice(0, n));
     this.device.queue.writeBuffer(this.colorBuffer, first * 4, new Uint32Array(n).fill(NO_COLOR));
+    if (this.fixed) return first;
     this.adjScan!.destroy();
     this.adjScan = new PrefixScan(this.device, this.adjBuffer!, 0, this.bodyCount + 1);
     return first;
@@ -1255,19 +1458,30 @@ export class GpuSolver3D {
 
   /** Append a joint between body indices (a = -1: world point rA) with fresh state. */
   appendJoint(a: number, b: number, rA: ArrayLike<number>, rB: ArrayLike<number>, stiffnessLin: number, stiffnessAng: number): number {
+    const fill = (o: Float32Array) => {
+      freshJoint(o);
+      o[J_PEN_LIN + 3] = finite(stiffnessLin);
+      o[J_PEN_ANG + 3] = finite(stiffnessAng);
+      o.set([rA[0], rA[1], rA[2]], J_RA);
+      o.set([rB[0], rB[1], rB[2]], J_RB);
+      // Torque arm as in the reference Joint constructor
+      const sa = a >= 0 ? this.bodies[a].size : [0, 0, 0];
+      const sb = this.bodies[b].size;
+      o[J_LAM_ANG + 3] = (sa[0] + sb[0]) ** 2 + (sa[1] + sb[1]) ** 2 + (sa[2] + sb[2]) ** 2;
+    };
+    // Fixed storage: released slots first, as appendJoints (StorageCapacityError when none is left)
+    if (this.fixed) {
+      this.checkEndpoints('appendJoint', [{ a, b }]);
+      return this.appendConstraints(1, (_, o) => {
+        fill(o);
+        return [T_JOINT, a, b];
+      })[0];
+    }
     const slot = this.jointCount;
     if (slot >= this.jointCapacity) this.allocateJoints(this.jointCapacity * 2);
     this.jointCount++;
     const o = new Float32Array(JOINT_FLOATS);
-    freshJoint(o);
-    o[J_PEN_LIN + 3] = finite(stiffnessLin);
-    o[J_PEN_ANG + 3] = finite(stiffnessAng);
-    o.set([rA[0], rA[1], rA[2]], J_RA);
-    o.set([rB[0], rB[1], rB[2]], J_RB);
-    // Torque arm as in the reference Joint constructor
-    const sa = a >= 0 ? this.bodies[a].size : [0, 0, 0];
-    const sb = this.bodies[b].size;
-    o[J_LAM_ANG + 3] = (sa[0] + sb[0]) ** 2 + (sa[1] + sb[1]) ** 2 + (sa[2] + sb[2]) ** 2;
+    fill(o);
     this.info.set([T_JOINT, a, b, 0], slot * 4);
     this.device.queue.writeBuffer(this.jointBuffer, slot * JOINT_FLOATS * 4, o);
     this.device.queue.writeBuffer(this.infoBuffer, slot * 16, this.info, slot * 4, 4);
@@ -1336,6 +1550,7 @@ export class GpuSolver3D {
    * `rB` on its second with `stiffness` (N/m), about `rest` metres apart. Returns their slots.
    */
   appendSprings(springs: { a: number; b: number; rA: ArrayLike<number>; rB: ArrayLike<number>; stiffness: number; rest: number }[]): number[] {
+    if (this.fixed) this.checkEndpoints('appendSprings', springs);
     return this.appendConstraints(springs.length, (k, o) => {
       const { a, b, rA, rB, stiffness, rest } = springs[k];
       o[J_PEN_LIN + 3] = finite(stiffness);
@@ -1345,12 +1560,24 @@ export class GpuSolver3D {
     });
   }
 
+  /** Fixed storage: throws, before any slot is taken, unless each a is -1 (the world) or a body and each b a body. */
+  private checkEndpoints(what: string, ends: readonly { a: number; b: number }[]): void {
+    const body = (i: number) => Number.isInteger(i) && i >= 0 && i < this.bodyCount;
+    for (const { a, b } of ends) {
+      if (!(a === -1 || body(a)) || !body(b)) throw new Error(`${what}: bodies ${a} and ${b} are not both bodies in the solver (a may be -1, the world)`);
+    }
+  }
+
   /**
    * `n` constraints into slots (released ones first, lowest first, the rest appended), each
    * record filled by `fill` (it returns the type and the two bodies), uploaded in a write per
    * run of slots.
    */
   private appendConstraints(n: number, fill: (k: number, record: Float32Array) => [number, number, number]): number[] {
+    // Fixed storage: refused before a slot is taken, a count changes or anything is written
+    if (this.fixed && n > this.freeSlots.length + this.jointCapacity - this.jointCount) {
+      throw new StorageCapacityError('joints', this.jointCount - this.freeSlots.length + n, this.jointCapacity);
+    }
     const slots: number[] = [];
     if (this.freeSlots.length) {
       this.freeSlots.sort((x, y) => y - x);
@@ -1408,8 +1635,11 @@ export class GpuSolver3D {
   /**
    * Replace bodies `indices[k]` with `bodies[k]`, their state starting afresh: a fixed body let
    * loose, or one taken out of play. Runs of consecutive indices go up in one write each.
+   * Fixed storage: throws StorageCapacityError, changing nothing, if their hulls do not fit.
    */
   rewriteBodies(indices: ArrayLike<number>, bodies: Rigid[]): void {
+    // Fixed storage: the whole batch's hulls fit, or it throws StorageCapacityError and nothing changes
+    this.preflightHulls(indices.length, (k) => indices[k], (k) => bodies[k]);
     for (let k = 0; k < indices.length; ) {
       let e = k + 1;
       while (e < indices.length && indices[e] === indices[e - 1] + 1) e++;
@@ -1515,6 +1745,8 @@ export class GpuSolver3D {
   private writePassConstants(alpha: number): void {
     const entries = this.colorCap + 1;
     if (entries > this.passEntries || !this.passGroup) {
+      // (A fixed plan made every colour's entry and the group at construction)
+      this.assertCanAllocate('pass constants');
       this.passBuffer?.destroy();
       this.passBuffer = this.device.createBuffer({ label: 'pass constants', size: entries * PASS_STRIDE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       this.passEntries = entries;
@@ -1544,6 +1776,12 @@ export class GpuSolver3D {
   reserveCollisionCapacity(points: number): void {
     const limit=Math.min(this.device.limits.maxBufferSize,this.device.limits.maxStorageBufferBindingSize);
     if(!Number.isSafeInteger(points)||points<1||points*CONTACT_WORDS*4>limit) throw new Error('Invalid collision capacity');
+    // Fixed storage: nothing to do within it, refused (changing nothing) past it
+    if (this.fixed) {
+      if (points > this.contactCapacity) throw new StorageCapacityError('contacts', points, this.contactCapacity);
+      if (points > this.manifoldCapacity) throw new StorageCapacityError('manifolds', points, this.manifoldCapacity);
+      return;
+    }
     if(points>this.contactCapacity||points>this.manifoldCapacity) {
       this.allocateContacts(Math.max(points,this.contactCapacity),Math.max(points,this.pairCapacity),Math.max(points,this.manifoldCapacity));
     }
@@ -1553,6 +1791,7 @@ export class GpuSolver3D {
    * backend carries them over itself (SdfCollisionBridge.grown does). */
   /** Reject before allocating/destroying a backend that cannot interpret lifecycle state. */
   assertBackendSwitchAllowed(): void {
+    if (this.fixed) throw new Error('Fixed storage: collision backends are not available (a fixed solver keeps the standard narrowphase; use adaptive storage for SDF collisions)');
     if (this.lifecycle.some(bits => bits !== 0) || this.lifecyclePending?.()) throw new Error('Submit an enabled standard step before switching collision backends: pending body lifecycle state');
   }
 
@@ -1569,6 +1808,7 @@ export class GpuSolver3D {
   setCollisionBackend(backend: GpuCollisionBackend3D | null): void {
     if (this.destroyed) throw new Error('Solver is destroyed');
     if (backend === this.collisionBackend) return;
+    // (Fixed storage refuses here, before the backend prepares or the old one goes)
     this.assertBackendSwitchAllowed();
     backend?.prepare(this);
     this.collisionBackend?.destroy();
@@ -1832,8 +2072,9 @@ export class GpuSolver3D {
   /** Adapt the colour cap and pair/contact capacity to a recent counters readback. */
   adapt(counters: GpuCounters3D): void {
     this.adaptColors(counters);
-    // Fixed colourings (tests, diagnostics) also keep their capacity, as before the split
-    if (this.fixedColors) return;
+    // Fixed colourings (tests, diagnostics) also keep their capacity, as before the split; fixed
+    // storage keeps its own (an overflow drops and counts what did not fit)
+    if (this.fixedColors || this.fixed) return;
     // Grow before overflowing (a falling pile's contacts can jump between readbacks), to the
     // demand with headroom. Overflow bits: 1 pairs, 2 contacts, 4 manifolds.
     const want = (demand: number, capacity: number, bit: number) =>

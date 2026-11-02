@@ -14,3 +14,6 @@ export { deviceCapabilities } from './capabilities.ts';
 export type { DeviceCapabilities, WorldCapabilities } from './capabilities.ts';
 
 export { BodyLifecycleError, BodyDisabledError, UnsupportedLifecycleError } from './lifecycle.ts';
+
+export { StorageCapacityError, StorageLimitError, STORAGE_FLOORS } from './storage-budget.ts';
+export type { WorldStorageOptions, FixedStoragePlan, StorageResource } from './storage-budget.ts';
