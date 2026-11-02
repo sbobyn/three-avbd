@@ -96,6 +96,28 @@ Development activation/reset APIs and their GPU/lifetime semantics are described
   The renderer bridge uses Three's attribute disposal/cache path (r186 and r187); it does not
   infer storage release from geometry or texture counters.
 
+### Choosing settings
+
+- **`iterations`** (default 10): more is stiffer and costs more. Tall stacks and walls hold best at
+  10; 4 is the paper's large-scene setting, where walls stand unhit but fall more under impact
+  ([FINDINGS 8m](FINDINGS.md#2026-09-24--stage-8m-tall-brick-walls-at-4-iterations-slow-bodies-start-at-rest)).
+  `world.iterations` can change between steps.
+- **Contact margin** (`world.solver.params.contactMargin`, default 0.01 m): a resting contact
+  sits about this deep. 0.001 rests about 1.9 mm deep instead of 10.4 mm (one box on a floor,
+  M4 Max); its effect on tall-wall stability is not yet re-measured, so the default is unchanged.
+- **`maxBodies`**: the body buffer's fixed size (160 bytes a body). Adds past it return `null`;
+  disabled bodies still hold slots, and every step traverses up to the highest slot used, so size
+  it near the real peak rather than far above it.
+- **`dt` and `maxSubsteps`**: there is no CCD, so a fast body moves `v·dt` a step unchecked; a
+  smaller `dt` (e.g. 1/240 with `maxSubsteps = 8`) is the remedy for thin walls and fast shots.
+- **Fixed storage** (`storage: { growth: 'fixed', ... }`): every capacity explicit, checked
+  against the device before allocation and never grown. Needed for `three-avbd/pool`; no growth
+  readbacks; overflow is dropped and counted rather than repaired, so size for the worst case. The
+  default adaptive storage grows contacts, pairs and joints on its own and suits most scenes. See
+  [Body pools](BODY_LIFECYCLE.md#body-pools).
+
+How these compare with Rapier's defaults: [three-avbd vs Rapier](COMPARISON.md).
+
 ### Experimental SDF mode (0.4 release candidate; API may change)
 
 `await world.enableSdfCollisions([{ body, field, scale?, rotation? }], params?, broadphase?)` installs SDF

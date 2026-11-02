@@ -23,6 +23,24 @@ The unpublished 0.4 candidate adds masked body commands, lifetime observations, 
 queries and capability preflight. See [capabilities and migration](docs/RELEASE_0.4.md)
 and [audit dispositions](docs/AUDIT_DISPOSITION.md) before upgrading.
 
+## three-avbd or Rapier?
+
+**[three-avbd vs Rapier](docs/COMPARISON.md)**: features side by side, the measurements so far,
+the cons and how to shrink each one today. In short, why three-avbd (M4 Max, sources in that page):
+
+- **Scale.** A 110,000-brick ring steps in 9.3 ms headless (10.4 ms in Chrome), 4 iterations. On a 9,132-body ring,
+  Rapier 0.21 took 67 ms a step and three-avbd 2.1 ms (serialized, 4 iterations each; neither met
+  the shared quality target).
+- **No copy to draw.** `BodyMesh` renders straight from the solver's GPU buffer.
+- **Structures that break and bend.** Breakable and plastic joints run on the GPU; Rapier has
+  neither built in.
+- **Churn without allocation.** Fixed-storage body pools acquire, release and step with no new GPU
+  buffers or pipelines.
+
+Where Rapier is better: small scenes (at 1,000 resting boxes it was slightly faster per step and rested tighter), sleeping,
+CCD, more joint types and shapes, character and vehicle controllers, synchronous queries,
+cross-machine determinism, and it runs without WebGPU.
+
 ## Experimental SDF collisions (0.4 release candidate)
 
 The experimental `three-avbd/sdf` entry point is included in the 0.4 release candidate;
