@@ -282,3 +282,42 @@ test('physical diagnostics recover analytic motion, joint error and spin energy'
   stopped[STATE_SIZE] = 2.5; stopped[STATE_SIZE + 7] = 0;
   assert.equal(physicalQuality(slide, sliding, stopped, 2).trajectoryError, 0);
 });
+
+test('every rest/pile scene marked valid starts with zero overlapping pairs and nothing in the floor', async () => {
+  const { contactQuality } = await import('../src/comparison/contact-quality.ts');
+  const { CASES, SCENE_VALIDITY } = await import('../src/comparison/scenes.ts');
+  const stateOf = (scene: ReturnType<typeof makeScene>) => Float64Array.from(scene.bodies.flatMap(b =>
+    [...b.position, ...b.rotation, ...b.velocity, ...b.angularVelocity]));
+  const valid = CASES.filter(name => SCENE_VALIDITY[name]?.status === 'valid');
+  assert.deepEqual(valid, ['rest-grid-100', 'rest-grid-1k', 'rest-grid-10k', 'sphere-pile-hcp-100', 'rest-stack',
+    'pile-1k-settled', 'pile-10k-settled']);
+  for (const name of valid) {
+    const scene = makeScene(name);
+    const state = stateOf(scene);
+    // Touching is allowed (exact lattice contacts round to ~1e-16 m); any overlap is not.
+    assert.ok(contactQuality(scene, state)!.maxDepth <= 1e-9, `${name} starts with overlapping pairs`);
+    assert.equal(quality(scene, state).maxFloorPenetration, 0, `${name} starts in the floor`);
+    assert.equal(quality(scene, state).outsideFloorBodies, 0, name);
+  }
+  // The labels on the kept scenes describe what they are.
+  assert.ok(contactQuality(makeScene('pile-1k'), stateOf(makeScene('pile-1k')))!.maxDepth > 0.05);
+  const hcp = makeScene('sphere-pile-hcp-100');
+  assert.equal(hcp.bodies.filter(b => b.shape === 'sphere').length, 100);
+  assert.equal(hcp.bodies.filter(b => b.mass === 0).length, 4);
+});
+
+test('jitter moves dynamic bodies horizontally within the bound, reproducibly by seed', async () => {
+  const { jitterScene } = await import('../src/comparison/scenes.ts');
+  const base = makeScene('sphere-pile-100');
+  const a = jitterScene(base, 0.001, 7), b = jitterScene(base, 0.001, 7), c = jitterScene(base, 0.001, 8);
+  assert.equal(sceneHash(a), sceneHash(b));
+  assert.notEqual(sceneHash(a), sceneHash(c));
+  assert.equal(jitterScene(base, 0), base);
+  a.bodies.forEach((body, i) => {
+    const d = body.position.map((v, k) => v - base.bodies[i].position[k]);
+    if (!body.mass) assert.deepEqual(d, [0, 0, 0]);
+    else assert.ok(Math.abs(d[0]) <= 0.001 && Math.abs(d[1]) <= 0.001 && d[2] === 0 && Math.hypot(d[0], d[1]) > 0);
+  });
+  assert.throws(() => validateOptions({ ...DEFAULTS, jitter: -1 }));
+  assert.throws(() => validateOptions({ ...DEFAULTS, avbdMargin: NaN }));
+});

@@ -15,6 +15,8 @@ export interface Settings {
   rapierSleeping: boolean;
   rapierCcd: boolean;
   rapierCcdSubsteps: number;
+  /** AVBD's contact margin (m); 0.01 is its default. */
+  avbdMargin: number;
 }
 export interface Adapter {
   settings: object;
@@ -107,6 +109,7 @@ export async function createAdapter(engine: Engine, scene: Scene, config: Settin
   const n = scene.bodies.length;
   const capacity = { contacts: n * 32, manifolds: n * 8, pairs: n * 32, colors: 32 };
   const solver = new GpuSolver3D(device, ref, { bodyCapacity: n, capacity, bodyBuffer });
+  solver.params.contactMargin = config.avbdMargin;
   let raycaster: Raycaster | undefined;
   let contactWatch: ContactWatch | undefined;
   let stepCount = 0;
