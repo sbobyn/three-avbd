@@ -3,6 +3,7 @@ export const MAX_BODY_ID = 0x7fffffff;
 
 export class BodyIds {
   private next = 1;
+  get remaining(): number { return MAX_BODY_ID - this.next + 1; }
   allocate(): number {
     if (this.next > MAX_BODY_ID) throw new Error('Body lifetime IDs exhausted');
     return this.next++;

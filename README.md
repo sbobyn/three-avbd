@@ -19,6 +19,10 @@ destructible city of 94,000 voxel bodies ([code](https://github.com/sbobyn/three
 Needs a browser with WebGPU: Chrome or Edge on any platform, Safari 26 on macOS and iOS,
 Firefox where it ships WebGPU. Nothing is baked: every scene is simulated live on your GPU.
 
+The unpublished 0.4 candidate adds masked body commands, lifetime observations, static
+queries and capability preflight. See [capabilities and migration](docs/RELEASE_0.4.md)
+and [audit dispositions](docs/AUDIT_DISPOSITION.md) before upgrading.
+
 ## Experimental SDF collisions (0.4 release candidate)
 
 The experimental `three-avbd/sdf` entry point is included in the 0.4 release candidate;

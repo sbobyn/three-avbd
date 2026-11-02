@@ -7,10 +7,13 @@ import type { SdfCollisionBridge } from '../avbd3d/gpu/sdf-bridge.ts';
 // live in a buffer Three.js draws from directly (BodyMesh): no copies, no readback to draw.
 
 import * as THREE from 'three/webgpu';
+import { releaseStorageAttribute } from './storage.ts';
 import { bodyFields, copyBodyPatch, observedField, assignBodyPatch, type BodyField, type BodyPatch } from './body-commands.ts';
 import { deviceCapabilities, worldCapabilities, checkRequiredHulls, type WorldCapabilities } from './capabilities.ts';
+import { BodyReset } from '../avbd3d/gpu/body-reset.ts';
+import { BodyDisabledError, BodyLifecycleError, UnsupportedLifecycleError, checkEnabled, resetBodyPatch } from './lifecycle.ts';
 import { BodyMover } from '../avbd3d/gpu/body-mover.ts';
-import { B_ANGVEL, B_POS, B_ROT, B_VEL, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
+import { B_ANGVEL, B_POS, B_ROT, B_VEL, BODY_FLOATS, BODY_DISABLED, BODY_COLD } from '../avbd3d/gpu/layout.ts';
 import { decodeJoint, type JointState } from '../avbd3d/gpu/joints.ts';
 import { checkBreakBend, GpuSolver3D, gpuParams3D, unitRotation, type GpuCounters3D, type GpuStepOptions } from '../avbd3d/gpu/solver.ts';
 import { Rigid } from '../avbd3d/ref/body.ts';
@@ -62,6 +65,8 @@ export interface BodyState {
 }
 
 export interface BodyOptions extends BodyState {
+  /** Retain this life and GPU state without integration, collisions or rays. Default true. */
+  enabled?: boolean;
   /** Override geometric density integration: mass in kg and principal moments in kg m².
    * Body rotation and rendering must use this principal frame. Fixed bodies stay static. */
   massProperties?: { mass: number; moments: Vec3 };
@@ -103,7 +108,7 @@ export interface HullOptions extends BodyOptions {
 
 /** Where a ray first meets a body. */
 export interface RayHit {
-  /** The body hit (null if it was removed while the cast was on its way back). */
+  /** The original body at submission, possibly since removed/disabled. Check alive/enabled before acting. */
   body: Body | null;
   /** How far along the ray (m): 0 when it starts inside the body. */
   distance: number;
@@ -272,6 +277,10 @@ export class Body {
   private mask: number;
   private isFixed: boolean;
   private isAlive = true;
+  /** @internal CPU desired state, never a cached GPU pose. */
+  enabledState = true;
+  /** @internal Last known own observation, frozen before parking/reuse. */
+  frozen: Required<BodyState> | null = null;
 
   /** @internal Made by World.addBox / addSphere. */
   constructor(world: World, index: number, shape: 'box' | 'sphere' | 'hull', size: Vec3, options: BodyOptions, hullShape: HullShape | null = null) {
@@ -281,6 +290,7 @@ export class Body {
       this.massProperties = Object.freeze({ mass, moments: Object.freeze([...moments] as Vec3) });
     }
     this.world = world;
+    this.enabledState = options.enabled ?? true;
     this.id = world.allocateBodyId();
     this.index = index;
     this.shape = shape;
@@ -299,6 +309,10 @@ export class Body {
       angularVelocity: options.angularVelocity ?? [0, 0, 0],
     };
   }
+
+  get enabled(): boolean { return this.alive && !this.world.isDestroyed && this.enabledState; }
+  setEnabled(enabled: boolean): void { this.world.setEnabled(this, enabled); }
+  reset(state: BodyState = {}): void { this.world.resetBody(this, state); }
 
   get fixed(): boolean {
     return this.isFixed;
@@ -366,6 +380,7 @@ export class Body {
     this.world.assertLive('Body.moveTo');
     if (!this.isAlive) return;
     if (!this.isFixed) return this.set({ position, rotation });
+    if (!this.enabled) throw new BodyDisabledError();
     const patch = copyBodyPatch({ position, rotation });
     this.world.move(this, patch.position as Vec3, patch.rotation as Quat | undefined);
   }
@@ -521,6 +536,8 @@ export class Joint {
   get broken(): boolean {
     return this.state === 'broken';
   }
+  /** Holding but neither endpoint may participate until both are enabled. */
+  get suspended(): boolean { return this.holding && (!this.a.enabled || !this.b.enabled); }
   /** Still holding. */
   get holding(): boolean {
     return this.state === 'held';
@@ -570,6 +587,10 @@ export class World {
   private readonly rewrites = new Set<Body>();
   private readonly patches = new Map<Body, { fields: Set<BodyField>; fixed: boolean }>();
   private mover: BodyMover | null = null;
+  private resetter: BodyReset | null = null;
+  private readonly resets = new Set<Body>();
+  private readonly lifecycleDirty = new Set<Body>();
+  private readonly coldBodies = new Set<Body>();
   private pendingJoints: Joint[] = [];
   private readonly joints = new Set<Joint>();
   /** Joints placed in the solver so far (Joint.placed). */
@@ -629,23 +650,34 @@ export class World {
   private sdfError:Error|null=null;
   private sdfState: 'off' | 'preparing' | 'on' = 'off';
   private destroyed = false;
+  private gpuError: Error | null = null;
+  private readonly storageReleases = new Set<() => void>();
+  private readonly renderer: THREE.WebGPURenderer | undefined;
 
   /** Make a world: `World.create` (async, it may need the renderer's device). */
   private constructor(device: GPUDevice, options: WorldOptions, attribute: THREE.StorageInstancedBufferAttribute | null, buffer: GPUBuffer | undefined) {
     this.device = device;
+    this.renderer = options.renderer;
     this.maxBodies = options.maxBodies;
     this.bodyAttribute = attribute;
     this.solver = new GpuSolver3D(device, this.scratch, { bodyBuffer: buffer, bodyCapacity: options.maxBodies });
+    this.solver.lifecyclePending = () => this.resets.size > 0 || this.lifecycleDirty.size > 0;
     Object.assign(this.solver.params, gpuParams3D(), { dt: options.dt ?? 1 / 60, iterations: options.iterations ?? 10 });
     this.gravity = options.gravity ?? [0, -9.81, 0];
     this.pusher = new Pusher(device, this.solver.bodyBuffer);
     this.snapshot = new Float32Array(options.maxBodies * BODY_FLOATS);
     this.readAt = new Float64Array(options.maxBodies).fill(-1);
     this.contactOptions = { pairs: options.maxContactPairs ?? 8192, events: options.maxContactEvents ?? 4096 };
+    // A shared device may outlive many worlds. Its pending lost promise must not retain them.
+    const weak = new WeakRef(this);
+    void device.lost.then(info => {
+      const world = weak.deref();
+      if (world && !world.destroyed) world.gpuError ??= new Error(`WebGPU device lost (${info.reason}): ${info.message}. Recreate the device and World.`);
+    });
   }
 
   static async create(options: WorldOptions): Promise<World> {
-    if (!(options.maxBodies > 0)) throw new Error('World.create: maxBodies must be positive');
+    if (!Number.isSafeInteger(options.maxBodies) || options.maxBodies <= 0) throw new Error('World.create: maxBodies must be a positive safe integer');
     if (options.renderer) {
       const renderer = options.renderer;
       await renderer.init();
@@ -659,10 +691,17 @@ export class World {
       // The attribute's buffer, made now on the renderer's device, so the solver writes the very
       // buffer Three.js draws from (it would otherwise be made at the first draw)
       const attribute = new THREE.StorageInstancedBufferAttribute(new Float32Array(options.maxBodies * BODY_FLOATS), 4);
-      backend.createStorageAttribute(attribute);
-      const buffer = backend.get(attribute).buffer;
-      if (!buffer) throw new Error('World.create: Three.js made no GPU buffer for the bodies');
-      return new World(backend.device, options, attribute, buffer);
+      try {
+        backend.createStorageAttribute(attribute);
+        const buffer = backend.get(attribute).buffer;
+        if (!buffer) throw new Error('World.create: Three.js made no GPU buffer for the bodies');
+        const world = new World(backend.device, options, attribute, buffer);
+        world.ownStorageAttribute(attribute);
+        return world;
+      } catch (error) {
+        releaseStorageAttribute(renderer, attribute);
+        throw error;
+      }
     }
     if (!options.device) throw new Error('World.create: pass a renderer or a device');
     checkRequiredHulls(deviceCapabilities(options.device), options.requireHulls);
@@ -674,7 +713,7 @@ export class World {
    * Advanced custom backends have unknown shape support. */
   get capabilities(): Readonly<WorldCapabilities> {
     const backend = this.solver.activeCollisionBackend;
-    return worldCapabilities(deviceCapabilities(this.device), backend ? backend === this.sdfBridge ? 'sdf' : 'custom' : 'standard', this.solver.hulls);
+    return worldCapabilities(deviceCapabilities(this.device), backend ? backend === this.sdfBridge ? 'sdf' : 'custom' : 'standard', this.solver.hulls, this.solver.customShaders);
   }
 
   // --- Parameters ------------------------------------------------------------------------------
@@ -710,6 +749,7 @@ export class World {
    */
   async enableSdfCollisions(bindings: readonly SdfBodyBinding[] = [], params: Partial<CollisionParams> = {}, broadphase: SdfBroadphaseOptions = {}): Promise<void> {
     if(this.destroyed || this.sdfState!=='off') throw new Error('SDF collisions already enabled/preparing, or World destroyed');
+    this.solver.assertBackendSwitchAllowed();
     await this.installSdfCollisions(bindings,params,broadphase);
   }
   /** Apply new/replacement fields and commit body additions/removals. Omitted live bindings persist. */
@@ -801,6 +841,25 @@ export class World {
   /** @internal Stepping, reading, queries and topology changes need the GPU buffers destroy() frees. */
   assertLive(what: string): void {
     if (this.destroyed) throw new Error(`World destroyed: ${what} after destroy()`);
+    if (this.gpuError) throw this.gpuError;
+  }
+
+  get isDestroyed(): boolean { return this.destroyed; }
+
+  /** Device loss or an automatic GPU read failure. Stop using this world and recreate it. */
+  get error(): Error | null { return this.gpuError; }
+
+  /** @internal Release mesh storage on geometry disposal or world destruction, in either order. */
+  ownStorageAttribute(attribute: THREE.StorageInstancedBufferAttribute): () => void {
+    this.assertLive('creating render storage');
+    const renderer = this.renderer;
+    if (!renderer) throw new Error('World has no renderer');
+    const release = () => {
+      if (!this.storageReleases.delete(release)) return;
+      releaseStorageAttribute(renderer, attribute);
+    };
+    this.storageReleases.add(release);
+    return release;
   }
   private assertSdfReady():void {
     if(this.sdfState==='preparing'||this.sdfDirty)throw new Error('Await updateSdfCollisions before stepping or querying changed SDF bodies');
@@ -848,6 +907,11 @@ export class World {
 
   private add(shape: 'box' | 'sphere' | 'hull', size: Vec3, options: BodyOptions, hullShape: HullShape | null = null): Body | null {
     this.assertMutableTopology();
+    if (options.enabled !== undefined) checkEnabled(options.enabled);
+    if (options.enabled === false) this.assertLifecycle();
+    const initial: BodyPatch = {};
+    for (const field of bodyFields) if (options[field]) initial[field] = [...options[field]!];
+    options = { ...options, ...initial } as BodyOptions;
     // A removed body's slot first, else the next one past the end
     const index = this.free.length ? this.free[this.free.length - 1] : this.solver.bodyCount + this.appends.length;
     if (index >= this.maxBodies) return null;
@@ -864,6 +928,7 @@ export class World {
     if (index >= this.solver.bodyCount) this.appends[index-this.solver.bodyCount]=body;
     else this.rewrites.add(body);
     this.refilters.add(body);
+    if (!body.enabledState) this.lifecycleDirty.add(body);
     if(this.sdfBridge)this.sdfDirty=true;
     this.liveVersion++;
     return body;
@@ -872,6 +937,52 @@ export class World {
   /** The bodies in the world, in slot order. */
   get bodies(): Body[] {
     return this.slots.filter((b): b is Body => b !== null && b !== undefined);
+  }
+
+  /** Capacity is storage occupancy, not a dispatch or whole-engine GPU memory budget. */
+  get bodyStats() {
+    const bodies = this.bodies;
+    const enabled = bodies.filter(body => body.enabled).length;
+    return Object.freeze({ capacity: this.maxBodies, live: bodies.length, enabled, disabled: bodies.length - enabled,
+      available: this.maxBodies - bodies.length, reserved: 0, reservedAvailable: 0,
+      allocatedSlots: this.solver.bodyCount + this.appends.length, remainingBodyIds: this.bodyIds.remaining });
+  }
+
+  private assertLifecycle(body?: Body): void {
+    this.assertLive('body lifecycle');
+    if (body) {
+      assertOwner(this, body);
+      if (!body.alive) throw new BodyLifecycleError('Body was removed');
+    }
+    if (this.sdfState === 'preparing' || !this.capabilities.bodyActivation) throw new UnsupportedLifecycleError();
+  }
+
+  /** @internal Body lifecycle commands are validated atomically before CPU intent changes. */
+  setEnabled(body: Body, enabled: boolean): void {
+    checkEnabled(enabled);
+    this.assertLifecycle(body);
+    if (body.enabledState === enabled) return;
+    body.enabledState = enabled;
+    body.written = ++this.writes;
+    this.coldBodies.add(body);
+    this.lifecycleDirty.add(body);
+    this.liveVersion++;
+  }
+
+  /** @internal Reset uses current GPU pose; explicit fields keep ordinary last-write ordering. */
+  resetBody(body: Body, state: BodyState): void {
+    this.assertLifecycle(body);
+    const patch = resetBodyPatch(state);
+    this.write(body, patch);
+    this.impulses.delete(body);
+    this.forces.delete(body);
+    this.resets.add(body);
+    this.coldBodies.add(body);
+    this.lifecycleDirty.add(body);
+    // New/reused full records also need explicit reset velocities restored AFTER the pass.
+    const pending = this.patches.get(body) ?? { fields: new Set<BodyField>(), fixed: false };
+    for (const field of bodyFields) if (patch[field]) pending.fields.add(field);
+    this.patches.set(body, pending);
   }
 
   /** Bumped whenever bodies come or go (BodyMesh redraws its list then). */
@@ -900,6 +1011,10 @@ export class World {
   removeBody(body: Body): void {
     assertOwner(this, body);
     this.assertMutableTopology();
+    body.frozen = { position: body.position, rotation: body.rotation, velocity: body.velocity, angularVelocity: body.angularVelocity };
+    this.resets.delete(body);
+    this.lifecycleDirty.delete(body);
+    this.coldBodies.delete(body);
     for (const j of [...this.joints, ...this.pendingJoints]) if (j.a === body || j.b === body) j.remove();
     this.patches.delete(body);
     this.moves.delete(body);
@@ -1069,11 +1184,15 @@ export class World {
   step(options: StepOptions = {}): void {
     this.assertLive('step');
     this.assertSdfReady();
-    const movingKinematics = this.moves.size > 0 || this.sliding.size > 0;
+    const movingKinematics = [...this.moves, ...this.sliding.keys()].some(body => body.enabled);
     this.flush();
     this.slide();
     this.push();
     this.solver.step(movingKinematics ? {} : options);
+    for (const body of this.coldBodies) if (body.enabled) {
+      this.solver.lifecycle[body.index] = 0;
+      this.coldBodies.delete(body);
+    }
     this.arrive();
     this.steps++;
     if (this.contactGrowTo && !this.reading && !this.retiredWatch) this.growContactWatch();
@@ -1084,24 +1203,31 @@ export class World {
     if (this.steps % ADAPT_EVERY === 0 && !this.adapting) {
       this.adapting = true;
       const bridge=this.sdfBridge;
+      const counters=this.solver.readCounters();
+      void counters.catch(error=>{
+        if(!this.destroyed)this.gpuError ??= error instanceof Error?error:new Error(String(error));
+      });
       const adaptation=bridge
-        ? this.solver.readCounters().then(counters=>{
+        ? counters.then(counters=>{
           if(this.destroyed||this.sdfBridge!==bridge)return false;
           // Colours adapt whatever the pair policy: a frozen cap shares colours Jacobi-style in dense piles.
           this.solver.adaptColors(counters);
           return this.sdfBroadphase.autoGrow!==false&&!this.sdfError ? this.adaptSdfCollisions(counters) : false;
         })
-        : this.solver.readCounters().then(counters=>{
+        : counters.then(counters=>{
           if(!this.destroyed&&!this.sdfBridge&&this.sdfState==='off')this.solver.adapt(counters);
         });
-      const settled=bridge?adaptation.catch(error=>{
-        if(this.sdfBridge===bridge)this.sdfError=error instanceof Error?error:new Error(String(error));
-      }):adaptation;
+      const settled=adaptation.catch(error=>{
+        if(this.destroyed || this.sdfBridge!==bridge)return;
+        const failure=error instanceof Error?error:new Error(String(error));
+        if(bridge)this.sdfError=failure;
+        else this.gpuError ??= failure;
+      });
       void settled.finally(()=>{this.adapting=false;});
     }
     if (this.readbackEvery > 0 && this.steps % this.readbackEvery === 0 && !this.reading) {
       void this.read(this.tracked ?? undefined).catch((error) => {
-        if (!this.destroyed) throw error;
+        if (!this.destroyed) this.gpuError ??= error instanceof Error ? error : new Error(String(error));
       });
     }
   }
@@ -1136,6 +1262,7 @@ export class World {
   /** @internal A body's pushes: this step's impulses, or its standing forces. */
   pushesOf(body: Body, standing: boolean): Pushes {
     assertOwner(this, body);
+    if (!body.enabled) throw new BodyDisabledError();
     const map = standing ? this.forces : this.impulses;
     let p = map.get(body);
     if (!p) map.set(body, (p = noPush()));
@@ -1165,9 +1292,10 @@ export class World {
   private push(): void {
     if (!this.impulses.size && !this.forces.size) return;
     const all = new Map<number, Pushes>();
-    for (const [body, p] of this.impulses) all.set(body.index, p);
+    for (const [body, p] of this.impulses) if (body.enabled) all.set(body.index, p);
     const dt = this.dt;
     for (const [body, f] of this.forces) {
+      if (!body.enabled) continue;
       const p = all.get(body.index) ?? noPush();
       for (let a = 0; a < 3; a++) {
         p.lin[a] += f.lin[a] * dt;
@@ -1177,11 +1305,14 @@ export class World {
       all.set(body.index, p);
     }
     this.pusher.apply(all);
-    this.impulses.clear();
+    for (const body of this.impulses.keys()) if (body.enabled) this.impulses.delete(body);
   }
 
-  /** Send what bodies and joints were added, changed or removed since the last step. */
+  /** Submit topology, absolute and lifecycle commands, without consuming simulation time. */
+  flushCommands(): void { this.assertLive('flushCommands'); this.flush(); }
+
   private flush(): void {
+    const full = [...this.appends, ...this.rewrites];
     if (this.appends.length) {
       const first = this.solver.addBodies(this.appends.map((b) => this.rigid(b)));
       if (first !== this.appends[0].index) throw new Error('three-avbd: body slots out of step with the solver');
@@ -1195,10 +1326,22 @@ export class World {
       );
       this.rewrites.clear();
     }
+    // Full writes intentionally reset solver metadata; restore this life's desired flags below.
+    for (const body of full) if (body.alive && (!body.enabledState || this.coldBodies.has(body))) this.lifecycleDirty.add(body);
+    const resetting = [...this.resets].filter(body => body.alive);
+    if (resetting.length) {
+      this.resetter ??= new BodyReset(this.device, this.solver.bodyBuffer, this.maxBodies);
+      this.resetter.apply(resetting.map(body => body.index));
+    }
+    this.resets.clear();
     for (const [body, patch] of this.patches) {
       if (body.alive) this.solver.patchBody(body.index, patch.fields, this.rigid(body), patch.fixed);
     }
     this.patches.clear();
+    for (const body of this.lifecycleDirty) if (body.alive) {
+      this.solver.setLifecycle(body.index, (body.enabledState ? 0 : BODY_DISABLED) | (this.coldBodies.has(body) ? BODY_COLD : 0));
+    }
+    this.lifecycleDirty.clear();
     if (this.rewatches.size) {
       const list = [...this.rewatches];
       for (const b of list) {
@@ -1273,17 +1416,17 @@ export class World {
    */
   private slide(): void {
     for (const b of this.moves) {
-      if (b.alive && b.target) this.sliding.set(b, this.stepsThisUpdate);
+      if (b.enabled && b.target) { this.sliding.set(b, this.stepsThisUpdate); this.moves.delete(b); }
     }
-    this.moves.clear();
     if (!this.sliding.size) return;
     this.mover ??= new BodyMover(this.device, this.solver.bodyBuffer, this.maxBodies);
-    this.mover.apply([...this.sliding].map(([body, left]) => ({ index: body.index, ...body.target!, left, dt: this.dt })));
+    this.mover.apply([...this.sliding].filter(([body]) => body.enabled).map(([body, left]) => ({ index: body.index, ...body.target!, left, dt: this.dt })));
   }
 
   /** Cleanup is queued after the arrival step, never before its contact response. */
   private arrive(): void {
     for (const [body, left] of this.sliding) {
+      if (!body.enabled) continue;
       if (left > 1) { this.sliding.set(body, left - 1); continue; }
       const target = body.target!;
       const patch = { position: target.position, ...(target.rotation ? { rotation: target.rotation } : {}), velocity: [0, 0, 0], angularVelocity: [0, 0, 0] };
@@ -1366,6 +1509,7 @@ export class World {
     for (const body of bodies ?? []) assertOwner(this, body);
     bodies = bodies?.slice();
     if (this.destroyed) return Promise.reject(new Error('World destroyed: read after destroy()'));
+    if (this.gpuError) return Promise.reject(this.gpuError);
     if (this.reading) {
       if (this.readCovers(bodies)) return this.reading;
       // The read in flight does not hold these bodies (or holds them as they were before a write)
@@ -1492,10 +1636,13 @@ export class World {
       k = e;
     }
     this.device.queue.submit([encoder.finish()]);
-    await staging.mapAsync(GPUMapMode.READ);
-    const data = new Float32Array(staging.getMappedRange().slice(0));
-    staging.unmap();
-    staging.destroy();
+    let data: Float32Array;
+    try {
+      await staging.mapAsync(GPUMapMode.READ);
+      data = new Float32Array(staging.getMappedRange().slice(0));
+    } finally {
+      staging.destroy();
+    }
     if (this.destroyed) return;
     indices.forEach((index, k) => {
       this.snapshot.set(data.subarray(k * BODY_FLOATS, (k + 1) * BODY_FLOATS), index * BODY_FLOATS);
@@ -1507,6 +1654,7 @@ export class World {
   stateOf(body: Body, offset: number, n: number): number[] {
     assertOwner(this, body);
     const field: BodyField = offset === B_POS ? 'position' : offset === B_ROT ? 'rotation' : offset === B_VEL ? 'velocity' : 'angularVelocity';
+    if (body.frozen) return [...body.frozen[field]];
     const o = body.index * BODY_FLOATS + offset;
     return observedField(body.state[field], body.revisions[field], this.snapshot.subarray(o, o + n), this.readAt[body.index]);
   }
@@ -1520,9 +1668,11 @@ export class World {
     this.destroyed=true;
     this.pusher.destroy();
     this.mover?.destroy();
+    this.resetter?.destroy();
     this.contactWatch?.destroy();
     this.retiredWatch?.destroy();
     this.retiredWatch = null;
     this.solver.destroy();
+    for (const release of this.storageReleases) release();
   }
 }

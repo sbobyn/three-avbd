@@ -12,3 +12,5 @@ export type { SdfBroadphaseOptions } from '../avbd3d/gpu/sdf-broadphase.ts';
 
 export { deviceCapabilities } from './capabilities.ts';
 export type { DeviceCapabilities, WorldCapabilities } from './capabilities.ts';
+
+export { BodyLifecycleError, BodyDisabledError, UnsupportedLifecycleError } from './lifecycle.ts';

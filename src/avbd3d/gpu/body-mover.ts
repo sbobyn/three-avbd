@@ -1,7 +1,8 @@
 // On-demand, bounded commands over active kinematics only. Existing solver bindings stay intact.
-import { PRELUDE_3D } from './layout.ts';
+import { BODY_LIFECYCLE_WGSL, PRELUDE_3D } from './layout.ts';
 
 const WGSL = `${PRELUDE_3D}
+${BODY_LIFECYCLE_WGSL}
 struct Move { position: vec4f, rotation: vec4f, timing: vec4f }
 @group(0) @binding(0) var<storage, read_write> bodies: array<Body>;
 @group(0) @binding(1) var<storage, read> moves: array<Move>;
@@ -11,6 +12,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   if (id.x >= count.x) { return; }
   let m = moves[id.x];
   let i = bitcast<u32>(m.position.w);
+  if (!bodyEnabled(i)) { return; }
   let b = bodies[i];
   let time = m.timing.x * m.timing.y;
   bodies[i].vel = vec4f((m.position.xyz - b.pos.xyz) / time, b.vel.w);

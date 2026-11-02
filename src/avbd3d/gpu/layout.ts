@@ -13,6 +13,23 @@ import { CORE_WGSL } from '../../avbd2d/gpu/layout.ts';
  * and shape.
  */
 export const BODY_FLOATS = 40;
+/** Numeric f32 flags in initialPos.w; record strides and bindings are unchanged. */
+export const BODY_DIRTY = 1;
+export const BODY_DISABLED = 2;
+export const BODY_COLD = 4;
+export const LIFECYCLE_ABI_VERSION = 1;
+
+export const LIFECYCLE_FLAGS_WGSL = /* wgsl */ `
+fn lifecycleBits(w: f32) -> u32 {
+  if (w >= 0.0 && w <= 7.0) { return u32(w); }
+  return 0u;
+}
+`;
+/** Only modules binding production Body records use these accessors. SDF uses other records. */
+export const BODY_LIFECYCLE_WGSL = /* wgsl */ `
+fn bodyEnabled(i: u32) -> bool { return (lifecycleBits(bodies[i].initialPos.w) & 2u) == 0u; }
+fn bodyCold(i: u32) -> bool { return (lifecycleBits(bodies[i].initialPos.w) & 4u) != 0u; }
+`;
 export const B_POS = 0;
 export const B_ROT = 4;
 export const B_INITIAL_POS = 8;
@@ -141,6 +158,7 @@ export const NEAREST_FRACTION = 0.05;
 export const PARAM_WORDS = 48;
 
 export const PRELUDE_3D = /* wgsl */ `
+${LIFECYCLE_FLAGS_WGSL}
 // Shared by every 3D module (avbd3d/gpu/layout.ts)
 ${CORE_WGSL}
 const T_JOINT = ${T_JOINT};
@@ -179,7 +197,7 @@ const NEAREST_FRACTION = ${NEAREST_FRACTION};
 struct Body {
   pos: vec4f,          // xyz, w: friction
   rot: vec4f,          // orientation quaternion (x, y, z, w)
-  initialPos: vec4f,   // xyz: pose at the start of the step (x-); w: rewritten, discard contact history
+  initialPos: vec4f,   // xyz: pose at the start of the step (x-); w: numeric DIRTY=1 / DISABLED=2 / COLD=4
   initialRot: vec4f,
   size: vec4f,         // full widths, w: mass (0 = static)
   moment: vec4f,       // principal moments, w: bounding radius
@@ -302,6 +320,7 @@ fn orthonormal(n: vec3f) -> mat3x3f {
 
 /** 3D record accessors for the shared topology kernels (../../avbd2d/gpu/wgsl-topology.ts). */
 export const TOPOLOGY_ACCESSORS_3D = /* wgsl */ `
+${BODY_LIFECYCLE_WGSL}
 alias TopoItem = Manifold;
 
 // SDF pairs have multiple one-point manifolds; atomic export slots are not stable.
@@ -317,13 +336,14 @@ fn topoCount() -> u32 {
 }
 
 fn dynamicBody(i: i32) -> bool {
-  return i >= 0 && bodies[i].size.w > 0.0;
+  return i >= 0 && bodies[i].size.w > 0.0 && bodyEnabled(u32(i));
 }
 
 /** A joint or spring takes part unless disabled (fracture, released drag): stiffness zeroed. */
 fn jointActive(j: u32) -> bool {
   let k = joints[j];
-  return info[j].x != T_NONE && (k.penLin.w != 0.0 || k.penAng.w != 0.0);
+  return info[j].x != T_NONE && (k.penLin.w != 0.0 || k.penAng.w != 0.0)
+    && (info[j].y < 0 || bodyEnabled(u32(info[j].y))) && bodyEnabled(u32(info[j].z));
 }
 `;
 

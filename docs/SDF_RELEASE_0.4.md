@@ -1,5 +1,9 @@
 # three-avbd 0.4 release candidate
 
+**Historical SDF checkpoint (2026-10-24).** Current release scope and migration are in
+[RELEASE_0.4.md](RELEASE_0.4.md); later merged work supersedes the source/dependency
+boundary below. The recorded checks here were not rerun for the current candidate.
+
 Tracking: [STE-3003](https://linear.app/sbobyn/issue/STE-3003).
 This prepares the next npm version; it is not a publication announcement. The published 0.3.0
 package does not export `three-avbd/sdf`. The release starts from main's merged small-demo

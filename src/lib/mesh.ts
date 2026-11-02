@@ -6,6 +6,8 @@ import { cross, instanceIndex, materialColor, normalGeometry, normalize, positio
 import * as THREE from 'three/webgpu';
 import { B_POS, B_ROT, B_SIZE, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
 import type { HullShape } from '../avbd3d/shapes.ts';
+import { assertOwner } from './identity.ts';
+import { BodyLifecycleError } from './lifecycle.ts';
 import type { Body, World } from './world.ts';
 
 type Vec3 = THREE.Node<'vec3'>;
@@ -54,6 +56,8 @@ export function hullGeometry(shape: HullShape): THREE.BufferGeometry {
 }
 
 export interface BodyMeshOptions {
+  /** Draw retained disabled bodies for debugging (default false). */
+  includeDisabled?: boolean;
   /**
    * Which bodies to draw: a shape (every body of it, as they come and go), a hull shape (every
    * body made from it), a list, or a test. Default: every box.
@@ -78,8 +82,12 @@ export class BodyMesh extends THREE.Mesh<THREE.InstancedBufferGeometry, THREE.No
   private readonly colors: THREE.StorageInstancedBufferAttribute;
   private readonly which: BodyMeshOptions['bodies'];
   private drawnVersion = -1;
+  private readonly colorIds: Uint32Array;
+  private readonly includeDisabled: boolean;
+  private disposed = false;
 
   constructor(world: World, options: BodyMeshOptions = {}) {
+    world.assertLive('BodyMesh');
     if (!world.bodyAttribute) throw new Error('BodyMesh: the world has no body attribute (create it with a renderer)');
     const n = world.maxBodies;
     const which = options.bodies ?? 'box';
@@ -99,6 +107,8 @@ export class BodyMesh extends THREE.Mesh<THREE.InstancedBufferGeometry, THREE.No
     super(geometry, material);
     this.world = world;
     this.which = which;
+    this.includeDisabled = options.includeDisabled ?? false;
+    this.colorIds = new Uint32Array(n);
 
     // Each instance's body, then the body's record in the solver's buffer
     this.ids = new THREE.StorageInstancedBufferAttribute(new Uint32Array(n), 1);
@@ -118,10 +128,21 @@ export class BodyMesh extends THREE.Mesh<THREE.InstancedBufferGeometry, THREE.No
     const paint = storage(this.colors, 'vec4', n).toReadOnly().element(body);
     material.colorNode = select(paint.w.greaterThan(0.5), paint.rgb, materialColor.rgb) as unknown as THREE.Node<'color'>;
     this.frustumCulled = false;
+    const releaseIds = world.ownStorageAttribute(this.ids);
+    const releaseColors = world.ownStorageAttribute(this.colors);
+    geometry.addEventListener('dispose', () => {
+      this.disposed = true;
+      releaseIds();
+      releaseColors();
+    });
   }
 
   /** Paint one body (null: back to the material's colour). */
   setColor(body: Body, color: THREE.ColorRepresentation | null): void {
+    this.world.assertLive('BodyMesh.setColor');
+    assertOwner(this.world, body);
+    if (!body.alive) throw new BodyLifecycleError('Cannot color a removed body');
+    this.colorIds[body.index] = body.id;
     const a = this.colors.array as Float32Array;
     if (color === null) a.fill(0, body.index * 4, body.index * 4 + 4);
     else {
@@ -135,11 +156,18 @@ export class BodyMesh extends THREE.Mesh<THREE.InstancedBufferGeometry, THREE.No
   refresh(): void {
     const w = this.which;
     const all = this.world.bodies;
-    const list =
-      Array.isArray(w) ? w.filter((b) => b.alive)
+    const selected =
+      Array.isArray(w) ? w.filter((b) => b.world === this.world && b.alive)
       : typeof w === 'function' ? all.filter(w)
       : isHull(w) ? all.filter((b) => b.hull === w)
       : all.filter((b) => b.shape === w);
+    const list = selected.filter(body => body.alive && (this.includeDisabled || body.enabled));
+    const paint = this.colors.array as Float32Array;
+    for (const body of all) if (this.colorIds[body.index] !== body.id) {
+      paint.fill(0, body.index * 4, body.index * 4 + 4);
+      this.colorIds[body.index] = body.id;
+      this.colors.needsUpdate = true;
+    }
     (this.ids.array as Uint32Array).set(list.map((b) => b.index));
     this.ids.needsUpdate = true;
     this.geometry.instanceCount = list.length;
@@ -147,6 +175,9 @@ export class BodyMesh extends THREE.Mesh<THREE.InstancedBufferGeometry, THREE.No
   }
 
   onBeforeRender = (): void => {
+    this.world.assertLive('BodyMesh render');
+    if (this.disposed) throw new Error('BodyMesh: geometry was disposed; remove the mesh from the scene');
+    this.world.flushCommands();
     if (this.drawnVersion !== this.world.version) this.refresh();
   };
 }
