@@ -225,7 +225,7 @@ pnpm scaling2d   # box rain 10k-250k, writes docs/data/scaling2d-<adapter>.json
 page (they live in `docs/data/bench3d/`). Keep a browser benchmark's tab visible while it runs.
 
 The experimental [Rapier comparison](docs/RAPIER_COMPARISON.md) also runs at `/compare.html`
-(`/compare-frame.html` for a rendered workflow). Its completed-batch timing is not a rendered FPS
+(`/compare-frame.html` for a rendered workflow, `/compare-side.html` for a live side-by-side view). Its completed-batch timing is not a rendered FPS
 comparison, and the numbers in that document are historical (see its header).
 
 ## Layout

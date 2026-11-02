@@ -31,6 +31,7 @@ export default defineConfig({
         bench3d: 'bench3d.html',
         comparison: 'compare.html',
         comparisonFrame: 'compare-frame.html',
+        comparisonSide: 'compare-side.html',
         results: 'results.html',
       },
     },
