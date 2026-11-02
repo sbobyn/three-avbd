@@ -741,7 +741,7 @@ fn copyContacts(prev: Manifold) {
     var k = prevContacts[prev.ids.z + i];
     // C(x-) at the current poses, then the usual warm start (Eq. 19)
     let d = (qrotate(qA, k.rA) + pA) - (qrotate(qB, k.rB) + pB);
-    k.c0x = dot(basis[0], d) + COLLISION_MARGIN;
+    k.c0x = dot(basis[0], d) + params.contactMargin;
     k.c0y = dot(basis[1], d);
     k.c0z = dot(basis[2], d);
     k.lam = k.lam * params.alpha * params.gamma;
@@ -877,7 +877,7 @@ fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
 
     // C(x-) in the contact basis, plus the collision margin on the normal row
     let d = (qrotate(qA, rA) + A.c) - (qrotate(qB, rB) + B.c);
-    let c0 = vec3f(dot(basis[0], d) + COLLISION_MARGIN, dot(basis[1], d), dot(basis[2], d));
+    let c0 = vec3f(dot(basis[0], d) + params.contactMargin, dot(basis[1], d), dot(basis[2], d));
 
     // Warm start the dual variables and penalty parameters (Eq. 19)
     lam = lam * params.alpha * params.gamma;

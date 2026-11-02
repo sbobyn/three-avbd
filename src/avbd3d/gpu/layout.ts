@@ -150,7 +150,6 @@ const PENALTY_MIN = 1.0;
 const PENALTY_MAX = 1e10;
 // Least LDLᵀ pivot of the primal solve, relative to its diagonal (wgsl-solve.ts finishBody)
 const PIVOT_FLOOR = 1e-5;
-const COLLISION_MARGIN = 0.01;
 const STICK_THRESH = 0.00001;
 
 const SHAPE_SPHERE = ${SHAPE_SPHERE}.0;
@@ -257,7 +256,10 @@ struct Params {
   step: u32,           // steps since the solver was created (from 1)
   primalLanes: u32,    // bytes 0-2: log2 of the colour sizes from which 1, 2, 4 lanes per body suffice
   wind: vec4f,         // xyz: wind velocity (m/s), w: air pressure coefficient ½ρC_d
-  gust: vec4f,         // x: gust strength (fraction of the wind)
+  gust: f32,           // gust strength (fraction of the wind)
+  contactMargin: f32,  // normal contact overlap allowed (m): GpuParams3D.contactMargin
+  pad0: f32,
+  pad1: f32,
   up: vec4f,           // xyz: which way is up (unit)
   fineGrid: vec4f,     // x: fine cell size, y: fine radius threshold, z: coarse movers present
 }

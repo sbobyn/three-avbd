@@ -3139,3 +3139,22 @@ both 30-second screens (57.2/59.7 FPS, 0.945/0.978× simulation). Restoring the 
 candidate passes again at 119.3 FPS, 1.00× simulation, 5.6 ms drain. The additional GPU path
 is retained on this practical evidence; variable native dispatch traces do not independently
 establish a robust isolated-kernel speedup. All raw trials and build hashes are retained.
+
+## 2026-11-01 — opt-in contact margin
+
+The GPU solver's collision margin (the 1 cm in "The 1 cm per course is the collision margin")
+is now `GpuParams3D.contactMargin`, default 0.01, the reference's `COLLISION_MARGIN`. The
+default leaves every reference-parity test unchanged; the CPU reference keeps its constant.
+Measured on M4 Max, a 1 m box and a 0.5 m-radius sphere resting on a floor for 300 steps sink
+the margin plus a solver residual: 10.37 mm at 0.01 and 1.87 mm at 0.001 (box and sphere
+within 2 µm of each other). Non-finite or negative values are refused at the next step.
+
+The value travels in the Params uniform's former `gust.y` (the struct now reads `gust: f32`,
+`contactMargin: f32` and two pad words; the layout and size are unchanged). A custom
+`shaders.solve` that reads `params.gust.x` must read `params.gust`.
+
+Why: the Rapier comparison (research/rapier-harness-port, docs/RAPIER_COMPARISON.md) found
+AVBD missing the shared contact-depth target even on a resting grid, and on a settled 100-sphere
+pile its contact events kept beginning and ending where Rapier's stopped. Whether a smaller
+margin fixes either, and what it costs in stability, is the next measurement; the default
+stays until then.
