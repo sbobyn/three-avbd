@@ -1,11 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { GpuBodies3D, Shape } from '../app3d/gpu-bodies3d.ts';
-import { B_POS, B_ROT, B_SIZE, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
 import { createAdapter, type Engine } from './adapters.ts';
 import { makeScene } from './scenes.ts';
 import { DEFAULTS } from './run.ts';
 import { percentile, quality } from './quality.ts';
 import { contactQuality } from './contact-quality.ts';
+import { BodyView, initRenderer } from './view.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const button = $<HTMLButtonElement>('run'), download = $<HTMLButtonElement>('download');
@@ -29,13 +28,7 @@ button.onclick = async () => {
     renderer ??= new THREE.WebGPURenderer({ canvas: $<HTMLCanvasElement>('view'), antialias: false });
     renderer.setSize(960, 540, false); renderer.setPixelRatio(1);
     $('status').textContent = 'Initializing WebGPU renderer…';
-    let initTimer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([renderer.init(), new Promise<never>((_, reject) => {
-        initTimer = setTimeout(() => reject(new Error('WebGPU initialization timed out; reopen this page in a fresh tab')), 15000);
-      })]);
-    } finally { clearTimeout(initTimer); }
-    const device = (renderer.backend as unknown as { device: GPUDevice }).device;
+    const device = await initRenderer(renderer);
     const errors: string[] = [];
     device.addEventListener('uncapturederror', e => errors.push(e.error.message));
     const camera = new THREE.PerspectiveCamera(50, 960 / 540, 0.1, 1000);
@@ -45,20 +38,12 @@ button.onclick = async () => {
     for (let repeat = 0; repeat < 2; repeat++) {
       for (const engine of (repeat ? ['avbd', 'rapier'] : ['rapier', 'avbd']) as Engine[]) {
         $('status').textContent = `Building ${engine} world (${manifest.bodies.length} bodies)…`;
-        const drawing = new GpuBodies3D(manifest.bodies.length);
-        const buffer = drawing.gpuBuffer(renderer);
-        const simulation = await createAdapter(engine, manifest, options, device, engine === 'avbd' ? buffer : undefined);
+        const view = new BodyView(renderer, manifest);
+        const simulation = await createAdapter(engine, manifest, options, device, engine === 'avbd' ? view.buffer : undefined);
         if (events) simulation.watchContacts!();
         let contactCount = 0, warmupContactCount = 0;
         const eventMs: number[] = [];
-        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x222831);
-        scene.add(new THREE.HemisphereLight(0xffffff, 0x667788, 3)); scene.add(drawing.group);
-        const inverse = new Map(simulation.gpuIndices?.map((slot, i) => [slot, i]));
-        drawing.setBodies(manifest.bodies.length, slot => {
-          const i = inverse.get(slot) ?? slot;
-          return i === 0 ? Shape.Floor : manifest.bodies[i].shape === 'sphere' ? Shape.Sphere : Shape.Box;
-        }, () => undefined);
-        const upload = new Float32Array(manifest.bodies.length * BODY_FLOATS);
+        view.bind(simulation);
         const query = Array.from({ length: rays }, (_, i) => ({ origin: [i % 10 - 5, Math.floor(i / 10) - 5, 30], direction: [0, 0, -1], maxDistance: 100 }));
         const work: number[] = [], intervals: number[] = [], queryMs: number[] = [], readMs: number[] = [];
         let previous = 0;
@@ -77,14 +62,7 @@ button.onclick = async () => {
             const readStart = performance.now();
             if (engine === 'rapier' || readback) {
               const state = await simulation.snapshot();
-              if (engine === 'rapier') {
-                manifest.bodies.forEach((b, i) => {
-                  upload.set(state.subarray(i * 13, i * 13 + 3), i * BODY_FLOATS + B_POS);
-                  upload.set(state.subarray(i * 13 + 3, i * 13 + 7), i * BODY_FLOATS + B_ROT);
-                  upload.set(b.size, i * BODY_FLOATS + B_SIZE);
-                });
-                device.queue.writeBuffer(buffer, 0, upload);
-              }
+              if (engine === 'rapier') view.writePoses(device, state);
             }
             const readTime = performance.now() - readStart;
             const queryStart = performance.now();
@@ -93,7 +71,7 @@ button.onclick = async () => {
             const eventStart = performance.now();
             const contacts = events ? await simulation.readContactEvents!() : 0;
             const eventTime = performance.now() - eventStart;
-            renderer.render(scene, camera);
+            renderer.render(view.scene, camera);
             await device.queue.onSubmittedWorkDone();
             if (frame < 30) warmupContactCount += contacts;
             if (frame >= 30) {
@@ -113,7 +91,7 @@ button.onclick = async () => {
             meanWorkMs: mean(work), p95WorkMs: percentile(work, 0.95), p95FrameIntervalMs: percentile(intervals, 0.95),
             contactCount, warmupContactCount, meanEventMs: mean(eventMs), meanReadAndUploadMs: mean(readMs), meanQueryMs: mean(queryMs), counters,
             finalQuality, finalContacts: contactQuality(manifest, snapshot) });
-        } finally { simulation.destroy(); drawing.dispose(); buffer.destroy(); }
+        } finally { simulation.destroy(); view.dispose(); }
       }
     }
     report = JSON.stringify({ schema: 1, date: new Date().toISOString(), manifest, options, frames: count,
