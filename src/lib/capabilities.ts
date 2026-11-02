@@ -14,7 +14,8 @@ export function deviceCapabilities(device: { readonly limits: Pick<GPUSupportedL
 export interface WorldCapabilities extends DeviceCapabilities {
   readonly bodyActivation: boolean;
   readonly bodyReset: boolean;
-  readonly bodyPooling: false;
+  /** BodyPool (three-avbd/pool): a fixed-storage World on built-in standard collisions. */
+  readonly bodyPooling: boolean;
   readonly nativeSleeping: false;
   readonly lifecycleAbi: 1;
   readonly backend: 'standard' | 'sdf' | 'custom';
@@ -29,10 +30,10 @@ export interface WorldCapabilities extends DeviceCapabilities {
 }
 
 /** @internal Pure backend decision, also used for CPU limit-boundary tests. */
-export function worldCapabilities(device: DeviceCapabilities, backend: WorldCapabilities['backend'], hulls: boolean, customShaders = false): Readonly<WorldCapabilities> {
+export function worldCapabilities(device: DeviceCapabilities, backend: WorldCapabilities['backend'], hulls: boolean, customShaders = false, fixedStorage = false): Readonly<WorldCapabilities> {
   return Object.freeze({ ...device, backend,
     bodyActivation: backend === 'standard' && !customShaders, bodyReset: backend === 'standard' && !customShaders,
-    bodyPooling: false, nativeSleeping: false, lifecycleAbi: 1,
+    bodyPooling: fixedStorage && backend === 'standard' && !customShaders, nativeSleeping: false, lifecycleAbi: 1,
     hullCollisions: backend === 'sdf' ? 'explicit-sdf-field' : backend === 'custom' ? 'unknown' : hulls ? 'native' : 'box-fallback',
     boxes: backend !== 'custom', spheres: backend !== 'custom', sdfFields: backend === 'sdf',
     capsules: false, compounds: false, sensors: false,

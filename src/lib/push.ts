@@ -4,6 +4,7 @@
 // for the step into one record, so no two threads touch a body.
 
 import { B_ANGVEL, LIFECYCLE_FLAGS_WGSL, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
+import { StorageCapacityError } from './storage-budget.ts';
 
 /** Per pushed body: the linear impulse (N·s), the part of it applied off-centre, and its moment about the origin (plus any angular impulse). */
 const PUSH_FLOATS = 12;
@@ -70,12 +71,43 @@ export class Pusher {
   private buffer: GPUBuffer | null = null;
   private group: GPUBindGroup | null = null;
   private capacity = 0;
+  /** Made at construction for a fixed capacity, never replaced. */
+  private readonly fixed: boolean;
 
-  constructor(device: GPUDevice, bodies: GPUBuffer) {
+  /**
+   * `capacity`: pushed bodies per apply, fixed (a fixed-storage World's maxBodies): the storage
+   * and its bind group are made now and never replaced, and more pushes than that throw
+   * StorageCapacityError. Default: grown on demand.
+   */
+  constructor(device: GPUDevice, bodies: GPUBuffer, capacity?: number) {
     this.device = device;
     this.bodies = bodies;
+    this.fixed = capacity !== undefined;
+    if (this.fixed && !(Number.isSafeInteger(capacity) && capacity! > 0)) throw new Error(`Pusher: capacity must be a positive safe integer, not ${capacity}`);
     this.pipeline = device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ label: 'pushes', code: WGSL }), entryPoint: 'main' } });
     this.count = device.createBuffer({ label: 'push count', size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    if (this.fixed) {
+      try {
+        this.allocate(capacity!);
+      } catch (error) {
+        this.destroy();
+        throw error;
+      }
+    }
+  }
+
+  private allocate(capacity: number): void {
+    this.buffer?.destroy();
+    this.capacity = capacity;
+    this.buffer = this.device.createBuffer({ label: 'pushes', size: this.capacity * PUSH_FLOATS * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    this.group = this.device.createBindGroup({
+      layout: this.pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.bodies } },
+        { binding: 1, resource: { buffer: this.buffer } },
+        { binding: 2, resource: { buffer: this.count } },
+      ],
+    });
   }
 
   /** Apply these pushes (body index → pushes) to the bodies, now (before the next step). */
@@ -83,17 +115,8 @@ export class Pusher {
     const n = pushes.size;
     if (!n) return;
     if (n > this.capacity) {
-      this.buffer?.destroy();
-      this.capacity = Math.max(n, 2 * this.capacity, 64);
-      this.buffer = this.device.createBuffer({ label: 'pushes', size: this.capacity * PUSH_FLOATS * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-      this.group = this.device.createBindGroup({
-        layout: this.pipeline.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: this.bodies } },
-          { binding: 1, resource: { buffer: this.buffer } },
-          { binding: 2, resource: { buffer: this.count } },
-        ],
-      });
+      if (this.fixed) throw new StorageCapacityError('bodies', n, this.capacity);
+      this.allocate(Math.max(n, 2 * this.capacity, 64));
     }
     const data = new Float32Array(n * PUSH_FLOATS);
     const bits = new Uint32Array(data.buffer);

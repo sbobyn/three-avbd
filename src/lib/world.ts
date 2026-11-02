@@ -23,6 +23,7 @@ import { BodyIds, RetiredBodies, assertOwner, sameReadStep, orderedEvents } from
 import { BEGIN, ContactWatch } from './contacts.ts';
 import { addImpulse, noPush, Pusher, type Pushes } from './push.ts';
 import { type Ray, Raycaster } from './raycast.ts';
+import { resolveFixedStorage, StorageCapacityError, type FixedStoragePlan, type WorldStorageOptions } from './storage-budget.ts';
 import { AnalyticField, type Field } from '../avbd3d/ref/sdf/shapes.ts';
 import { snapshotSdfField } from '../avbd3d/gpu/sdf-snapshot.ts';
 import type { CollisionParams } from '../avbd3d/ref/sdf/manifold.ts';
@@ -54,6 +55,12 @@ export interface WorldOptions {
   maxContactPairs?: number;
   /** Contact events kept between readbacks; more are dropped (default 4096). */
   maxContactEvents?: number;
+  /**
+   * Solver storage: grows on demand (default), or `growth: 'fixed'` with explicit capacities,
+   * checked against the device before anything is allocated and never grown afterwards (what
+   * body pools need: three-avbd/pool). A fixed World stays on built-in standard collisions.
+   */
+  storage?: WorldStorageOptions;
 }
 
 /** A body's starting state: where it is, how it's turned, how it moves. */
@@ -250,6 +257,23 @@ function rotate(q: ArrayLike<number>, v: ArrayLike<number>): Vec3 {
 
 export interface ReadResult { step: number }
 
+/**
+ * @internal A reservation of body slots (a BodyPool's): the indices it owns, which of them are
+ * vacant, and the live bodies in the rest. Ordinary adds never take its slots.
+ */
+export interface Reservation {
+  readonly capacity: number;
+  readonly indices: readonly number[];
+  readonly vacant: number[];
+  readonly live: Set<Body>;
+  /** The solver hull it pins for its leases, or null. */
+  readonly hull: HullShape | null;
+  state: 'active' | 'disposed';
+}
+
+/** @internal Why World.reserveBodies could not reserve. */
+export type ReserveFailure = 'capacity' | 'unsupported-backend' | 'resource-limit' | 'fixed-storage-required';
+
 export class Body {
   /** Nonzero lifetime identity in this World; never reused (1..0x7fffffff). */
   readonly id: number;
@@ -281,6 +305,10 @@ export class Body {
   enabledState = true;
   /** @internal Last known own observation, frozen before parking/reuse. */
   frozen: Required<BodyState> | null = null;
+  /** @internal The shape the solver collides it as (a pool's private copy for pooled hulls). */
+  solverHull: HullShape | null;
+  /** @internal The reservation (pool) its slot belongs to; never changes for this handle. */
+  owner: Reservation | null = null;
 
   /** @internal Made by World.addBox / addSphere. */
   constructor(world: World, index: number, shape: 'box' | 'sphere' | 'hull', size: Vec3, options: BodyOptions, hullShape: HullShape | null = null) {
@@ -295,6 +323,7 @@ export class Body {
     this.index = index;
     this.shape = shape;
     this.hull = hullShape;
+    this.solverHull = hullShape;
     this.size = size;
     this.density = options.density ?? DEFAULTS.density;
     this.friction = options.friction ?? DEFAULTS.friction;
@@ -582,9 +611,20 @@ export class World {
   readbackEvery = 0;
 
   private readonly slots: (Body | null)[] = [];
+  /** Unowned reusable slots (a reservation's vacant slots are on its own list). */
   private readonly free: number[] = [];
-  private appends: Body[] = [];
-  private readonly rewrites = new Set<Body>();
+  /** Full records past the solver's count, by index − bodyCount (null: a vacant reserved slot). */
+  private appends: (Body | null)[] = [];
+  /** Full records for slots already in the solver, by slot (null: a vacant reserved slot). */
+  private readonly rewrites = new Map<number, Body | null>();
+  /** Reservation owning each slot (null: ordinary). */
+  private readonly owners: (Reservation | null)[] = [];
+  private readonly reservations = new Set<Reservation>();
+  /** Vacant reserved slots whose parked, disabled, filterless metadata goes to the GPU next flush. */
+  private readonly vacancies = new Set<number>();
+  /** Fixed storage: hulls pinned when an ordinary hull body is added (its room is checked then). */
+  private readonly hullPins = new Map<Body, HullShape>();
+  private readonly fixed: FixedStoragePlan | null;
   private readonly patches = new Map<Body, { fields: Set<BodyField>; fixed: boolean }>();
   private mover: BodyMover | null = null;
   private resetter: BodyReset | null = null;
@@ -606,7 +646,8 @@ export class World {
   /** Pairs to resize the watch to before the next step (0: none). */
   private contactGrowTo = 0;
   private contactOverflows = 0;
-  private readonly rewatches = new Set<Body>();
+  /** Slots whose contact-report word goes to the GPU next flush (their occupant, or none). */
+  private readonly rewatches = new Set<number>();
   private readonly reporting = new Set<Body>();
   /** The pass ran last step (so it runs once more when the last reporting body goes, for the ends). */
   private contactsLive = false;
@@ -615,7 +656,7 @@ export class World {
   private readonly retiredBodies = new RetiredBodies<Body>();
   private readonly contactOptions: { pairs: number; events: number };
   /** Bodies whose collision groups go to the GPU at the next step (every new body, so a reused slot's are reset). */
-  private readonly refilters = new Set<Body>();
+  private readonly refilters = new Set<number>();
   /** Fixed bodies moved (moveTo) since the last step, and those still sliding there (steps left). */
   private readonly moves = new Set<Body>();
   private readonly sliding = new Map<Body, number>();
@@ -655,19 +696,37 @@ export class World {
   private readonly renderer: THREE.WebGPURenderer | undefined;
 
   /** Make a world: `World.create` (async, it may need the renderer's device). */
-  private constructor(device: GPUDevice, options: WorldOptions, attribute: THREE.StorageInstancedBufferAttribute | null, buffer: GPUBuffer | undefined) {
+  private constructor(device: GPUDevice, options: WorldOptions, attribute: THREE.StorageInstancedBufferAttribute | null, buffer: GPUBuffer | undefined, fixed: FixedStoragePlan | null) {
     this.device = device;
     this.renderer = options.renderer;
     this.maxBodies = options.maxBodies;
     this.bodyAttribute = attribute;
-    this.solver = new GpuSolver3D(device, this.scratch, { bodyBuffer: buffer, bodyCapacity: options.maxBodies });
+    this.fixed = fixed;
+    this.solver = new GpuSolver3D(device, this.scratch, { bodyBuffer: buffer, bodyCapacity: options.maxBodies, ...(fixed ? { fixed } : {}) });
     this.solver.lifecyclePending = () => this.resets.size > 0 || this.lifecycleDirty.size > 0;
     Object.assign(this.solver.params, gpuParams3D(), { dt: options.dt ?? 1 / 60, iterations: options.iterations ?? 10 });
     this.gravity = options.gravity ?? [0, -9.81, 0];
-    this.pusher = new Pusher(device, this.solver.bodyBuffer);
+    this.contactOptions = { pairs: options.maxContactPairs ?? 8192, events: options.maxContactEvents ?? 4096 };
+    let pusher: Pusher | undefined;
+    try {
+      this.pusher = pusher = new Pusher(device, this.solver.bodyBuffer, fixed ? fixed.bodies : undefined);
+      // Fixed: every helper made now, at full size, so no step or command allocates later
+      // (the ray pipeline too; each raycast still makes its own buffers and bind group)
+      if (fixed) {
+        this.raycaster = new Raycaster(device);
+        this.mover = new BodyMover(device, this.solver.bodyBuffer, this.maxBodies);
+        this.resetter = new BodyReset(device, this.solver.bodyBuffer, this.maxBodies);
+        this.contactWatch = new ContactWatch(device, this.solver.bodyBuffer, this.maxBodies, this.contactOptions.pairs, this.contactOptions.events);
+        this.contactWatch.prewarm(this.solver.contactStorages());
+      }
+    } catch (error) {
+      for (const helper of [this.contactWatch, this.resetter, this.mover]) helper?.destroy();
+      pusher?.destroy();
+      this.solver.destroy();
+      throw error;
+    }
     this.snapshot = new Float32Array(options.maxBodies * BODY_FLOATS);
     this.readAt = new Float64Array(options.maxBodies).fill(-1);
-    this.contactOptions = { pairs: options.maxContactPairs ?? 8192, events: options.maxContactEvents ?? 4096 };
     // A shared device may outlive many worlds. Its pending lost promise must not retain them.
     const weak = new WeakRef(this);
     void device.lost.then(info => {
@@ -678,6 +737,10 @@ export class World {
 
   static async create(options: WorldOptions): Promise<World> {
     if (!Number.isSafeInteger(options.maxBodies) || options.maxBodies <= 0) throw new Error('World.create: maxBodies must be a positive safe integer');
+    const growth = options.storage?.growth ?? 'adaptive';
+    if (growth !== 'adaptive' && growth !== 'fixed') throw new Error(`World.create: storage.growth must be 'adaptive' or 'fixed', not ${String(growth)}`);
+    // Checked against the device's negotiated limits before any attribute or buffer is made
+    const plan = (device: GPUDevice) => options.storage?.growth === 'fixed' ? resolveFixedStorage(options, options.storage, device.limits) : null;
     if (options.renderer) {
       const renderer = options.renderer;
       await renderer.init();
@@ -688,6 +751,7 @@ export class World {
       };
       if (!backend.device) throw new Error('World.create: the renderer has no WebGPU device (WebGPU unavailable, or the WebGL fallback in use)');
       checkRequiredHulls(deviceCapabilities(backend.device), options.requireHulls);
+      const fixed = plan(backend.device);
       // The attribute's buffer, made now on the renderer's device, so the solver writes the very
       // buffer Three.js draws from (it would otherwise be made at the first draw)
       const attribute = new THREE.StorageInstancedBufferAttribute(new Float32Array(options.maxBodies * BODY_FLOATS), 4);
@@ -695,7 +759,7 @@ export class World {
         backend.createStorageAttribute(attribute);
         const buffer = backend.get(attribute).buffer;
         if (!buffer) throw new Error('World.create: Three.js made no GPU buffer for the bodies');
-        const world = new World(backend.device, options, attribute, buffer);
+        const world = new World(backend.device, options, attribute, buffer, fixed);
         world.ownStorageAttribute(attribute);
         return world;
       } catch (error) {
@@ -705,7 +769,7 @@ export class World {
     }
     if (!options.device) throw new Error('World.create: pass a renderer or a device');
     checkRequiredHulls(deviceCapabilities(options.device), options.requireHulls);
-    return new World(options.device, options, null, undefined);
+    return new World(options.device, options, null, undefined, plan(options.device));
   }
 
   /** Snapshot of the installed backend; old snapshots do not change after SDF/custom transitions.
@@ -713,7 +777,12 @@ export class World {
    * Advanced custom backends have unknown shape support. */
   get capabilities(): Readonly<WorldCapabilities> {
     const backend = this.solver.activeCollisionBackend;
-    return worldCapabilities(deviceCapabilities(this.device), backend ? backend === this.sdfBridge ? 'sdf' : 'custom' : 'standard', this.solver.hulls, this.solver.customShaders);
+    return worldCapabilities(deviceCapabilities(this.device), backend ? backend === this.sdfBridge ? 'sdf' : 'custom' : 'standard', this.solver.hulls, this.solver.customShaders, this.fixed !== null && !this.destroyed && !this.gpuError);
+  }
+
+  /** The resolved storage plan: every fixed capacity and buffer size, or adaptive growth. */
+  get storageInfo(): Readonly<FixedStoragePlan> | Readonly<{ growth: 'adaptive' }> {
+    return this.fixed ?? Object.freeze({ growth: 'adaptive' as const });
   }
 
   // --- Parameters ------------------------------------------------------------------------------
@@ -749,6 +818,7 @@ export class World {
    */
   async enableSdfCollisions(bindings: readonly SdfBodyBinding[] = [], params: Partial<CollisionParams> = {}, broadphase: SdfBroadphaseOptions = {}): Promise<void> {
     if(this.destroyed || this.sdfState!=='off') throw new Error('SDF collisions already enabled/preparing, or World destroyed');
+    if(this.fixed) throw new Error("SDF collisions need an adaptive-storage World: this one has storage.growth 'fixed'");
     this.solver.assertBackendSwitchAllowed();
     await this.installSdfCollisions(bindings,params,broadphase);
   }
@@ -912,26 +982,146 @@ export class World {
     const initial: BodyPatch = {};
     for (const field of bodyFields) if (options[field]) initial[field] = [...options[field]!];
     options = { ...options, ...initial } as BodyOptions;
-    // A removed body's slot first, else the next one past the end
+    // A removed body's slot first, else the next one past the end (past any reserved tail)
     const index = this.free.length ? this.free[this.free.length - 1] : this.solver.bodyCount + this.appends.length;
     if (index >= this.maxBodies) return null;
-    const body = new Body(this, index, shape, [size[0], size[1], size[2]], options, hullShape);
+    // Fixed storage: the hull's room is taken now (or refused) rather than at the next flush
+    const pin = this.fixed && hullShape && this.solver.hulls ? hullShape : null;
+    if (pin) this.solver.pinHull(pin);
+    let body: Body;
+    try {
+      body = new Body(this, index, shape, [size[0], size[1], size[2]], options, hullShape);
+    } catch (error) {
+      if (pin) this.solver.unpinHull(pin);
+      throw error;
+    }
+    if (pin) this.hullPins.set(body, pin);
     if (this.free.length) this.free.pop();
-    // A slot freed since the last step: the old body's parking write is superseded
-    for (const old of this.rewrites) if (old.index === index) this.rewrites.delete(old);
+    this.occupy(body);
+    return body;
+  }
+
+  /** Put a new body in its (free) slot: its full record, filters and report word go next flush. */
+  private occupy(body: Body): void {
+    const index = body.index;
     this.slots[index] = body;
+    this.vacancies.delete(index);
     body.written = ++this.writes;
     for (const field of bodyFields) body.revisions[field] = body.written;
     body.addedAt = this.steps + 1;
-    this.rewatches.add(body);
-    // Reuse an unflushed slot in place; appending twice would shift GPU body IDs.
-    if (index >= this.solver.bodyCount) this.appends[index-this.solver.bodyCount]=body;
-    else this.rewrites.add(body);
-    this.refilters.add(body);
+    this.rewatches.add(index);
+    // A slot freed since the last step: its parking write is superseded. Reuse an unflushed slot
+    // in place; appending twice would shift GPU body IDs.
+    this.stage(index, body);
+    this.refilters.add(index);
     if (!body.enabledState) this.lifecycleDirty.add(body);
     if(this.sdfBridge)this.sdfDirty=true;
     this.liveVersion++;
+  }
+
+  /** A full record for a slot at the next flush (null: a vacant reserved slot's). */
+  private stage(index: number, body: Body | null): void {
+    if (index >= this.solver.bodyCount) this.appends[index - this.solver.bodyCount] = body;
+    else this.rewrites.set(index, body);
+  }
+
+  /** The body's full record is staged (so later field writes ride on it). */
+  private staged(body: Body): boolean {
+    const i = body.index;
+    return i >= this.solver.bodyCount ? this.appends[i - this.solver.bodyCount] === body : this.rewrites.get(i) === body;
+  }
+
+  // --- Reservations (three-avbd/pool) ------------------------------------------------------------
+
+  /**
+   * @internal Reserve `capacity` slots (free holes first, then the tail) and pin `hull`, all or
+   * nothing, before any body or ID exists. Ordinary adds never take reserved slots.
+   */
+  reserveBodies(capacity: number, hull: HullShape | null): Reservation | ReserveFailure {
+    this.assertLive('BodyPool.create');
+    if (!this.fixed) return 'fixed-storage-required';
+    if (this.sdfState !== 'off' || this.solver.activeCollisionBackend || this.solver.customShaders) return 'unsupported-backend';
+    if (hull && !this.solver.hulls) return 'resource-limit';
+    // Hull room held by removed bodies' records is freed when their parking writes are flushed
+    if (hull && !this.solver.canPinHull(hull)) this.flush();
+    const tail = this.maxBodies - (this.solver.bodyCount + this.appends.length);
+    if (this.free.length + tail < capacity) return 'capacity';
+    if (hull && !this.solver.canPinHull(hull)) return 'resource-limit';
+    if (hull) this.solver.pinHull(hull);
+    const indices: number[] = [];
+    while (indices.length < capacity && this.free.length) indices.push(this.free.pop()!);
+    while (indices.length < capacity) {
+      indices.push(this.solver.bodyCount + this.appends.length);
+      this.appends.push(null);
+    }
+    const reservation: Reservation = { capacity, indices: Object.freeze(indices), vacant: [...indices].reverse(), live: new Set(), hull, state: 'active' };
+    for (const index of indices) {
+      this.owners[index] = reservation;
+      // A hole's parking write (if any) becomes the vacant record
+      this.stage(index, null);
+      this.vacancies.add(index);
+      this.rewatches.add(index);
+    }
+    this.reservations.add(reservation);
+    return reservation;
+  }
+
+  /**
+   * @internal Submit a new reservation's vacant records (with whatever else is queued) and wait
+   * for the GPU, checking for errors. A failure after submission invalidates the World.
+   */
+  async prewarmReservation(reservation: Reservation): Promise<void> {
+    const device = this.device;
+    device.pushErrorScope('out-of-memory');
+    device.pushErrorScope('validation');
+    try {
+      this.flush();
+    } catch (error) {
+      // Pop the scopes anyway; nothing awaits them on this path
+      void Promise.all([device.popErrorScope(), device.popErrorScope()]).catch(() => undefined);
+      throw error;
+    }
+    const scopes = Promise.all([device.popErrorScope(), device.popErrorScope()]);
+    const [errors] = await Promise.all([scopes, device.queue.onSubmittedWorkDone()]);
+    const error = errors.find(e => e);
+    if (error && !this.destroyed) this.gpuError ??= new Error(`three-avbd: GPU error preparing a body pool: ${error.message}. Recreate the World.`);
+    if (this.destroyed || this.gpuError || reservation.state !== 'active') throw this.gpuError ?? new Error('World destroyed during BodyPool.create');
+  }
+
+  /** @internal A fresh enabled body in one of the reservation's vacant slots (or why not). */
+  acquireReserved(reservation: Reservation, shape: 'box' | 'sphere' | 'hull', size: Vec3, options: BodyOptions, publicHull: HullShape | null): Body | 'capacity' | 'id-exhausted' | 'disposed' {
+    if (reservation.state !== 'active' || this.destroyed || this.gpuError) return 'disposed';
+    if (!reservation.vacant.length) return 'capacity';
+    if (this.bodyIds.remaining < 1) return 'id-exhausted';
+    const index = reservation.vacant[reservation.vacant.length - 1];
+    const body = new Body(this, index, shape, [size[0], size[1], size[2]], { ...options, enabled: true }, publicHull);
+    reservation.vacant.pop();
+    body.solverHull = reservation.hull ?? publicHull;
+    body.owner = reservation;
+    reservation.live.add(body);
+    this.occupy(body);
     return body;
+  }
+
+  /**
+   * @internal Remove the reservation's live bodies and give its slots back to ordinary use, then
+   * its hull pin. Idempotent; after destroy or device loss only the bookkeeping is dropped.
+   */
+  releaseReservation(reservation: Reservation): void {
+    if (reservation.state !== 'active') return;
+    const usable = !this.destroyed && !this.gpuError;
+    if (usable) for (const body of [...reservation.live]) body.remove();
+    reservation.state = 'disposed';
+    reservation.live.clear();
+    reservation.vacant.length = 0;
+    this.reservations.delete(reservation);
+    if (!usable) return;
+    for (const index of reservation.indices) {
+      this.owners[index] = null;
+      this.free.push(index);
+    }
+    // Leases' records keep their solver references until their parking writes at the next flush
+    if (reservation.hull) this.solver.unpinHull(reservation.hull);
   }
 
   /** The bodies in the world, in slot order. */
@@ -943,8 +1133,11 @@ export class World {
   get bodyStats() {
     const bodies = this.bodies;
     const enabled = bodies.filter(body => body.enabled).length;
+    let reserved = 0, reservedAvailable = 0, pooled = 0;
+    for (const r of this.reservations) { reserved += r.capacity; reservedAvailable += r.vacant.length; pooled += r.live.size; }
+    const ordinary = bodies.length - pooled;
     return Object.freeze({ capacity: this.maxBodies, live: bodies.length, enabled, disabled: bodies.length - enabled,
-      available: this.maxBodies - bodies.length, reserved: 0, reservedAvailable: 0,
+      available: this.maxBodies - ordinary - reserved, reserved, reservedAvailable,
       allocatedSlots: this.solver.bodyCount + this.appends.length, remainingBodyIds: this.bodyIds.remaining });
   }
 
@@ -1000,7 +1193,7 @@ export class World {
     body.target = null;
     body.written = ++this.writes;
     assignBodyPatch(body.state, body.revisions, patch, body.written);
-    if (this.appends.includes(body) || this.rewrites.has(body)) return;
+    if (this.staged(body)) return;
     const pending = this.patches.get(body) ?? { fields: new Set<BodyField>(), fixed: false };
     for (const field of bodyFields) if (patch[field]) pending.fields.add(field);
     pending.fixed ||= fixed;
@@ -1024,12 +1217,25 @@ export class World {
     this.forces.delete(body);
     this.slots[body.index] = null;
     this.retiredBodies.retire(body, this.steps);
-    this.free.push(body.index);
-    this.rewatches.add(body);
+    this.reporting.delete(body);
+    this.rewatches.add(body.index);
+    const pin = this.hullPins.get(body);
+    // Its record keeps the solver's reference until the parking write below is flushed
+    if (pin) { this.hullPins.delete(body); this.solver.unpinHull(pin); }
     // Parked: fixed, small, far off, a slot of space each
     body.state = { position: [PARK + 2 * body.index, PARK, PARK], rotation: [0, 0, 0, 1], velocity: [0, 0, 0], angularVelocity: [0, 0, 0] };
     body.written = ++this.writes;
-    this.rewrites.add(body);
+    const owner = body.owner;
+    if (owner && owner.state === 'active' && this.owners[body.index] === owner) {
+      // Back to its pool, as a vacant record: parked, disabled, no filters or report word
+      owner.live.delete(body);
+      owner.vacant.push(body.index);
+      this.vacancies.add(body.index);
+      this.stage(body.index, null);
+    } else {
+      this.free.push(body.index);
+      this.stage(body.index, body);
+    }
     if(this.sdfBridge)this.sdfDirty=true;
     this.liveVersion++;
   }
@@ -1069,6 +1275,7 @@ export class World {
         this.warnOnce('sudden jumps only', `addJoint: breakForce (${breakForce}) is above yieldForce (${yieldForce}), and a joint that yields is cut back to its yield every iteration: it breaks only on a sudden jump of its torque, never under a sustained overload. Add breakBend (the bend, in radians, past which it breaks) or breakOnPull (breakForce then limits its pull too, in newtons) to have a load tear it`);
       }
     }
+    this.checkJointRoom();
     const joint = new Joint(this, a, b, { ...others, restRotation, yieldForce, breakBend });
     this.pendingJoints.push(joint);
     return joint;
@@ -1087,6 +1294,7 @@ export class World {
     };
     const [pa, pb] = [at(a, anchorA), at(b, anchorB)];
     const rest = options.rest ?? Math.hypot(pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]);
+    this.checkJointRoom();
     const spring = new Joint(this, a, b, { anchorA, anchorB, stiffness: options.stiffness, restLength: rest, spring: true });
     this.pendingJoints.push(spring);
     return spring;
@@ -1097,6 +1305,12 @@ export class World {
     if (this.warned.has(kind)) return;
     this.warned.add(kind);
     console.warn(`three-avbd: ${message}`);
+  }
+
+  /** Fixed storage: a joint slot for one more joint, counting those placed and those queued. */
+  private checkJointRoom(): void {
+    const used = this.pendingJoints.length + this.joints.size;
+    if (this.fixed && used >= this.fixed.joints) throw new StorageCapacityError('joints', used + 1, this.fixed.joints);
   }
 
   private checkPair(a: Body, b: Body, what: string): void {
@@ -1142,7 +1356,7 @@ export class World {
   /** @internal Body.reportContacts. */
   rewatch(body: Body): void {
     assertOwner(this, body);
-    if (body.alive) this.rewatches.add(body);
+    if (body.alive) this.rewatches.add(body.index);
   }
 
   /** @internal Joint.remove. */
@@ -1250,7 +1464,8 @@ export class World {
 
   /** After a readback found `watch`'s sets full: the size to grow to, if it can grow. */
   private planContactGrowth(watch: ContactWatch): void {
-    if (watch !== this.contactWatch) return;
+    // Fixed storage never grows: overflow stays counted (contactSetOverflows) and unrepaired
+    if (watch !== this.contactWatch || this.fixed) return;
     // A set never holds more pairs than the step has pair records (World passes manifoldCapacity
     // to run), so that many is enough; past the device's binding limit it stays saturated
     const limits = this.device.limits;
@@ -1279,7 +1494,7 @@ export class World {
   /** @internal Body.setCollisionGroups. */
   refilter(body: Body): void {
     assertOwner(this, body);
-    if (body.alive) this.refilters.add(body);
+    if (body.alive) this.refilters.add(body.index);
   }
 
   /** @internal Body.clearForces. */
@@ -1312,17 +1527,18 @@ export class World {
   flushCommands(): void { this.assertLive('flushCommands'); this.flush(); }
 
   private flush(): void {
-    const full = [...this.appends, ...this.rewrites];
+    const full = [...this.appends, ...this.rewrites.values()].filter((b): b is Body => b !== null);
     if (this.appends.length) {
-      const first = this.solver.addBodies(this.appends.map((b) => this.rigid(b)));
-      if (first !== this.appends[0].index) throw new Error('three-avbd: body slots out of step with the solver');
+      const count = this.solver.bodyCount;
+      const first = this.solver.addBodies(this.appends.map((b, k) => b ? this.rigid(b) : this.vacantRigid(count + k)));
+      if (first !== count) throw new Error('three-avbd: body slots out of step with the solver');
       this.appends = [];
     }
     if (this.rewrites.size) {
-      const list = [...this.rewrites].sort((x, y) => x.index - y.index);
+      const list = [...this.rewrites].sort((x, y) => x[0] - y[0]);
       this.solver.rewriteBodies(
-        list.map((b) => b.index),
-        list.map((b) => this.rigid(b)),
+        list.map(([index]) => index),
+        list.map(([index, b]) => b ? this.rigid(b) : this.vacantRigid(index)),
       );
       this.rewrites.clear();
     }
@@ -1342,24 +1558,32 @@ export class World {
       this.solver.setLifecycle(body.index, (body.enabledState ? 0 : BODY_DISABLED) | (this.coldBodies.has(body) ? BODY_COLD : 0));
     }
     this.lifecycleDirty.clear();
+    if (this.vacancies.size) {
+      // Vacant reserved slots: unused capacity, never a live body (no ID, filters or integration)
+      const list = [...this.vacancies].filter(index => !this.slots[index]).sort((x, y) => x - y);
+      for (const index of list) this.solver.setLifecycle(index, BODY_DISABLED);
+      this.solver.setFilters(list, list.map(() => 0), list.map(() => 0));
+      this.vacancies.clear();
+    }
     if (this.rewatches.size) {
       const list = [...this.rewatches];
-      for (const b of list) {
-        if (b.alive && b.reportContacts) this.reporting.add(b);
-        else this.reporting.delete(b);
+      for (const index of list) {
+        const b = this.slots[index];
+        if (b?.reportContacts) this.reporting.add(b);
+        else if (b) this.reporting.delete(b);
       }
       const creating = !this.contactWatch && this.reporting.size > 0;
       if (creating) this.contactWatch = new ContactWatch(this.device, this.solver.bodyBuffer, this.maxBodies, this.contactOptions.pairs, this.contactOptions.events);
       if (this.contactWatch) {
         // Every partner needs an ID, including bodies that do not themselves report.
-        const indices = creating ? this.bodies.map(b => b.index) : [...new Set(list.map(b => b.index))];
+        const indices = creating ? this.bodies.map(b => b.index) : list;
         const bodies = indices.map(index => this.slots[index]);
         this.contactWatch.setWatched(indices, bodies.map(b => b?.id ?? 0), bodies.map(b => !!b?.reportContacts));
       }
       this.rewatches.clear();
     }
     if (this.refilters.size) {
-      const list = [...this.refilters].filter((b) => b.alive).sort((x, y) => x.index - y.index);
+      const list = [...this.refilters].map(index => this.slots[index]).filter((b): b is Body => !!b?.alive).sort((x, y) => x.index - y.index);
       this.solver.setFilters(
         list.map((b) => b.index),
         list.map((b) => b.group),
@@ -1450,13 +1674,20 @@ export class World {
     const r =
       parked ? new Rigid(this.scratch, [0.1, 0.1, 0.1], 0, 0, position)
       : body.shape === 'sphere' ? sphere(this.scratch, body.size[0] / 2, density, body.friction, position, velocity)
-      : body.hull ? hull(this.scratch, body.hull, density, body.friction, position, rotation, velocity)
+      : body.solverHull ? hull(this.scratch, body.solverHull, density, body.friction, position, rotation, velocity)
       : new Rigid(this.scratch, body.size, density, body.friction, position, velocity);
     if (!parked && !body.fixed && body.massProperties) {
       r.mass = body.massProperties.mass; r.moment.set(body.massProperties.moments);
     }
     r.positionAng.set(normalised(rotation));
     if (!parked) r.velocityAng.set(angularVelocity);
+    this.scratch.bodies.length = 0;
+    return r;
+  }
+
+  /** A vacant reserved slot's record: parked as removed bodies are (the slot's own spot), fixed. */
+  private vacantRigid(index: number): Rigid {
+    const r = new Rigid(this.scratch, [0.1, 0.1, 0.1], 0, 0, [PARK + 2 * index, PARK, PARK]);
     this.scratch.bodies.length = 0;
     return r;
   }
@@ -1666,6 +1897,8 @@ export class World {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed=true;
+    for (const reservation of [...this.reservations]) this.releaseReservation(reservation);
+    this.hullPins.clear();
     this.pusher.destroy();
     this.mover?.destroy();
     this.resetter?.destroy();

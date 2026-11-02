@@ -69,6 +69,8 @@ export class BodyMover {
   apply(commands: MoveCommand[]): void {
     if (!commands.length) return;
     if (commands.length > this.capacity) throw new Error('Body command capacity exceeded');
+    // (A slot past the bodies would be clamped onto another body by the GPU)
+    for (const c of commands) if (!(Number.isInteger(c.index) && c.index >= 0 && c.index < this.capacity)) throw new Error(`Body command: no body slot ${c.index}`);
     commands.forEach((c, k) => {
       const o = k * 12;
       this.data.set(Array.from(c.position), o);

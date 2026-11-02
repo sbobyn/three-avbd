@@ -24,8 +24,10 @@ export class BodyReset {
   private readonly pipeline: GPUComputePipeline;
   private readonly group: GPUBindGroup;
   private readonly device: GPUDevice;
+  private readonly capacity: number;
   constructor(device: GPUDevice, bodies: GPUBuffer, capacity: number) {
     this.device = device;
+    this.capacity = capacity;
     this.pipeline = device.createComputePipeline({ label: 'body reset', layout: 'auto', compute: { module: device.createShaderModule({ code: WGSL }), entryPoint: 'main' } });
     this.indices = device.createBuffer({ label: 'body reset indices', size: capacity * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     let count: GPUBuffer | undefined;
@@ -40,6 +42,9 @@ export class BodyReset {
   }
   apply(indices: number[]): void {
     if (!indices.length) return;
+    // Past the buffer, or a slot past the bodies (which the GPU would clamp onto another body)
+    if (indices.length > this.capacity) throw new Error('Body reset capacity exceeded');
+    for (const i of indices) if (!(Number.isInteger(i) && i >= 0 && i < this.capacity)) throw new Error(`Body reset: no body slot ${i}`);
     this.device.queue.writeBuffer(this.indices, 0, new Uint32Array(indices));
     this.device.queue.writeBuffer(this.count, 0, new Uint32Array([indices.length, 0, 0, 0]));
     const encoder = this.device.createCommandEncoder({ label: 'body reset' });
