@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
-import { create } from 'webgpu';
 import { BodyMesh, World } from '../src/lib/index.ts';
 import type { SdfCollisionBridge } from '../src/avbd3d/gpu/sdf-bridge.ts';
-import { gpuTest } from './device.ts';
+import { createGpu, gpuTest } from './device.ts';
 
 // Exercise Three's actual buffer backend, cache and accounting on Dawn. Canvas drawing is
 // deliberately outside this headless fixture; update(STORAGE) is the render binding path.
@@ -109,7 +108,7 @@ gpuTest('automatic reads retain failures and ignore teardown rejection', async d
 });
 
 gpuTest('device loss rejects in-flight reads and future work, fresh device recreation succeeds', async () => {
-  const gpu = create([]);
+  const gpu = createGpu();
   const adapter = await gpu.requestAdapter();
   assert.ok(adapter);
   const device = await adapter.requestDevice();
@@ -137,6 +136,39 @@ gpuTest('device loss rejects in-flight reads and future work, fresh device recre
   await replacement.read();
   replacement.destroy();
   fresh.destroy();
+});
+
+// Paired qualification G0: losing the device while only the periodic counter map (every tenth
+// step) is pending left an unhandled AbortError and a step that did not fail fast.
+gpuTest('device loss during the periodic counter read is handled and fails fast', async () => {
+  const rejections: unknown[] = [];
+  const onRejection = (reason: unknown) => { rejections.push(reason); };
+  process.on('unhandledRejection', onRejection);
+  const adapter = await createGpu().requestAdapter();
+  assert.ok(adapter);
+  const device = await adapter.requestDevice();
+  try {
+    const world = await World.create({ device, maxBodies: 8 });
+    world.addBox({ size: [1, 1, 1] });
+    assert.equal(world.readbackEvery, 0, 'no automatic body read: the counter map is the only one');
+    const counterReads: Promise<unknown>[] = [];
+    const readCounters = world.solver.readCounters.bind(world.solver);
+    world.solver.readCounters = () => { const read = readCounters(); counterReads.push(read); return read; };
+    for (let i = 0; i < 10; i++) world.step();
+    assert.equal(counterReads.length, 1, 'tenth step submitted the counter read');
+    device.destroy();
+    await device.lost;
+    await Promise.allSettled(counterReads);
+    for (let i = 0; i < 3; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(rejections.map(String), [], 'no unhandled rejection');
+    assert.ok(world.error, 'loss recorded on the world');
+    assert.throws(() => world.step(), /lost|map|destroy|abort/i);
+    await assert.rejects(world.read(), /lost|map|destroy|abort/i);
+    world.destroy();
+    world.destroy();
+  } finally {
+    process.off('unhandledRejection', onRejection);
+  }
 });
 
 gpuTest('SDF automatic growth failure remains recoverable', async device => {

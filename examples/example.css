@@ -1,0 +1,13 @@
+/* Shared chrome for the small examples: a full-window canvas and a note card. */
+html, body { margin: 0; height: 100%; overflow: hidden; background: #101216; color: #e6e8eb;
+  font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+canvas { display: block; }
+a { color: #8cc8ff; }
+.note { position: fixed; top: 12px; left: 12px; max-width: 360px; padding: 12px 14px; border-radius: 8px;
+  background: rgb(16 18 22 / .82); border: 1px solid rgb(255 255 255 / .12); backdrop-filter: blur(6px); }
+.note h1 { margin: 0 0 6px; font-size: 16px; }
+.note p, .note ul { margin: 6px 0; }
+.note ul { padding-left: 18px; }
+.note .status { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: #b9c0c8; white-space: pre-wrap; }
+.note button { margin-top: 6px; }
+.badge { display: inline-block; padding: 0 6px; border-radius: 4px; background: #5a3d12; color: #ffd38a; font-size: 12px; }

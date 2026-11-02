@@ -39,11 +39,15 @@ const cases = (args[0] ?? 'pile-100,pile-1k').split(',');
 if (cases.some((c) => !CASES.includes(c as typeof CASES[number]))) throw new Error(`Cases: ${CASES.join(', ')}`);
 // Rapier is WASM on the CPU: a Rapier-only run never opens a GPU device.
 let device: GPUDevice | undefined;
+// Keep Dawn's GPU instance reachable for the whole run: if it is collected while the device is in
+// use, Dawn aborts ("mutex lock failed") or segfaults.
+let gpu: GPU | undefined;
 const errors: string[] = [];
 if (engines.includes('avbd')) {
   const { create, globals } = await import('webgpu');
   Object.assign(globalThis, globals);
-  const adapter = await create([]).requestAdapter();
+  gpu = create([]);
+  const adapter = await gpu.requestAdapter();
   if (!adapter) throw new Error('No GPU adapter: comparison was not run');
   device = await adapter.requestDevice({ requiredLimits: { maxBufferSize: adapter.limits.maxBufferSize,
     maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize } });

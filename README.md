@@ -159,8 +159,12 @@ await world.read();
   readbacks. `appendJoints` takes each joint's own break threshold, rest rotation, yield and bend
   limit. (0.3 grew the joint record to 40 floats: stride by `JOINT_FLOATS`.)
 
-The design and what's planned: [docs/API.md](docs/API.md). A runnable example:
-[examples/basic.ts](examples/basic.ts) (`pnpm dev`, then `/examples/basic.html`).
+The design and what's planned: [docs/API.md](docs/API.md). Runnable examples are indexed at
+[`/examples/index.html`](https://three-avbd.vercel.app/examples/index.html) (`pnpm dev`, then
+`/examples/`): [basic](examples/basic.ts), [body lifecycle](examples/body-lifecycle.ts),
+[body pool](examples/body-pool.ts), and experimental SDF examples
+([gears](examples/sdf-gear.ts), [balls in a torus](examples/sdf-hollow.ts),
+[mesh baked in a worker](examples/sdf-from-mesh.ts)).
 
 ## What's in the demo
 

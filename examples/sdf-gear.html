@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>three-avbd example: SDF gears</title>
+    <link rel="stylesheet" href="./example.css" />
+  </head>
+  <body>
+    <aside class="note">
+      <h1>SDF gears <span class="badge">experimental</span></h1>
+      <p>One gear mesh profile is baked into a voxel SDF with <code>bakeVoxelSdfAsync</code>, and
+      <code>finalizeSdf</code> integrates its mass and inertia. The gold input gear is kinematic
+      (a fixed body driven with <code>moveTo</code>); the blue gear turns freely on a two-ball-joint
+      axle and is pushed only by non-convex SDF tooth contacts.</p>
+      <p>The ideal ratio is −24/16 = −1.5. Expect a little less (about −1.4 in our Chrome run): the voxel tooth contacts slip slightly.</p>
+      <div class="status" id="status">Baking…</div>
+      <p><a href="./index.html">All examples</a> · <a href="https://github.com/sbobyn/three-avbd/blob/main/examples/sdf-gear.ts">Source</a></p>
+    </aside>
+    <script type="module" src="./sdf-gear.ts"></script>
+  </body>
+</html>
