@@ -20,7 +20,7 @@ import { IgnoreCollision, Joint, Spring } from '../ref/forces.ts';
 import { Manifold } from '../ref/manifold.ts';
 import { defaultParams, type Solver, type SolverParams } from '../ref/solver.ts';
 import {
-  ARGS_ITEMS_3D, B_ANGVEL, B_INERTIAL_POS, B_INERTIAL_ROT, B_INITIAL_POS, B_INITIAL_ROT, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS,
+  BODY_DIRTY, BODY_DISABLED, BODY_COLD, ARGS_ITEMS_3D, B_ANGVEL, B_INERTIAL_POS, B_INERTIAL_ROT, B_INITIAL_POS, B_INITIAL_ROT, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS,
   C_CLASHING_COLORS, C_MANIFOLDS, C_TAIL_BODIES, CONTACT_WORDS, FLAG_FACE_BIAS, FLAG_SPARSE_COLORS, FLAG_MASS_PENALTY, FLAG_MATCH_NEAREST, FLAG_REUSE_CONTACTS, FLAG_REUSE_MANIFOLDS, FLAG_START_AT_REST, J_C0_ANG, J_C0_LIN, J_LAM_ANG, K_LAM, K_PEN, K_RA, K_RB, M_GEO, MANIFOLD_WORDS, SDF_ROLLING_BIT, SPARSE_COLOR_START, STICK_BIT,
   J_BREAK_BEND, J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, J_REST, J_REST_START, J_YIELD, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_HULL, SHAPE_SAIL, SHAPE_SPHERE, T_JOINT, T_SPRING,
   TOPOLOGY_ACCESSORS_3D,
@@ -475,6 +475,10 @@ export class GpuSolver3D {
 
   bodyCount = 0;
   readonly bodyCapacity: number;
+  readonly lifecycle: Uint8Array;
+  readonly customShaders: boolean;
+  /** @internal World command intent not submitted yet. */
+  lifecyclePending: (() => boolean) | null = null;
   readonly bodies: BodyInfo[] = [];
   /**
    * Hull shapes collide as hulls (./wgsl-hull.ts). The contacts module then binds a ninth storage
@@ -637,6 +641,7 @@ export class GpuSolver3D {
       throw new Error('GpuSolver3D shaders.solve must retain primalChunks and serialize clashing colours in primal/primalSparse; derive the module from the current solveWGSL.');
     }
     this.device = device;
+    this.customShaders = options.shaders !== undefined;
     const { dt, gravity, iterations, alpha, betaLin, betaAng, gamma } = ref;
     Object.assign(this.params, { dt, gravity, iterations, alpha, betaLin, betaAng, gamma, up: REF_UP });
     this.bodyCount = ref.bodies.length;
@@ -646,6 +651,7 @@ export class GpuSolver3D {
     this.bodyCapacity = options.bodyBuffer
       ? Math.floor(options.bodyBuffer.size / (BODY_FLOATS * 4))
       : Math.max(options.bodyCapacity ?? this.bodyCount + 1024, this.bodyCount, 1);
+    this.lifecycle = new Uint8Array(this.bodyCapacity);
     if (this.bodyCapacity < this.bodyCount) throw new Error('body buffer too small');
     this.bodyBuffer = options.bodyBuffer ?? device.createBuffer({ label: 'bodies 3d', size: bodyBufferSize(this.bodyCapacity), usage: storageUsage() });
     // Every body in every group, colliding with every group, until told otherwise
@@ -893,6 +899,7 @@ export class GpuSolver3D {
     bodies.forEach((b, k) => {
       const info = this.pack(b, f, k * BODY_FLOATS, this.bodies[first + k]?.hull);
       if (!resetContacts) f[k * BODY_FLOATS + B_INITIAL_POS + 3] = 0;
+      else this.lifecycle[first + k] = 0;
       if (this.bodies[first + k]?.radius !== info.radius || this.bodies[first + k]?.dynamic !== info.dynamic) this.radiiDirty = true;
       this.bodies[first + k] = info;
     });
@@ -922,7 +929,10 @@ export class GpuSolver3D {
       this.radiiDirty = true;
       this.device.queue.writeBuffer(this.colorBuffer, index * 4, new Uint32Array([NO_COLOR]));
     }
-    if (marker) write(B_INITIAL_POS + 3, 1);
+    if (marker) {
+      f[B_INITIAL_POS + 3] = BODY_DIRTY | this.lifecycle[index];
+      write(B_INITIAL_POS + 3, 1);
+    }
     this.manifoldsValid = false;
   }
 
@@ -963,6 +973,7 @@ export class GpuSolver3D {
         f.set(template, o);
         for (let a = 0; a < 3; a++) f[o + B_POS + a] = positions[3 * i + a];
         if (rotations) for (let a = 0; a < 4; a++) f[o + B_ROT + a] = rotations[4 * i + a];
+        this.lifecycle[indices[i]] = 0;
         const was = this.bodies[indices[i]];
         if (was?.radius !== info.radius || was?.dynamic !== info.dynamic) this.radiiDirty = true;
         // Boxes now: a hull the slot collided as goes when nothing else uses it
@@ -1152,7 +1163,7 @@ export class GpuSolver3D {
   sequentialColors(): Uint32Array<ArrayBuffer> {
     const colors = new Uint32Array(this.bodyCount).fill(NO_COLOR);
     let next = 0;
-    for (let i = this.bodyCount - 1; i >= 0; i--) if (this.bodies[i].dynamic) colors[i] = next++;
+    for (let i = this.bodyCount - 1; i >= 0; i--) if (this.bodies[i].dynamic && !(this.lifecycle[i] & BODY_DISABLED)) colors[i] = next++;
     if (next > MAX_COLORS) throw new Error(`sequentialColors: ${next} dynamic bodies, at most ${MAX_COLORS}`);
     return colors;
   }
@@ -1540,9 +1551,25 @@ export class GpuSolver3D {
 
   /** Internal opt-in backend. Joints are kept; contact warm starts survive only if the new
    * backend carries them over itself (SdfCollisionBridge.grown does). */
+  /** Reject before allocating/destroying a backend that cannot interpret lifecycle state. */
+  assertBackendSwitchAllowed(): void {
+    if (this.lifecycle.some(bits => bits !== 0) || this.lifecyclePending?.()) throw new Error('Submit an enabled standard step before switching collision backends: pending body lifecycle state');
+  }
+
+  /** @internal Numeric lifecycle metadata; never rewrites a cached CPU pose. */
+  setLifecycle(index: number, bits: number): void {
+    if (!Number.isInteger(index) || index < 0 || index >= this.bodyCount || !Number.isInteger(bits) || bits < 0 || bits > 6 || (bits & ~(BODY_DISABLED | BODY_COLD)) !== 0) throw new Error('Invalid body lifecycle flags/index');
+    if (this.collisionBackend || this.customShaders) throw new Error('Body lifecycle requires built-in standard shaders');
+    this.lifecycle[index] = bits;
+    this.device.queue.writeBuffer(this.bodyBuffer, (index * BODY_FLOATS + B_INITIAL_POS + 3) * 4, new Float32Array([BODY_DIRTY | bits]));
+    this.device.queue.writeBuffer(this.colorBuffer, index * 4, new Uint32Array([NO_COLOR]));
+    this.manifoldsValid = false;
+  }
+
   setCollisionBackend(backend: GpuCollisionBackend3D | null): void {
     if (this.destroyed) throw new Error('Solver is destroyed');
     if (backend === this.collisionBackend) return;
+    this.assertBackendSwitchAllowed();
     backend?.prepare(this);
     this.collisionBackend?.destroy();
     this.collisionBackend = backend;
@@ -1579,20 +1606,21 @@ export class GpuSolver3D {
     if (this.radiiDirty || this.noCollideTable.dirty) this.uploadStatics();
     const p = this.params;
     if (this.fixedColors) {
-      this.device.queue.writeBuffer(this.colorBuffer, 0, this.fixedColors);
-      this.colorCap = Math.max(1, ...this.fixedColors.map((c) => (c === NO_COLOR ? 0 : c + 1)));
+      const colors = this.fixedColors.map((color, index) => (this.lifecycle[index] & BODY_DISABLED) ? NO_COLOR : color);
+      this.device.queue.writeBuffer(this.colorBuffer, 0, colors);
+      this.colorCap = Math.max(1, ...colors.map((c) => (c === NO_COLOR ? 0 : c + 1)));
     }
     // A bounded active set keeps a serial tail affordable; large scenes retain full GPU
     // parallelism. This is only a performance choice: the tail handles any bucket size.
     let active = 0;
     this.useSparseColors = false;
     if (this.fuseSparseColors && this.pipes.primalSparse && this.colorCap > SPARSE_COLOR_START) {
-      for (let i = 0; i < this.bodyCount && active <= 1024; i++) if (this.bodies[i].dynamic) active++;
+      for (let i = 0; i < this.bodyCount && active <= 1024; i++) if (this.bodies[i].dynamic && !(this.lifecycle[i] & BODY_DISABLED)) active++;
       let tail = this.tailBodies;
       if (this.fixedColors) {
         tail = 0;
         for (let i = 0; i < this.bodyCount; i++) {
-          if (this.bodies[i].dynamic && this.fixedColors[i] !== NO_COLOR && this.fixedColors[i] >= SPARSE_COLOR_START) tail++;
+          if (this.bodies[i].dynamic && !(this.lifecycle[i] & BODY_DISABLED) && this.fixedColors[i] !== NO_COLOR && this.fixedColors[i] >= SPARSE_COLOR_START) tail++;
         }
       }
       this.useSparseColors = active <= 128 || (active <= 1024 && tail <= 128);
@@ -1863,11 +1891,12 @@ export class GpuSolver3D {
     const encoder = this.device.createCommandEncoder();
     encoder.copyBufferToBuffer(buffer, 0, staging, 0, size);
     this.device.queue.submit([encoder.finish()]);
-    await staging.mapAsync(GPUMapMode.READ);
-    const out = staging.getMappedRange().slice(0);
-    staging.unmap();
-    staging.destroy();
-    return out;
+    try {
+      await staging.mapAsync(GPUMapMode.READ);
+      return staging.getMappedRange().slice(0);
+    } finally {
+      staging.destroy();
+    }
   }
 
   /** The step timing's query set and buffers. */

@@ -3,11 +3,12 @@
 // ../ref (forces.ts, manifold.ts, solver.ts); rows are folded into a register accumulator as
 // outer products instead of the reference's 3x3 matrix products.
 
-import { PRELUDE_3D, PRIMAL_LANES_WGSL } from './layout.ts';
+import { BODY_LIFECYCLE_WGSL, PRELUDE_3D, PRIMAL_LANES_WGSL } from './layout.ts';
 
 export const solveWGSL = /* wgsl */ `
 ${PRELUDE_3D}
 ${PRIMAL_LANES_WGSL}
+${BODY_LIFECYCLE_WGSL}
 
 // Per-dispatch constants, selected with a dynamic uniform offset
 struct PassConstants {
@@ -223,10 +224,18 @@ fn warmStartJoints(@builtin(global_invocation_id) gid: vec3u) {
   let k = joints[j];
   let a = info[j].y;
   let b = info[j].z;
+  if ((a >= 0 && !bodyEnabled(u32(a))) || !bodyEnabled(u32(b))) { return; }
   // Only the fields that change are stored back (not the anchors or the rests: a joint record is
   // 160 bytes, and a joint-heavy scene runs this over every one)
   joints[j].c0Lin = vec4f(jointLinC(k, a, b), 0.0);
   joints[j].c0Ang = vec4f(jointAngC(k, a, b), k.c0Ang.w);
+  if ((a >= 0 && bodyCold(u32(a))) || bodyCold(u32(b))) {
+    joints[j].lamLin = vec4f(vec3f(0.0), k.lamLin.w);
+    joints[j].lamAng = vec4f(vec3f(0.0), k.lamAng.w);
+    joints[j].penLin = vec4f(vec3f(min(PENALTY_MIN, k.penLin.w)), k.penLin.w);
+    joints[j].penAng = vec4f(vec3f(min(PENALTY_MIN, k.penAng.w)), k.penAng.w);
+    return;
+  }
   let decay = params.alpha * params.gamma;
   joints[j].lamLin = vec4f(k.lamLin.xyz * decay, k.lamLin.w);
   joints[j].lamAng = vec4f(k.lamAng.xyz * decay, k.lamAng.w);
@@ -269,7 +278,7 @@ fn windAccel(i: u32, x: vec3f, rot: vec4f, v: vec3f) -> vec3f {
 @compute @workgroup_size(64)
 fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
-  if (i >= params.bodyCount) { return; }
+  if (i >= params.bodyCount || !bodyEnabled(i)) { return; }
   // Field-wise loads and stores: only the poses change (whole-record copies moved 320 bytes)
   let pos = bodies[i].pos;
   let rot = bodies[i].rot;
@@ -377,12 +386,13 @@ fn primalColor(c: u32, local: u32, group: u32, serial: u32) {
   let slot = local / lanes;
   let lane = local % lanes;
   let k = group * (64u / lanes) + slot;
-  let live = k < count;
+  var live = k < count;
   var i = 0u;
   var acc: Acc;
   if (live) {
     i = color[params.colorBodiesOffset + start + k];
-    acc = accumulate(i, lane, lanes);
+    live = bodyEnabled(i);
+    if (live) { acc = accumulate(i, lane, lanes); }
   }
   // Lanes s..2s-1 hand their sums to lanes 0..s-1 (constant bounds keep the barriers uniform)
   for (var s = 4u; s > 0u; s >>= 1u) {
@@ -536,6 +546,7 @@ fn dualJoint(j: u32) {
   if (t != T_JOINT) { return; }
   let a = info[j].y;
   let b = info[j].z;
+  if ((a >= 0 && !bodyEnabled(u32(a))) || !bodyEnabled(u32(b))) { return; }
   let k = joints[j];
   let alpha = pc.alpha;
   var penLin = k.penLin;
@@ -640,7 +651,7 @@ fn dual(@builtin(global_invocation_id) gid: vec3u) {
 @compute @workgroup_size(64)
 fn updateVelocities(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
-  if (i >= params.bodyCount) { return; }
+  if (i >= params.bodyCount || !bodyEnabled(i)) { return; }
   // This step's starting velocity along up, for the next step's adaptive warm start
   let prevUp = dot(bodies[i].vel.xyz, params.up.xyz);
   if (bodies[i].size.w > 0.0) {

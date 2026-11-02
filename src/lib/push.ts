@@ -3,12 +3,13 @@
 // principal frame), with the mass, moments and pose the GPU holds. The CPU sums each body's pushes
 // for the step into one record, so no two threads touch a body.
 
-import { B_ANGVEL, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
+import { B_ANGVEL, LIFECYCLE_FLAGS_WGSL, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS } from '../avbd3d/gpu/layout.ts';
 
 /** Per pushed body: the linear impulse (N·s), the part of it applied off-centre, and its moment about the origin (plus any angular impulse). */
 const PUSH_FLOATS = 12;
 
 const WGSL = /* wgsl */ `
+${LIFECYCLE_FLAGS_WGSL}
 struct Push {
   lin: vec4f,      // xyz: the whole linear impulse, w: the body (bits)
   offLin: vec4f,   // xyz: the part applied at points
@@ -28,6 +29,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   if (id.x >= count.x) { return; }
   let p = pushes[id.x];
   let b = bitcast<u32>(p.lin.w) * ${BODY_FLOATS / 4}u;
+  if ((lifecycleBits(bodies[b + 2u].w) & 2u) != 0u) { return; }
   let mass = bodies[b + ${B_SIZE / 4}u].w;
   if (mass <= 0.0) { return; }
   let v = bodies[b + ${B_VEL / 4}u];

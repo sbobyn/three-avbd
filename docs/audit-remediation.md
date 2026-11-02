@@ -4,14 +4,12 @@ Base: `cd3ce901557aa9cf4f7ede489fac385971d383ea` (main, #45). Scope: the three-a
 the 2026-10-31 audit (A1–A6, AS, AC-1..3, AH-1..3, comparison harness). The audit's findings
 were static hypotheses. Each one below was traced in the code before anything changed.
 
-**Verification status: reviewed with real-Dawn tests, but no all-green full gate on the final revision.**
-The serial full run passed all 187 CPU tests and 199 of 200 GPU tests (zero skips).
-Its one GPU failure exposed an over-strict review-added guard: an already-submitted raycast
-must retain its snapshot across destruction. That guard was removed; all 25 tests in the
-SDF lifecycle and World-contract suites then passed on real Dawn in 5.4 seconds.
-Final typecheck, Vite build and library build pass. The full gate was not repeated after
-that correction, following the request for small-scale checks and limited GPU use.
-These tests are correctness evidence, not a frame-rate or target-hardware performance claim.
+**Current disposition index:** [AUDIT_DISPOSITION.md](AUDIT_DISPOSITION.md).
+The final historical audit gate below records 187 CPU and 200 Dawn GPU passes after
+review corrections. Earlier partial runs remain chronology, not the final status.
+Current-candidate checks must be rerun; these historical results do not qualify
+later commands, observations, queries or capabilities. No browser qualification
+is implied. The per-finding reasoning and recovery limitations below are retained.
 
 ## Dispositions
 

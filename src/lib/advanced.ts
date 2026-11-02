@@ -15,7 +15,7 @@ export type { GpuStepOptions, GpuParams3D, GpuSolverOptions, GpuCounters3D, GpuC
 // broke, the rest it holds and how far it has bent
 export { decodeJoint, type JointState } from '../avbd3d/gpu/joints.ts';
 export {
-  BODY_FLOATS,
+  BODY_FLOATS, BODY_DIRTY, BODY_DISABLED, BODY_COLD, LIFECYCLE_ABI_VERSION,
   B_POS,
   B_ROT,
   B_SIZE,
