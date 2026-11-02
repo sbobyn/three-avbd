@@ -19,9 +19,14 @@ destructible city of 94,000 voxel bodies ([code](https://github.com/sbobyn/three
 Needs a browser with WebGPU: Chrome or Edge on any platform, Safari 26 on macOS and iOS,
 Firefox where it ships WebGPU. Nothing is baked: every scene is simulated live on your GPU.
 
-The unpublished 0.4 candidate adds masked body commands, lifetime observations, static
-queries and capability preflight. See [capabilities and migration](docs/RELEASE_0.4.md)
-and [audit dispositions](docs/AUDIT_DISPOSITION.md) before upgrading.
+## What's new in 0.4
+
+Partial body writes that keep the GPU state you didn't set, GPU kinematic targets, lifetime body
+IDs and step-stamped reads, body activation and reset, fixed storage with `three-avbd/pool`,
+CPU static queries (`three-avbd/queries`), capability and hull preflight, an opt-in contact
+margin, and the experimental `three-avbd/sdf` entry point. `body.set` and `world.read()` changed
+behaviour: read [the 0.4.0 release notes and migration](docs/RELEASE_0.4.md) before upgrading
+from 0.3.
 
 ## three-avbd or Rapier?
 
@@ -41,10 +46,10 @@ Where Rapier is better: small scenes (at 1,000 resting boxes it was slightly fas
 CCD, more joint types and shapes, character and vehicle controllers, synchronous queries,
 cross-machine determinism, and it runs without WebGPU.
 
-## Experimental SDF collisions (0.4 release candidate)
+## Experimental SDF collisions (new in 0.4)
 
-The experimental `three-avbd/sdf` entry point is included in the 0.4 release candidate;
-published 0.3.0 does not contain it. Its API may change. It provides mesh-to-voxel baking,
+The experimental `three-avbd/sdf` entry point is new in 0.4.0; 0.3.0 does not contain it.
+Its API may change. It provides mesh-to-voxel baking,
 analytic/voxel sampling, mass properties and curvature seeds, plus a cancellable
 worker helper. [CPU baking/API usage](docs/SDF_BAKING.md) feeds the experimental
 [`World.enableSdfCollisions()` API](docs/SDF_WORLD.md): automatic GPU candidate
@@ -78,7 +83,7 @@ CPU-reference metrics; that mode is for numerical inspection, not FPS measuremen
 The playground and reference-scene pages offer **Measure 4s**: one second of warmup, four seconds of visible browser
 frame intervals, then automatic pause. The report separates frame cadence from simulation
 speed and records final GPU drain time; **Save JSON** exports the raw intervals and context.
-Package scope and release instructions are in [the 0.4 release notes](docs/SDF_RELEASE_0.4.md).
+The historical SDF package checkpoint is in [SDF_RELEASE_0.4.md](docs/SDF_RELEASE_0.4.md).
 Current local desktop results, verification and release boundaries are in
 [SDF demo release notes](docs/SDF_DEMO_RELEASE.md). These are short observations on one device,
 not a promise of 60 FPS across browsers or a reproduction of paper GPU performance.

@@ -1,6 +1,6 @@
 # Body activation and reset
 
-Development Slice A; these APIs are not in the frozen 0.4 release candidate.
+New in 0.4.0.
 
 Built-in box, sphere and hull worlds support same-life activation and reset. Check
 `world.capabilities.bodyActivation` / `bodyReset`; both are false for SDF/custom
@@ -85,7 +85,7 @@ Public device-only example: [body-lifecycle.ts](../examples/body-lifecycle.ts).
 
 ## Body pools
 
-Development slice C (`three-avbd/pool`); not in the frozen 0.4 candidate. A pool needs a
+New in 0.4.0 (`three-avbd/pool`). A pool needs a
 **fixed-storage** World: every solver and helper capacity explicit, checked against the
 device's negotiated limits before anything is allocated, and never grown afterwards.
 

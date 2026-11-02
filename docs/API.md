@@ -1,7 +1,7 @@
 # three-avbd: library API
 
-Status: v0.4 release candidate; npm 0.3.0 does not include the SDF entry point.
-See [current capabilities and migration](RELEASE_0.4.md), [audit dispositions](AUDIT_DISPOSITION.md)
+Status: 0.4.0. npm 0.3.0 does not include the `sdf`, `queries` or `pool` entry points.
+See [0.4.0 release notes and migration](RELEASE_0.4.md), [audit dispositions](AUDIT_DISPOSITION.md)
 and [historical SDF verification](SDF_RELEASE_0.4.md).
 
 ## Goal
@@ -26,7 +26,10 @@ preparation API also include the reference utilities they depend on.
   exported constant.
 - **`three-avbd/sdf`**: experimental analytic/voxel fields, baking, curvature seeds, mass/inertia
   preparation and collision parameters; see [baking](SDF_BAKING.md) and [World integration](SDF_WORLD.md).
-- **`three-avbd/pool`** (development, not in the frozen 0.4 candidate): `BodyPool`, fixed-template
+- **`three-avbd/queries`** (new in 0.4.0): CPU-only static triangle queries (`StaticQueryScene`,
+  `boxMesh`): nearest rays, sphere/capsule overlaps and translational sweeps, with no GPU or Three
+  runtime import; see [static queries](QUERIES.md).
+- **`three-avbd/pool`** (new in 0.4.0): `BodyPool`, fixed-template
   pools in a fixed-storage World (`WorldOptions.storage`); see [Body pools](BODY_LIFECYCLE.md#body-pools).
 - Built by `tsc` from the five public entry points and their transitive dependencies into `build/`
   (the site builds to `dist/`). The tarball includes that runtime, declarations, README, license
@@ -56,8 +59,8 @@ renderer.setAnimationLoop(() => {
 
 ### World
 
-Development activation/reset APIs and their GPU/lifetime semantics are described in
-[Body lifecycle](BODY_LIFECYCLE.md); they are separate from the frozen 0.4 candidate.
+Activation/reset (new in 0.4.0) and its GPU/lifetime semantics are described in
+[Body lifecycle](BODY_LIFECYCLE.md).
 
 - `World.create({ renderer | device, maxBodies, gravity?, dt?, iterations? })`. With a renderer,
   it uses the renderer's GPUDevice, which zero-copy drawing requires. With a bare `device` it
@@ -118,7 +121,7 @@ Development activation/reset APIs and their GPU/lifetime semantics are described
 
 How these compare with Rapier's defaults: [three-avbd vs Rapier](COMPARISON.md).
 
-### Experimental SDF mode (0.4 release candidate; API may change)
+### Experimental SDF mode (new in 0.4.0; API may change)
 
 `await world.enableSdfCollisions([{ body, field, scale?, rotation? }], params?, broadphase?)` installs SDF
 collisions for allocated body slots. Unassigned boxes/spheres use

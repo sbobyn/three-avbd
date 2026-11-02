@@ -1,6 +1,6 @@
-# Experimental World SDF collisions (source build)
+# Experimental World SDF collisions
 
-This unpublished API attaches SDF collision fields to existing World bodies. It
+This experimental API (new in 0.4.0) attaches SDF collision fields to existing World bodies. It
 uses the production AVBD solver with independent contact normals and persistent
 warm starts. It is explicitly enabled and does not change normal World collisions.
 

@@ -39,12 +39,9 @@ out of frame budget.
 | Restitution | has, with combine rules | missing: contacts are inelastic | 0.5 if time |
 | Friction | coefficient + combine rules | partial: coefficient, cone friction, combined by geometric mean (not configurable) | doc |
 | Sleeping | has | **missing** (`world.capabilities.nativeSleeping` is `false`) | later |
-| Enable / disable a body | has (`RigidBody.setEnabled`) | has: `body.setEnabled`, `body.reset`, same lifetime ID and slot ([BODY_LIFECYCLE.md](BODY_LIFECYCLE.md)) | 0.4 † |
-| Fixed-storage pools | no equivalent | has: `three-avbd/pool`, `storage: { growth: 'fixed' }`; acquire/release/step create no GPU buffers or pipelines (asserted in `tests-gpu/pool.gpu.test.ts`). No speedup over add/remove is claimed | 0.4 † |
+| Enable / disable a body | has (`RigidBody.setEnabled`) | has: `body.setEnabled`, `body.reset`, same lifetime ID and slot ([BODY_LIFECYCLE.md](BODY_LIFECYCLE.md)) | 0.4 |
+| Fixed-storage pools | no equivalent | has: `three-avbd/pool`, `storage: { growth: 'fixed' }`; acquire/release/step create no GPU buffers or pipelines (asserted in `tests-gpu/pool.gpu.test.ts`). No speedup over add/remove is claimed | 0.4 |
 | Lifetime body IDs | handles | has: `body.id`, never reused; events and rays keep the handle they captured | 0.4 |
-
-† `BODY_LIFECYCLE.md` still labels activation/reset and pools "development, not in the frozen 0.4
-candidate"; whether they ship in 0.4.0 is the release decision.
 
 ### Shapes
 
@@ -123,9 +120,72 @@ iterations). In Chrome on the same machine the README reports the ring at 10.4 m
 was three-avbd's event readback ([RAPIER_COMPARISON.md](RAPIER_COMPARISON.md#main-era-baseline-2026-11-01)).
 The scene is now labelled invalid for quality, but the readback cost is a real cost.
 
+**Settling batch on the valid scenes**, 2026-11-02, M4 Max, Node + Dawn, three-avbd at the #60
+branch head `57c7c23` (the scene-validity PR, before its squash merge), Rapier 0.21.0. 1/60 s,
+600 measured steps after a 120-step lead (hcp) or 600-step lead (piles), batch 10, **3 repeats**,
+Rapier sleeping and CCD off, the same iteration count for both engines (Rapier: solver
+iterations, 1 PGS iteration each). ms/step is the mean of the three
+repeats' step-weighted means; depths are the worst over the measured window and were identical
+across repeats. Contact target: floor and pair depth both ≤ 1 % of the smallest body dimension.
+Sources: `docs/data/settling-gpu-2026-11-02-{hcp,piles}-{4,10}-{0.01,0.001}.json`, one file per
+scene group, iteration count and AVBD margin ([data/](data/); trimmed from the raw harness output:
+per-step quality traces and body lists removed, every summary field unchanged).
+
+`sphere-pile-hcp-100` (100 close-packed 1 m spheres, a stable stack):
+
+| Engine | Iterations | Margin | ms/step | Worst floor depth | Worst pair depth | Contact target |
+|---|---|---|---|---|---|---|
+| Rapier | 4 | — | **0.31** | 0.28 mm | 0.58 mm | met |
+| three-avbd | 4 | 0.01 (default) | 1.35 | 13.1 mm | 11.2 mm | missed |
+| three-avbd | 4 | 0.001 | 1.33 | 3.4 mm | 2.6 mm | met |
+| Rapier | 10 | — | **0.62** | 0.27 mm | 0.72 mm | met |
+| three-avbd | 10 | 0.01 (default) | 3.24 | 10.9 mm | 10.3 mm | missed |
+| three-avbd | 10 | 0.001 | 3.23 | 1.5 mm | 1.8 mm | met |
+
+Both engines hold this stack. With `contactMargin: 0.001` three-avbd meets the contact target with
+no extra step time in these runs; at the 0.01 default it rests about a margin deep. At 100 bodies Rapier is
+about 4–5× faster per step, with both meeting the target at margin 0.001.
+
+`pile-1k-settled` and `pile-10k-settled` (boxes dropped from height with no initial overlap):
+
+| Scene | Engine | Iterations | Margin | ms/step | Worst floor depth | Worst pair depth | Contact target |
+|---|---|---|---|---|---|---|---|
+| 1k | Rapier | 4 | — | 2.48 | 110 mm | 324 mm | missed |
+| 1k | three-avbd | 4 | 0.01 | 1.44 | 222 mm | 456 mm | missed |
+| 1k | three-avbd | 4 | 0.001 | 1.38 | 234 mm | 425 mm | missed |
+| 10k | Rapier | 4 | — | 37.9 | 124 mm | 405 mm | missed |
+| 10k | three-avbd | 4 | 0.01 | 1.71 | 354 mm | 732 mm | missed |
+| 10k | three-avbd | 4 | 0.001 | 1.64 | 327 mm | 755 mm | missed |
+| 1k | Rapier | 10 | — | 4.74 | 99 mm | 263 mm | missed |
+| 1k | three-avbd | 10 | 0.01 | 3.19 | 190 mm | 482 mm | missed |
+| 1k | three-avbd | 10 | 0.001 | 4.00 | 230 mm | 480 mm | missed |
+| 10k | Rapier | 10 | — | 65.9 | 116 mm | 405 mm | missed |
+| 10k | three-avbd | 10 | 0.01 | 3.40 | 345 mm | 653 mm | missed |
+| 10k | three-avbd | 10 | 0.001 | 3.53 | 289 mm | 762 mm | missed |
+
+**These pile scenes do not yet measure resting quality.** Neither engine meets the contact target
+on either pile, at either iteration count: Rapier's worst pair depth is 263–405 mm too. The metric is
+the worst depth over the whole window, so it is dominated by the drop's impacts and transient
+interpenetration, not by how the pile rests. What the table does show: three-avbd's worst
+transient depths are larger than Rapier's (1.3–1.9× in pair depth, 1.9–3.0× in floor depth), and
+10 iterations instead of 4 change them by 15 % or less. Because both miss
+the target, the step times above are **not** a quality-matched speed comparison, and no speedup
+ratio is quoted for the piles. A final-window (resting) metric is the next step (**pending**).
+
+At the end of the window three-avbd's 10k pile was still moving (fastest body 0.50–1.27 m/s at 4
+iterations, 0.69–1.45 m/s at 10, depending on the margin), where Rapier's fastest body was below
+0.001 m/s at 4 iterations and 0.13 m/s at 10. On the 1k pile both engines ended with every body
+below 0.013 m/s ([same data](data/), `finalQuality.maxSpeed`).
+
+**Browser side by side** (2026-11-02, Chrome on the M4 Max, `/compare-side.html`,
+`pile-1k-settled`, 4 iterations; one observation, not saved as data): at t = 10 s three-avbd's pile
+was still moving (fastest body 1.7 m/s) while Rapier's was at rest. That is consistent with no
+sleeping and slower settling in three-avbd; it is a single visual check, not a measurement protocol.
+
 What this supports today: at ~1k bodies Rapier is as fast or faster per step and meets the
 contact target; at ~9k and ~110k bodies three-avbd's step is far cheaper at 4 iterations, with
-both engines outside the shared quality target. Where the crossover lies, and how it moves when
+both engines outside the shared quality target. On a valid 100-sphere stack both meet the target
+(three-avbd with margin 0.001) and Rapier is 4–5× faster. Where the crossover lies, and how it moves when
 three-avbd runs enough iterations to meet the target, is **not measured yet**.
 
 ### Pending: full method
@@ -152,9 +212,11 @@ margin became a parameter in #55 (default 0.01 m, the reference demo's `COLLISIO
 |---|---|---|---|---|
 | 1 m box / 0.5 m sphere on a floor, 300 steps | 10.37 mm | 1.87 mm | — | [FINDINGS 2026-11-01](FINDINGS.md#2026-11-01--opt-in-contact-margin) |
 | `rest-grid-1k`, floor / pair depth | 11.3 / 11.1 mm, target missed | 4.4 / 7.1 mm, target met | 0.8 / 5.2 mm, met | [baseline JSON](data/rapier-baseline-2026-11-01.json); [settling status](RAPIER_COMPARISON.md#the-earlier-evidence-re-read) |
+| `sphere-pile-hcp-100`, 4 iterations, floor / pair depth | 13.1 / 11.2 mm, target missed | 3.4 / 2.6 mm, target met | 0.28 / 0.58 mm, met | [settling batch](data/) (section 3) |
 
-The default stays 0.01 until tall walls and the small benchmark tier are re-measured at 0.001
-(**pending**). Evidence so far: before `startAtRest`, a 40-course wall fell at 6 s with or without
+The default stays 0.01 in 0.4.0; for scenes where resting depth matters, set
+`contactMargin: 0.001` (section 7). A new default waits until tall walls and the small benchmark
+tier are re-measured at 0.001 (**pending**). Evidence so far: before `startAtRest`, a 40-course wall fell at 6 s with or without
 the margin ([FINDINGS 8m](FINDINGS.md#2026-09-24--stage-8m-tall-brick-walls-at-4-iterations-slow-bodies-start-at-rest)),
 so the margin was not holding walls up; the current solver has not been re-measured.
 
@@ -176,8 +238,11 @@ only; [settling status](RAPIER_COMPARISON.md#settling-status-2026-11-02),
   labels live in `SCENE_VALIDITY` in `src/comparison/scenes.ts`.
 - **A real gap remains on `pile-1k-settled`** for the CPU reference (demo warm start, not the GPU
   solver's `startAtRest`): at step 1,200 it still has 115 bodies above 1 cm/s at 4 iterations and
-  61 at 10, where Rapier has none. GPU runs of the valid scenes are **pending**, so the GPU
-  solver's settling on a real pile is **unknown**.
+  61 at 10, where Rapier has none.
+- **GPU runs of the valid scenes** (section 3, 2026-11-02): the GPU solver holds
+  `sphere-pile-hcp-100` and meets the contact target with margin 0.001. On the two piles neither
+  engine meets the worst-over-window target, so they do not yet separate resting quality from
+  impact depth; three-avbd's 10k pile was still moving at the end of the window.
 
 ### Tall stacks at low iteration counts
 
@@ -375,8 +440,9 @@ determinism, snapshots, character controllers, running without WebGPU.
 
 Planned for **0.5** (not committed): per-body damping and gravity scale, spring damping,
 restitution, sensors, capsules, a hinge joint, queries against dynamic bodies, sphere contact
-anchoring and the settling fixes the pending GPU runs point to, a quality-matched performance
-table (section 3), a small debug-lines helper and a side-by-side demo. Later: sleeping, compound
+anchoring and the settling fixes the GPU runs point to, a quality-matched performance
+table (section 3) and a small debug-lines helper. The live side-by-side page
+(`/compare-side.html`) already ships in the repo. Later: sleeping, compound
 colliders, triangle-mesh and heightfield collision, snapshots, a character controller. The
 settling investigation and its hypotheses are tracked in
 [RAPIER_COMPARISON.md](RAPIER_COMPARISON.md#settling-status-2026-11-02).
