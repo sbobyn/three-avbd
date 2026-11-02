@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rendered physics comparison</title>
+<style>body{font:16px system-ui;margin:24px;background:#181b20;color:#eee}label{display:inline-block;margin:8px}button,select,input{font:inherit}canvas{display:block;width:960px;max-width:100%;height:auto}pre{white-space:pre-wrap}a{color:#9cf}</style></head><body>
+<a href="/compare.html">Physics quality comparison</a><h1>Rendered workflow comparison</h1>
+<p>Same scene, camera, geometry and renderer. AVBD draws from its solver buffer; Rapier poses are copied into the same rendering layout. Reports include completed work time and animation-frame intervals. This is one integration workflow, not a universal engine benchmark. Keep the tab visible.</p>
+<label>Scene <select id="case"><option>rest-grid-1k</option><option>rest-grid-10k</option><option>pile-1k</option><option>sphere-pile-100</option></select></label>
+<label>Frames <input id="frames" type="number" value="120" min="30" max="600"></label>
+<label>Rays per frame <select id="rays"><option>0</option><option>1</option><option>100</option></select></label>
+<label><input id="readback" type="checkbox">Also read all AVBD poses each frame</label>
+<label><input id="events" type="checkbox">Consume contact events each frame</label>
+<button id="run">Run both engines twice</button><button id="download" disabled>Download report</button>
+<p id="status" role="status">Ready</p><canvas id="view" width="960" height="540"></canvas><pre id="output"></pre><details><summary>Raw report</summary><textarea id="raw" readonly rows="12" cols="100"></textarea></details>
+<script type="module" src="/src/comparison/frame.ts"></script></body></html>
