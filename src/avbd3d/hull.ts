@@ -52,7 +52,9 @@ export const MAX_HULL_VERTICES = 32;
 
 /**
  * The convex hull of xyz points and its mass properties, or null when the points span no volume
- * (fewer than four, or all on a plane or line). A hull of more than MAX_HULL_VERTICES vertices is
+ * (fewer than four, or all on a plane or line). Points closer together than 1e-5 of their size (or
+ * of their distance from the origin, if greater) count as one, and the hull holds every point to
+ * about that. A hull of more than MAX_HULL_VERTICES vertices is
  * replaced by the hull of that many of them, spread out (farthest-point sampling): slightly smaller,
  * much cheaper to collide.
  */
@@ -86,21 +88,43 @@ function spreadVertices(h: HullShape, count: number): number[] {
 }
 
 function buildHull(points: ArrayLike<number>): HullShape | null {
-  // Unique points (split vertices repeat positions exactly)
-  let scale = 0;
-  for (let i = 0; i < points.length; i++) scale = Math.max(scale, Math.abs(points[i]));
-  const eps = Math.max(scale, 1e-9) * 1e-6;
-  const seen = new Set<string>();
+  // Tolerances relative to the points' extent and their distance from the origin (rounding)
+  const lo: V3 = [Infinity, Infinity, Infinity];
+  const hi: V3 = [-Infinity, -Infinity, -Infinity];
+  let magnitude = 0;
+  for (let i = 0; i + 2 < points.length; i += 3) {
+    for (let k = 0; k < 3; k++) {
+      lo[k] = Math.min(lo[k], points[i + k]);
+      hi[k] = Math.max(hi[k], points[i + k]);
+      magnitude = Math.max(magnitude, Math.abs(points[i + k]));
+    }
+  }
+  const extent = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+  if (!(extent > 0 && extent < Infinity)) return null;
+  // Plane tolerance: above the rounding of f32 coordinates (points on one flat face of a mesh are
+  // off its plane by that much), far below any feature
+  const tol = Math.max(extent, magnitude) * 1e-7;
+  // Points closer than `weld` are one: split vertices repeat positions exactly, and fracture cells
+  // have clusters of nearly coincident corners
+  const weld = 100 * tol;
+  const cells = new Map<string, V3[]>();
+  const cellKey = (x: number, y: number, z: number) => `${x},${y},${z}`;
   const p: V3[] = [];
   for (let i = 0; i + 2 < points.length; i += 3) {
     const v: V3 = [points[i], points[i + 1], points[i + 2]];
-    const key = v.map((x) => Math.round(x / eps)).join(',');
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const c = v.map((x) => Math.floor(x / weld));
+    let near = false;
+    for (let dx = -1; dx <= 1 && !near; dx++) {
+      for (let dy = -1; dy <= 1 && !near; dy++) {
+        for (let dz = -1; dz <= 1 && !near; dz++) near = !!cells.get(cellKey(c[0] + dx, c[1] + dy, c[2] + dz))?.some((u) => len(sub(u, v)) <= weld);
+      }
+    }
+    if (near) continue;
+    const key = cellKey(c[0], c[1], c[2]);
+    cells.set(key, [...(cells.get(key) ?? []), v]);
     p.push(v);
   }
   if (p.length < 4) return null;
-  const tol = Math.max(scale, 1e-9) * 1e-10;
 
   // Initial tetrahedron from extreme points
   let i0 = 0;
@@ -129,7 +153,7 @@ function buildHull(points: ArrayLike<number>): HullShape | null {
   }
   if (i3 < 0 || best < tol * len(n012)) return null;
 
-  const tris: Tri[] = [];
+  let tris: Tri[] = [];
   const make = (a: number, b: number, c: number): Tri => {
     const n = cross(sub(p[b], p[a]), sub(p[c], p[a]));
     const l = len(n) || 1;
@@ -144,15 +168,29 @@ function buildHull(points: ArrayLike<number>): HullShape | null {
   tris.push(make(base[1], i3, base[2]));
   tris.push(make(base[2], i3, base[0]));
 
-  const used = new Set([i0, i1, i2, i3]);
-  // Farthest points first: the hull grows in big steps and fewer points meet nearly flat faces
-  const order = p.map((_, i) => i).filter((i) => !used.has(i));
-  const centre = [i0, i1, i2, i3].reduce<V3>((c, i) => [c[0] + p[i][0] / 4, c[1] + p[i][1] / 4, c[2] + p[i][2] / 4], [0, 0, 0]);
-  order.sort((a, b) => len(sub(p[b], centre)) - len(sub(p[a], centre)));
-  for (const i of order) {
-    // Faces the point is clearly in front of; none: it is inside (or on) the hull
+  // Quickhull order: next the point farthest in front of a face, always a corner of the final hull,
+  // so points on its edges and faces (most of a fracture piece's) end up inside instead of making
+  // needle triangles (below). Each point keeps the face it is farthest in front of, and is tested
+  // again when that face goes. A point leaves the set when visited, so each is visited once.
+  const outside = new Map<number, { face: Tri; d: number }>();
+  const assign = (j: number, faces: Tri[]) => {
+    let face: Tri | null = null;
+    let d = tol;
+    for (const t of faces) {
+      const e = dot(t.n, p[j]) - t.d;
+      if (e > d) { face = t; d = e; }
+    }
+    if (face) outside.set(j, { face, d });
+    else outside.delete(j);
+  };
+  for (let j = 0; j < p.length; j++) if (![i0, i1, i2, i3].includes(j)) assign(j, tris);
+  while (outside.size) {
+    let i = -1;
+    let farthest = -Infinity;
+    for (const [j, o] of outside) if (o.d > farthest) { farthest = o.d; i = j; }
+    outside.delete(i);
+    // Faces the point is clearly in front of (its own among them)
     const seeds = tris.filter((t) => dot(t.n, p[i]) - t.d > tol);
-    if (!seeds.length) continue;
     // The visible region grows from those across neighbours the point is level with or in front
     // of: coplanar triangles of one face are then removed together (with a strict test alone, one
     // of two coplanar triangles could stay and the new fan would overlap it)
@@ -167,23 +205,76 @@ function buildHull(points: ArrayLike<number>): HullShape | null {
         if (u && !region.has(u) && dot(u.n, p[i]) - u.d > -tol) { region.add(u); queue.push(u); }
       }
     }
-    const visible = [...region];
     // Horizon: directed edges of visible faces whose reverse is on a face that stays
-    const onVisible = new Set<string>();
-    for (const t of visible) for (let k = 0; k < 3; k++) onVisible.add(`${t.v[k]},${t.v[(k + 1) % 3]}`);
-    const horizon: Array<[number, number]> = [];
-    for (const t of visible) {
-      for (let k = 0; k < 3; k++) {
-        const a = t.v[k];
-        const b = t.v[(k + 1) % 3];
-        if (!onVisible.has(`${b},${a}`)) horizon.push([a, b]);
+    const horizonOf = () => {
+      const onVisible = new Set<string>();
+      for (const t of region) for (let k = 0; k < 3; k++) onVisible.add(`${t.v[k]},${t.v[(k + 1) % 3]}`);
+      const horizon: Array<[number, number]> = [];
+      for (const t of region) {
+        for (let k = 0; k < 3; k++) {
+          const a = t.v[k];
+          const b = t.v[(k + 1) % 3];
+          if (!onVisible.has(`${b},${a}`)) horizon.push([a, b]);
+        }
+      }
+      return horizon;
+    };
+    // The new fan must leave a closed convex surface. A point nearly in line with a horizon edge, or
+    // nearly on a horizon vertex, makes a needle triangle there, whose normal magnifies the plane
+    // tolerance into a fold (vertices well in front of it); left in, later points see split visible
+    // regions, their fans pinch and repeat edges, and the triangle list grows without bound. The
+    // needle's neighbour across the horizon is then nearly level with the point: take it into the
+    // region and try again. Each try adds a face, so this ends; if no fan closes convexly, the point
+    // is skipped (it is then just outside the hull).
+    let fan: Tri[] = [];
+    let ok = false;
+    for (let tries = 0; tries <= tris.length && !ok; tries++) {
+      const horizon = horizonOf();
+      fan = horizon.map(([a, b]) => make(a, b, i));
+      const bad = foldOf(horizon, fan, tris.filter((t) => !region.has(t)), p, 10 * tol);
+      ok = bad < 0;
+      if (!ok) {
+        const u = bad < horizon.length ? byEdge.get(`${horizon[bad][1]},${horizon[bad][0]}`) : undefined;
+        if (!u || region.has(u) || dot(u.n, p[i]) - u.d < -10 * tol) break;
+        region.add(u);
       }
     }
-    for (const t of visible) tris.splice(tris.indexOf(t), 1);
-    for (const [a, b] of horizon) tris.push(make(a, b, i));
+    if (!ok) continue;
+    tris = [...tris.filter((t) => !region.has(t)), ...fan];
+    if (tris.length > 2 * p.length) return null; // unreachable: a closed convex triangulation
+    for (const [j, o] of outside) if (region.has(o.face)) assign(j, tris);
   }
 
   return mergeTriangles(p.flat(), tris.flatMap((t) => t.v));
+}
+
+/**
+ * Where the fan of triangles `fan` over the horizon `horizon` (one per directed edge), with the
+ * triangles `kept`, fails to be a closed convex surface: -1 if it is one, else the first fan triangle
+ * that is degenerate or has a vertex in front of it, or horizon.length if the horizon isn't one
+ * simple loop.
+ */
+function foldOf(horizon: Array<[number, number]>, fan: Tri[], kept: Tri[], p: V3[], tol: number): number {
+  const next = new Map<number, number>();
+  for (const [a, b] of horizon) {
+    if (next.has(a)) return horizon.length;
+    next.set(a, b);
+  }
+  if (!horizon.length) return horizon.length;
+  const start = horizon[0][0];
+  let steps = 0;
+  for (let v: number | undefined = start; steps === 0 || v !== start; steps++) {
+    v = next.get(v!);
+    if (v === undefined || steps >= horizon.length) return horizon.length;
+  }
+  if (steps !== horizon.length) return horizon.length;
+  const verts = new Set<number>();
+  for (const t of kept) for (const v of t.v) verts.add(v);
+  return fan.findIndex((t) => {
+    if (!(len(cross(sub(p[t.v[1]], p[t.v[0]]), sub(p[t.v[2]], p[t.v[0]]))) > 0)) return true;
+    for (const v of verts) if (dot(t.n, p[v]) - t.d > tol) return true;
+    return false;
+  });
 }
 
 /**

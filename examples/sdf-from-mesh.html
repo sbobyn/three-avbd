@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>three-avbd example: SDF from a mesh</title>
+    <link rel="stylesheet" href="./example.css" />
+  </head>
+  <body>
+    <aside class="note">
+      <h1>SDF from a mesh <span class="badge">experimental</span></h1>
+      <p>A procedural torus knot is baked in a Web Worker with <code>bakeVoxelSdfInWorker</code>.
+      <code>finalizeSdf</code> integrates its mass and full inertia tensor, <code>principalInertia</code>
+      diagonalises it, and <code>world.enableSdfCollisions</code> binds the field to each knot body.
+      The same steps work for a glTF mesh: pass its geometry's positions and indices.</p>
+      <p>Limits (see <a href="https://github.com/sbobyn/three-avbd/blob/main/docs/SDF_WORLD.md">SDF_WORLD.md</a>):</p>
+      <ul>
+        <li>Experimental and unpublished: the API may change.</li>
+        <li>Only collisions change. Mass and inertia stay those of the body's proxy box unless you pass
+        <code>massProperties</code> (here from <code>finalizeSdf</code> + <code>principalInertia</code>).</li>
+        <li>You keep the field, body and render geometry in the same principal frame yourself.</li>
+        <li>The mesh must be closed and consistently wound; features smaller than a voxel are lost.</li>
+        <li>Adding or removing bodies needs <code>await world.updateSdfCollisions()</code> before the next step.</li>
+      </ul>
+      <div class="status" id="status">Baking in a worker…</div>
+      <p><a href="./index.html">All examples</a> · <a href="https://github.com/sbobyn/three-avbd/blob/main/examples/sdf-from-mesh.ts">Source</a></p>
+    </aside>
+    <script type="module" src="./sdf-from-mesh.ts"></script>
+  </body>
+</html>
