@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
-import { create } from 'webgpu';
 import { BodyMesh, World } from '../src/lib/index.ts';
 import type { SdfCollisionBridge } from '../src/avbd3d/gpu/sdf-bridge.ts';
-import { gpuTest } from './device.ts';
+import { createGpu, gpuTest } from './device.ts';
 
 // Exercise Three's actual buffer backend, cache and accounting on Dawn. Canvas drawing is
 // deliberately outside this headless fixture; update(STORAGE) is the render binding path.
@@ -109,7 +108,7 @@ gpuTest('automatic reads retain failures and ignore teardown rejection', async d
 });
 
 gpuTest('device loss rejects in-flight reads and future work, fresh device recreation succeeds', async () => {
-  const gpu = create([]);
+  const gpu = createGpu();
   const adapter = await gpu.requestAdapter();
   assert.ok(adapter);
   const device = await adapter.requestDevice();
@@ -145,7 +144,7 @@ gpuTest('device loss during the periodic counter read is handled and fails fast'
   const rejections: unknown[] = [];
   const onRejection = (reason: unknown) => { rejections.push(reason); };
   process.on('unhandledRejection', onRejection);
-  const adapter = await create([]).requestAdapter();
+  const adapter = await createGpu().requestAdapter();
   assert.ok(adapter);
   const device = await adapter.requestDevice();
   try {
