@@ -33,6 +33,18 @@ export const { device, skip } = await (async (): Promise<{ device: GPUDevice | n
   }
 })();
 
+// A separate Dawn instance, for tests that destroy their own device. The binding's async runner
+// holds a raw pointer to the instance its GPU wrapper owns: once the wrapper is collected, a
+// pending map or lost callback polls freed memory (SIGSEGV in InstanceBase::ProcessEvents).
+// Every instance stays reachable for the life of the process.
+const instances: GPU[] = [];
+(globalThis as { __dawnInstances?: unknown }).__dawnInstances = instances;
+export function createGpu(): GPU {
+  const gpu = create([]);
+  instances.push(gpu);
+  return gpu;
+}
+
 export function gpuTest(name: string, fn: (device: GPUDevice) => Promise<void>): void {
   test(name, { skip }, async () => {
     errors.length = 0;
