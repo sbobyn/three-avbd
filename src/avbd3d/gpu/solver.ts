@@ -186,6 +186,12 @@ export interface GpuParams3D extends SolverParams {
    * through the floor while the penalty ramps (wgsl-collision.ts contactPenaltyMin).
    */
   massPenalty: boolean;
+  /**
+   * Normal overlap a resting contact is allowed (m); it settles about this deep plus a solver
+   * residual under a millimetre. 0.01 is the reference's COLLISION_MARGIN, so the default
+   * reproduces it; a smaller margin rests closer to touching. Must be finite and >= 0.
+   */
+  contactMargin: number;
   /** Wind (m/s) blowing towards `windAngle` (rad from +x, about z), felt by sails only
    * (../shapes.ts), with gusts of `windGust` of its speed. */
   windSpeed: number;
@@ -211,6 +217,7 @@ export const gpuParams3D = (): GpuParams3D => ({
   reuseContacts: true,
   startAtRest: true,
   massPenalty: true,
+  contactMargin: 0.01,
   windSpeed: 0,
   windAngle: 0,
   windGust: 0.4,
@@ -1440,6 +1447,7 @@ export class GpuSolver3D {
 
   private writeParams(reuseManifolds = false): void {
     const p = this.params;
+    if (!Number.isFinite(Math.fround(p.contactMargin)) || p.contactMargin < 0) throw new Error('Invalid contactMargin');
     const cap = this.bodyCapacity;
     const f = this.paramF32;
     const u = this.paramU32;
@@ -1480,6 +1488,7 @@ export class GpuSolver3D {
     f[34] = 0;
     f[35] = p.windPressure;
     f[36] = p.windGust;
+    f[37] = p.contactMargin;
     f[40] = p.up[0];
     f[41] = p.up[1];
     f[42] = p.up[2];

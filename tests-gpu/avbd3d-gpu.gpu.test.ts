@@ -1178,3 +1178,35 @@ gpuTest('Plastic Beam on the GPU: a light weight holds, a medium one bends the b
   assert.ok(Math.abs(end[0] - 7.5 * c) < 0.3 && Math.abs(end[2] - (9.5 - 7.5 * s)) < 0.3, `a beam turned 21° about its root ends where it was put: ${Array.from(end)}`);
   made.destroy();
 });
+
+gpuTest('contactMargin: resting contacts sink about one margin deep (plus a sub-millimetre residual); the default is the reference 0.01; bad values are refused', async (device) => {
+  assert.equal(gpuParams3D().contactMargin, 0.01);
+  const depths = async (margin: number) => {
+    const s = new Solver();
+    new Rigid(s, [100, 100, 1], 0, 0.5, [0, 0, 0]); // top face at z = 0.5
+    new Rigid(s, [1, 1, 1], 1, 0.5, [0, 0, 1.2]); // 1: box, rests at z = 1
+    sphere(s, 0.5, 1, 0.5, [5, 0, 1.2]); // 2: sphere, rests at z = 1
+    const sim = new GpuSim3D(new GpuSolver3D(device, s));
+    sim.solver.params.contactMargin = margin;
+    for (let i = 0; i < 300; i++) sim.step();
+    await sim.sync();
+    const d = [1 - at(sim, 1)[2], 1 - at(sim, 2)[2]];
+    sim.destroy();
+    return d;
+  };
+  // Depth is the margin plus a solver residual under a millimetre (measured 0.37 mm at 0.01 and
+  // 0.87 mm at 0.001, box and sphere alike), so the small margin rests ~8.5 mm shallower
+  const [wide, narrow] = [await depths(0.01), await depths(0.001)];
+  for (const [margin, ds] of [[0.01, wide], [0.001, narrow]] as const) {
+    for (const d of ds) assert.ok(d > margin && d < margin + 0.0015, `margin ${margin}: depth ${d}`);
+  }
+  for (let k = 0; k < 2; k++) assert.ok(wide[k] - narrow[k] > 0.008, `shallower by ${wide[k] - narrow[k]}`);
+  const s = new Solver();
+  new Rigid(s, [100, 100, 1], 0, 0.5, [0, 0, 0]);
+  const solver = new GpuSolver3D(device, s);
+  for (const bad of [-0.001, NaN, Infinity, 1e100]) {
+    solver.params.contactMargin = bad;
+    assert.throws(() => solver.step(), /Invalid contactMargin/, String(bad));
+  }
+  solver.destroy();
+});

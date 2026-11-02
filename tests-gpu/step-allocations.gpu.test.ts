@@ -22,8 +22,8 @@ import { SdfCollisionBridge } from '../src/avbd3d/gpu/sdf-bridge.ts';
 import { AnalyticField } from '../src/avbd3d/ref/sdf/shapes.ts';
 import { World } from '../src/lib/world.ts';
 
-const TRACE_3D = '498931f2a6fc470b3b7adfc03623adbba9286ae7b55a4724e61fc29e416460ce';
-const TRACE_3D_SPARSE = 'a2dfbef9e93ec1e7c3397054d73dc18a57e4868b635de467d14fa9347863d248';
+const TRACE_3D = '0af735c498d90f7df62053715b86ab7d2aebb15c4bac5f7a58de5e9088d98ff4';
+const TRACE_3D_SPARSE = '698d8d85092c46e9a328774945941eab51748c059cf6bc159782828d5692877a';
 const TRACE_2D = 'a97496892d4c264083ad0080b4f101f43302e4e2f43815addb20363452c25a7c';
 
 interface Write {

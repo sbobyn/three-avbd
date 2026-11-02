@@ -256,7 +256,7 @@ fn windAccel(i: u32, x: vec3f, rot: vec4f, v: vec3f) -> vec3f {
     + 0.2 * sin(6.1 * t - 1.7 * a + 1.3 * x.z + 0.9 * c);
   let across = 0.6 * sin(1.7 * t - 0.6 * a + 0.4 * x.z) + 0.4 * sin(4.3 * t - 1.3 * a - 0.7 * x.z);
   let lift = sin(2.3 * t - 0.9 * a + 1.1 * c);
-  let g = params.gust.x;
+  let g = params.gust;
   let u = w * (1.0 + g * along) + (side * (0.25 * across) + vec3f(0.0, 0.0, 0.1 * lift)) * (g * speed) - v;
   let n = qrotate(rot, vec3f(0.0, 0.0, 1.0));
   let size = bodies[i].size;
