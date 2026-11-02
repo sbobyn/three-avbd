@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>three-avbd example: body pool</title>
+    <link rel="stylesheet" href="./headless.css" />
+  </head>
+  <body>
+    <main>
+      <p><a href="./index.html">← All examples</a></p>
+      <h1>Body pool (headless)</h1>
+      <p><a href="https://github.com/sbobyn/three-avbd/blob/main/examples/body-pool.ts"><code>examples/body-pool.ts</code></a>
+      creates a World with <b>fixed storage</b> (<code>storage: { growth: 'fixed', … }</code>) on a device the
+      page owns, then a <code>BodyPool</code> of 32 spheres from <code>three-avbd/pool</code>. Four rounds each
+      acquire eight spheres, step twice and release them, so bodies are recycled instead of added and removed.</p>
+      <p>There is no rendering: the page prints what the function returns. Expect 32 different <code>ids</code>
+      across the four rounds: the same pooled slots come back, but every acquire is a new lifetime with a new
+      ID, so a stale handle can never be mistaken for its replacement. Then pool <code>stats</code> with <code>leased: 0</code>, and
+      the fixed storage size in bytes. See <a href="https://github.com/sbobyn/three-avbd/blob/main/docs/BODY_LIFECYCLE.md#body-pools">Body pools</a>.</p>
+      <pre id="output">Running on your GPU…</pre>
+    </main>
+    <script type="module">
+      import { runHeadless } from './run-headless.ts';
+      import { bodyPool } from './body-pool.ts';
+      runHeadless(bodyPool);
+    </script>
+  </body>
+</html>
