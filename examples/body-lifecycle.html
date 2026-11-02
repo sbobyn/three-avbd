@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>three-avbd example: body lifecycle</title>
+    <link rel="stylesheet" href="./headless.css" />
+  </head>
+  <body>
+    <main>
+      <p><a href="./index.html">← All examples</a></p>
+      <h1>Body lifecycle (headless)</h1>
+      <p><a href="https://github.com/sbobyn/three-avbd/blob/main/examples/body-lifecycle.ts"><code>examples/body-lifecycle.ts</code></a>
+      walks one body through its life on a device the page owns: step it, <code>setEnabled(false)</code> to pause
+      it with its GPU state retained, <code>reset({ velocity })</code>, enable and step again, then
+      <code>remove()</code> it and add a sphere that reuses the slot under a new id.</p>
+      <p>There is no rendering: the page prints what the function returns. Expect <code>resumed</code> to be
+      further along x than <code>paused</code>, and <code>replacementId</code> to differ from
+      <code>originalId</code>. See <a href="https://github.com/sbobyn/three-avbd/blob/main/docs/BODY_LIFECYCLE.md">BODY_LIFECYCLE.md</a>.</p>
+      <pre id="output">Running on your GPU…</pre>
+    </main>
+    <script type="module">
+      import { runHeadless } from './run-headless.ts';
+      import { bodyLifecycle } from './body-lifecycle.ts';
+      runHeadless(bodyLifecycle);
+    </script>
+  </body>
+</html>
