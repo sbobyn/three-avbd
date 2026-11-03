@@ -49,9 +49,11 @@ Research snapshot: 2026-09-29. three-avbd baseline: `b3675de`, package version `
 ## Settling status (2026-11-02)
 
 Which resting and pile scenes can back a quality claim, and why the earlier "piles do not
-settle" finding is mostly about the scenes. Everything in this section ran on the CPU (the
-reference solver in Node, Rapier as WASM); no GPU device was opened. GPU runs of the corrected
-scenes are **pending** (commands at the end). Per-step traces:
+settle" finding is mostly about the scenes. Everything in this subsection ran on the CPU (the
+reference solver in Node, Rapier as WASM); no GPU device was opened. The GPU runs of the corrected
+scenes came later the same day: the settling batch in [COMPARISON.md](COMPARISON.md) section 3,
+and the [final-window batch](#final-window-resting-metric) below, which shows the GPU solver's
+1k pile settling. Per-step traces:
 [data/settling-h1-2026-11-02.json](data/settling-h1-2026-11-02.json).
 
 ### The earlier evidence, re-read
@@ -179,8 +181,8 @@ for it in 4 10; do for m in 0.01 0.001; do
 done; done
 ```
 
-Until they run, AVBD's behaviour on a valid settled pile is unknown and no resting-quality claim
-should rest on `sphere-pile-100` or the `pile-*` scenes.
+These have since run (COMPARISON.md section 3); no resting-quality claim should rest on
+`sphere-pile-100` or the unsettled `pile-*` scenes.
 
 ### Final-window (resting) metric
 
@@ -212,11 +214,49 @@ traces, that impacts before the window leave every final-window metric unchanged
 step inside it is caught, that a single-step spike moves the max but not the p95, and that a
 resting trace is reported settled.
 
-GPU numbers: **pending**. The lead is 2,400 steps (40 s): Rapier's piles settle by about step 540
+**GPU results** (2026-11-02, M4 Max, Node + Dawn, Rapier 0.21.0, PR #65 at `e7d4ce5`, run with the
+commands below). The lead is 2,400 steps (40 s): Rapier's piles settle by about step 540
 on the CPU, but the AVBD reference was still moving at step 1,200 and the GPU 10k pile was still
 moving at the end of a 1,200-step run, so the window is 40–50 s. Quality is identical across
-repeats, so one repeat is enough for this batch; timings from it are not headline numbers. Run
-serially, nothing else on the GPU:
+repeats, so the batch ran one repeat; its timings are not headline numbers. Data:
+`docs/data/final-window-gpu-2026-11-02-{rapier-4,rapier-10,avbd-4-0.01,avbd-4-0.001,avbd-10-0.01,avbd-10-0.001}.json`
+(trimmed like the settling batch: body lists and per-step traces removed, the raw file's sha256
+recorded in each).
+
+| Scene | Engine | Iter | Margin | ms/step | Floor max | Pair max | Max speed | At rest | Target | Settled |
+|---|---|---|---|---|---|---|---|---|---|---|
+| pile-1k-settled | Rapier | 4 | — | 2.72 | 3.0 mm | 12.2 mm | 0.000 | 100% | no | no |
+| pile-1k-settled | AVBD | 4 | 0.01 | 1.47 | 14.1 mm | 14.5 mm | 0.073 | 99.5% | no | no |
+| pile-1k-settled | AVBD | 4 | 0.001 | 1.45 | 5.4 mm | 5.6 mm | 0.004 | 100% | no | no |
+| pile-1k-settled | Rapier | 10 | — | 5.17 | 2.2 mm | 12.7 mm | 0.000 | 100% | no | no |
+| pile-1k-settled | AVBD | 10 | 0.01 | 3.37 | 11.7 mm | 21.5 mm | 0.001 | 100% | no | no |
+| pile-1k-settled | AVBD | 10 | 0.001 | 3.22 | 3.0 mm | 3.0 mm | 0.001 | 100% | **yes** | **yes** |
+| pile-10k-settled | Rapier | 4 | — | 35.98 | 8.1 mm | 39.5 mm | 0.000 | 100% | no | no |
+| pile-10k-settled | AVBD | 4 | 0.01 | 1.64 | 17.1 mm | 71.0 mm | 1.109 | 99.4% | no | no |
+| pile-10k-settled | AVBD | 4 | 0.001 | 1.63 | 27.8 mm | 32.7 mm | 2.389 | 99.9% | no | no |
+| pile-10k-settled | Rapier | 10 | — | 62.62 | 8.9 mm | 31.2 mm | 0.003 | 100% | no | no |
+| pile-10k-settled | AVBD | 10 | 0.01 | 3.29 | 12.7 mm | 111.3 mm | 0.132 | 100% | no | no |
+| pile-10k-settled | AVBD | 10 | 0.001 | 3.25 | 3.7 mm | 98.3 mm | 1.377 | 100%* | no | no |
+
+Max speed in m/s, the fastest body on any of the 60 window steps; at rest is the fraction below
+0.01 m/s on the last step; target is the contact target on every window step; settled adds max
+speed ≤ 0.05 m/s. \* Rounds to 100 %; the fast bodies had slowed by the last step (KE 1.0 × 10⁻⁴ J).
+
+- **1k:** after 40 s both engines are at rest. AVBD at 10 iterations with margin 0.001 is the only
+  configuration of either engine that meets the contact target: 3.0 mm floor and pair depth.
+  Rapier rests with about 12 mm of body–body overlap, which misses the 5 mm pair target. AVBD at 4
+  iterations with 0.001 is close (5.6 mm, 0.004 m/s).
+- **10k:** Rapier is fully at rest (pair overlap 31–40 mm, target missed). AVBD has 99.4 % or more
+  of its bodies at rest, but a few move fast on some window step (1.1–2.4 m/s; 0.13 m/s at 10
+  iterations with 0.01), and at 10 iterations the deepest pair is 98–111 mm: a small number of
+  moving or stuck bodies, not a pile-wide failure. What they are: [10k outliers](#the-10k-outliers).
+- **Speed (same runs, one repeat):** AVBD 1.45–3.4 ms/step at both scales; Rapier 2.7–5.2 ms (1k)
+  and 36–63 ms (10k). No configuration meets the target at 10k, so no ratio is quoted there.
+- So "AVBD piles don't settle" is wrong as a general statement. At 1k, AVBD (10 iterations, margin
+  0.001) settles with less overlap than Rapier; at 10k a few bodies keep moving and some pairs stay
+  deeply overlapped.
+
+Run serially, nothing else on the GPU:
 
 ```bash
 for it in 4 10; do
@@ -230,6 +270,10 @@ for it in 4 10; do
   done
 done
 ```
+
+### The 10k outliers
+
+Diagnosis **pending** (a per-body dump of the final window, `--dump-movers`).
 
 ## Decision
 

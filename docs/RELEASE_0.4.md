@@ -228,9 +228,11 @@ range does not certify later versions.
   three-avbd settles more slowly than Rapier. Its 10k-body pile was still moving at the end of the
   600-step window. In the browser side by side, the 1k pile was still moving at 10 s while
   Rapier's was at rest ([COMPARISON.md](COMPARISON.md#3-performance)).
-- **Pile quality is not yet isolated.** Neither engine meets the worst-over-window depth target
-  on the pile scenes, so there is no quality-matched pile comparison yet. Worst transient depths
-  are larger than Rapier's.
+- **Large piles keep a few outliers.** After 40 s the 1k pile is at rest, and at 10 iterations
+  with `contactMargin: 0.001` it meets the contact target (3 mm) where Rapier (12 mm pair overlap)
+  does not. On the 10k pile 99.4 % or more of the bodies are at rest, but a few keep moving and
+  a few pairs stay up to about 0.1 m deep; Rapier's 10k pile is fully at rest. Worst transient
+  depths during the drop are larger than Rapier's ([COMPARISON.md](COMPARISON.md#3-performance)).
 - **Resting depth at the default margin** is about 1 cm. See the margin above.
 - **Discrete collision only.** Fast bodies can tunnel. Use smaller `dt`, and CPU sweeps against
   static geometry.
