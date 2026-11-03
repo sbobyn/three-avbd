@@ -5,6 +5,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createAdapter, type Adapter, type Engine } from './adapters.ts';
 import { contactQuality } from './contact-quality.ts';
+import { REST_SPEED, restFraction } from './final-window.ts';
 import { quality } from './quality.ts';
 import { DEFAULTS } from './run.ts';
 import { makeScene, SCENE_VALIDITY, type CaseName, type Scene } from './scenes.ts';
@@ -228,7 +229,7 @@ async function measureQuality(): Promise<void> {
       const contacts = manifest!.bodies.length <= CONTACT_CHECK_LIMIT ? contactQuality(manifest!, state) : undefined;
       s.quality = `floor ${mm(q.maxFloorPenetration)}${q.outsideFloorBodies ? ` (${q.outsideFloorBodies} off floor)` : ''}` +
         ` · body–body ${contacts ? mm(contacts.maxDepth) : contacts === null ? '✗' : 'skipped (>12k)'}` +
-        ` · max speed ${q.maxSpeed.toFixed(3)} m/s`;
+        ` · max speed ${q.maxSpeed.toFixed(3)} m/s · ${(100 * restFraction(manifest!, state)).toFixed(1)}% at rest (< ${REST_SPEED * 100} cm/s)`;
       const counters = await s.sim!.inspect() as { activeBodies?: number };
       s.awake = counters.activeBodies === undefined ? '' : ` · ${counters.activeBodies} awake`;
     } catch (e) { s.quality = `✗ ${escape(e instanceof Error ? e.message : String(e))}`; }

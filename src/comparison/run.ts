@@ -1,5 +1,6 @@
 import { physicalQuality } from './physical-quality.ts';
 import { contactQuality } from './contact-quality.ts';
+import { FINAL_WINDOW, finalWindow, REST_SPEED, restFraction, SETTLED_MAX_SPEED, type FinalWindow, type WindowSample } from './final-window.ts';
 // Timings wait for completed batches. An independent replay checks EVERY step outside the
 // timer, then must reproduce the timed final snapshot exactly before a result is accepted.
 import { createAdapter, initializeRapier, type Adapter, type Engine, type Settings } from './adapters.ts';
@@ -10,12 +11,15 @@ export interface Options extends Settings {
   lead: number; steps: number; repeats: number; timeoutMs: number; batchSize: number; impactPhase: number;
   /** Seeded horizontal position jitter (m) applied to every dynamic body; 0 is none. */
   jitter: number; jitterSeed: number;
+  /** Steps at the end of the measured window used by the final-window (resting) metrics. */
+  finalWindow: number;
 }
 export const DEFAULTS: Options = { dt: 1 / 60, avbdIterations: 4, rapierIterations: 4,
   rapierPgsIterations: 1, rapierSleeping: false, rapierCcd: false, rapierCcdSubsteps: 1, avbdMargin: 0.01, lead: 60, steps: 120, repeats: 3,
-  timeoutMs: 300_000, batchSize: 10, impactPhase: 0, jitter: 0, jitterSeed: 1 };
+  timeoutMs: 300_000, batchSize: 10, impactPhase: 0, jitter: 0, jitterSeed: 1,
+  finalWindow: FINAL_WINDOW };
 export function validateOptions(o: Options): void {
-  for (const k of ['lead', 'steps', 'repeats', 'avbdIterations', 'rapierIterations', 'rapierPgsIterations', 'rapierCcdSubsteps', 'batchSize'] as const) {
+  for (const k of ['lead', 'steps', 'repeats', 'avbdIterations', 'rapierIterations', 'rapierPgsIterations', 'rapierCcdSubsteps', 'batchSize', 'finalWindow'] as const) {
     if (!Number.isInteger(o[k]) || o[k] < (k === 'lead' ? 0 : 1)) throw new Error(`Invalid ${k}`);
   }
   if (!Number.isFinite(o.jitter) || o.jitter < 0 || !Number.isInteger(o.jitterSeed)) throw new Error('Invalid jitter');
@@ -35,6 +39,8 @@ export interface Result {
   measuredMaxRelativeDrift?: number; measuredContactTargetMet?: boolean; restingTargetMet?: boolean;
   contactTargetMet?: boolean; maxRelativeContactDepth?: number; maxContactDepth?: number;
   worstQuality?: Quality; floorTargetMet?: boolean; replayMatches?: boolean;
+  /** Resting metrics over the last `finalWindow` measured steps; the worst-over-window fields above are unchanged. */
+  finalWindow?: FinalWindow;
 }
 const yieldToUI = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -96,6 +102,8 @@ export async function runOne(engine: Engine, scene: Scene, repeat: number, o: Op
     await adapter.complete();
     let baseline = o.lead === 0 ? await adapter.snapshot() : undefined;
     r.measuredMaxRelativeDrift = 0;
+    const windowSamples: WindowSample[] = [];
+    const windowStart = o.lead + Math.max(0, o.steps - o.finalWindow);
     // Replay both lead-in and measurement windows, catching transient storage faults and NaNs.
     for (let step = 1; step <= o.lead + o.steps; step++) {
       check();
@@ -123,6 +131,7 @@ export async function runOne(engine: Engine, scene: Scene, repeat: number, o: Op
       }
       r.worstQuality = accumulate(r.worstQuality, q);
       r.qualitySamples.push({ step, quality: q, contacts });
+      if (step > windowStart) windowSamples.push({ step, quality: q, contacts, restFraction: restFraction(scene, snapshot) });
       if (q.nonFiniteBodies || q.invalidRotations) throw new Error(`Invalid body state at replay step ${step}`);
       if (step % 10 === 0) await yieldToUI();
     }
@@ -131,6 +140,7 @@ export async function runOne(engine: Engine, scene: Scene, repeat: number, o: Op
     r.replayMatches = replayFinal.length === timedFinal.length && replayFinal.every((v, i) => Object.is(v, timedFinal[i]));
     if (!r.replayMatches) throw new Error('Validation replay did not reproduce the timed final state');
     r.floorTargetMet = passesFloorTarget(r.worstQuality!);
+    r.finalWindow = finalWindow(windowSamples, o.finalWindow);
     if (r.qualitySamples.every(s => s.contacts !== null)) {
       r.maxContactDepth = r.qualitySamples.reduce((max, s) => Math.max(max, s.contacts!.maxDepth), 0);
       r.maxRelativeContactDepth = r.qualitySamples.reduce((max, s) => Math.max(max, s.contacts!.maxRelativeDepth), 0);
@@ -188,6 +198,7 @@ export async function runComparison(device: GPUDevice, cases: string[], options:
     quality: { floorTarget: FLOOR_TARGET, normalization: 'smallest full body dimension (sphere diameter)',
       scope: 'Floor every step; independent swept candidates and exact box/sphere overlap; contact target requires both ≤1%',
       resting: 'rest-stack/rest-grid only: at least 10 measured seconds, floor and pair depth ≤1%, center drift from lead-in endpoint ≤1%; not overall accuracy',
+      finalWindow: `Last options.finalWindow measured steps only (worst-over-window fields unchanged): max and p95 over those steps of each step's worst floor and pair depth; max speed and kinetic energy; fraction of bodies below ${REST_SPEED} m/s on the last step; settled = contact target on every window step and max speed ≤ ${SETTLED_MAX_SPEED} m/s`,
       replay: 'Per-step counter/state validation; timed final snapshot must match replay exactly' },
     limitations: ['No SIMD variant comparison yet', 'Dense diagnostic candidate searches can be quadratic; analytic trajectories cover only named diagnostic cases',
       'Timeout checked between batches/steps; cannot interrupt a blocked synchronous step or diagnostic',

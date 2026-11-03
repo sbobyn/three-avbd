@@ -1,16 +1,23 @@
 // pnpm compare:rapier [pile-100,pile-1k,ring-9k] [--steps 120 --lead 60 --repeats 3]
 //   [--avbd-iterations 4 --rapier-iterations 4 --avbd-margin 0.01 --sleep --json report.json --machine name]
-//   [--jitter 0.001 --jitter-seed 1]   (--engines rapier opens no GPU device)
+//   [--jitter 0.001 --jitter-seed 1 --final-window 60]   (--engines rapier opens no GPU device)
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { cpus, platform, release, totalmem } from 'node:os';
 import { DEFAULTS, runComparison } from '../src/comparison/run.ts';
 import { CASES } from '../src/comparison/scenes.ts';
+import type { FinalWindow } from '../src/comparison/final-window.ts';
 import { gitProvenance, type GitProvenance } from './git-provenance.ts';
 
 // Unknown provenance (a source archive) is null, never a guessed revision
 const provenanceFields = (git: GitProvenance) =>
   ({ gitHead: git.head, dirty: git.dirty, gitProvenance: git.source === 'git' ? 'git' : `unknown: ${git.reason}` });
+
+const finalSummary = (f: FinalWindow | undefined) => !f ? 'final window —' :
+  `final ${f.steps} steps: floor max/p95 ${f.maxFloorPenetration.toFixed(5)}/${f.p95FloorPenetration.toFixed(5)} m, ` +
+  `pair max/p95 ${f.maxContactDepth?.toFixed(5) ?? 'unmeasured'}/${f.p95ContactDepth?.toFixed(5) ?? 'unmeasured'} m, ` +
+  `max speed ${f.maxSpeed.toFixed(4)} m/s, KE ${f.maxKineticEnergy.toExponential(3)} J, ` +
+  `${(100 * f.restFraction).toFixed(1)}% < ${f.restSpeed} m/s, settled ${f.settled ?? 'unmeasured'}`;
 
 const args = process.argv.slice(2);
 const option = (name: string): string | undefined => {
@@ -26,7 +33,7 @@ const config = { ...DEFAULTS };
 for (const [flag, key] of [['--steps', 'steps'], ['--lead', 'lead'], ['--repeats', 'repeats'],
   ['--avbd-iterations', 'avbdIterations'], ['--rapier-iterations', 'rapierIterations'],
   ['--ccd-substeps', 'rapierCcdSubsteps'], ['--impact-phase', 'impactPhase'], ['--batch-size', 'batchSize'], ['--dt', 'dt'], ['--rapier-pgs-iterations', 'rapierPgsIterations'], ['--timeout-ms', 'timeoutMs'],
-  ['--avbd-margin', 'avbdMargin'], ['--jitter', 'jitter'], ['--jitter-seed', 'jitterSeed']] as const) {
+  ['--avbd-margin', 'avbdMargin'], ['--jitter', 'jitter'], ['--jitter-seed', 'jitterSeed'], ['--final-window', 'finalWindow']] as const) {
   const value = option(flag);
   if (value !== undefined) config[key] = Number(value);
 }
@@ -66,7 +73,7 @@ try {
     ...provenanceFields(gitProvenance(fileURLToPath(new URL('..', import.meta.url)))) } };
   for (const r of report.results) console.log(`${r.scene} ${r.engine} #${r.repeat + 1}: ${r.status}; ` +
     `mean ${r.meanMs?.toFixed(3) ?? '—'} ms/step, batch p95 ${r.p95Ms?.toFixed(3) ?? '—'} ms; ` +
-    `worst floor penetration ${r.worstQuality?.maxFloorPenetration.toFixed(5) ?? '—'} m; pair penetration ${r.maxContactDepth?.toFixed(5) ?? 'unmeasured'} m; contact target ${r.contactTargetMet ?? 'unmeasured'} ${r.error ?? ''}`);
+    `worst floor penetration ${r.worstQuality?.maxFloorPenetration.toFixed(5) ?? '—'} m; pair penetration ${r.maxContactDepth?.toFixed(5) ?? 'unmeasured'} m; contact target ${r.contactTargetMet ?? 'unmeasured'}; ${finalSummary(r.finalWindow)} ${r.error ?? ''}`);
   if (json) { writeFileSync(json, JSON.stringify(output, null, 2) + '\n'); console.log(`Saved ${json}`); }
   process.exitCode = report.results.some((r) => r.status !== 'completed') ? 1 : 0;
 } finally { device?.destroy(); }

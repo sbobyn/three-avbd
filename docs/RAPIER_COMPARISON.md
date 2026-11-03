@@ -182,6 +182,55 @@ done; done
 Until they run, AVBD's behaviour on a valid settled pile is unknown and no resting-quality claim
 should rest on `sphere-pile-100` or the `pile-*` scenes.
 
+### Final-window (resting) metric
+
+The GPU settling batch (2026-11-02; [COMPARISON.md](COMPARISON.md) section 3) found that neither
+engine meets the contact target on `pile-1k-settled` or `pile-10k-settled`, Rapier included (worst
+pair depth 26–40 cm). Those numbers are the worst over the whole measured window, so the drop's
+impacts and transient interpenetration dominate them. Each result therefore also carries a
+`finalWindow` record (`src/comparison/final-window.ts`), next to the unchanged worst-over-window
+fields (`worstQuality`, `maxContactDepth`, `contactTargetMet`, `measuredContactTargetMet`, …):
+
+- **Window**: the last `--final-window` measured steps (default 60, 1 s at 1/60 s; all measured
+  steps if there are fewer). Lead-in steps are never included.
+- **Floor / pair depth**: for each window step, the same worst floor penetration and worst
+  body–body depth the existing metrics use; the report gives the max and the p95 over the window's
+  steps (`maxFloorPenetration`, `p95FloorPenetration`, `maxContactDepth`, `p95ContactDepth`, plus
+  the relative maxima). Pair fields are null if any window step was unmeasured.
+- **Motion**: `maxSpeed` (fastest body's linear speed on any window step), `maxKineticEnergy`
+  (largest total translational KE on any window step), `finalKineticEnergy`, and `restFraction`,
+  the fraction of dynamic bodies with linear speed below 0.01 m/s (`REST_SPEED`) on the last step.
+- **`contactTargetMet`**: the existing contact target (full floor coverage, floor and pair depth
+  ≤ 1 % of the smallest body dimension) holds on **every** window step.
+- **`settled`**: `contactTargetMet` and `maxSpeed` ≤ 0.05 m/s (`SETTLED_MAX_SPEED`); null when
+  pair depth was unmeasured. Angular velocity is not part of either speed test.
+
+The CLI summary line prints the same fields (`--final-window N` changes the window), and
+`/compare-side.html` shows each engine's live at-rest fraction (the page has no per-step history,
+so it does not compute `settled`). `tests/comparison-final-window.test.ts` checks, on synthetic
+traces, that impacts before the window leave every final-window metric unchanged, that one impact
+step inside it is caught, that a single-step spike moves the max but not the p95, and that a
+resting trace is reported settled.
+
+GPU numbers: **pending**. The lead is 2,400 steps (40 s): Rapier's piles settle by about step 540
+on the CPU, but the AVBD reference was still moving at step 1,200 and the GPU 10k pile was still
+moving at the end of a 1,200-step run, so the window is 40–50 s. Quality is identical across
+repeats, so one repeat is enough for this batch; timings from it are not headline numbers. Run
+serially, nothing else on the GPU:
+
+```bash
+for it in 4 10; do
+  pnpm compare:rapier pile-1k-settled,pile-10k-settled --engines rapier --rapier-iterations $it \
+    --lead 2400 --steps 600 --final-window 60 --repeats 1 --timeout-ms 3600000 \
+    --machine "M4 Max" --json final-window-rapier-$it.json
+  for m in 0.01 0.001; do
+    pnpm compare:rapier pile-1k-settled,pile-10k-settled --engines avbd --avbd-iterations $it --avbd-margin $m \
+      --lead 2400 --steps 600 --final-window 60 --repeats 1 --timeout-ms 3600000 \
+      --machine "M4 Max" --json final-window-avbd-$it-$m.json
+  done
+done
+```
+
 ## Decision
 
 Build toward practical 3D game-physics coverage while measuring the common feature set now. The first deliverable is a reproducible browser comparison, not a claim of total parity. Keep AVBD's GPU-resident simulation and rendering useful as features grow.

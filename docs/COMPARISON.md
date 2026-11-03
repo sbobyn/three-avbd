@@ -170,12 +170,36 @@ interpenetration, not by how the pile rests. What the table does show: three-avb
 transient depths are larger than Rapier's (1.3–1.9× in pair depth, 1.9–3.0× in floor depth), and
 10 iterations instead of 4 change them by 15 % or less. Because both miss
 the target, the step times above are **not** a quality-matched speed comparison, and no speedup
-ratio is quoted for the piles. A final-window (resting) metric is the next step (**pending**).
+ratio is quoted for the piles. A final-window (resting) metric now exists (below); its GPU
+numbers are **pending**.
 
 At the end of the window three-avbd's 10k pile was still moving (fastest body 0.50–1.27 m/s at 4
 iterations, 0.69–1.45 m/s at 10, depending on the margin), where Rapier's fastest body was below
 0.001 m/s at 4 iterations and 0.13 m/s at 10. On the 1k pile both engines ended with every body
 below 0.013 m/s ([same data](data/), `finalQuality.maxSpeed`).
+
+**Final-window metric** (added after this batch; GPU numbers **pending**). Every result now
+also has a `finalWindow` record, computed over only the last N measured steps (default 60), next to
+the unchanged worst-over-window fields:
+
+- **Window**: the last `--final-window` measured steps (default 60, 1 s at 1/60 s; all measured
+  steps if there are fewer). Lead-in steps are never included.
+- **Floor / pair depth**: for each window step, the same worst floor penetration and worst
+  body–body depth the existing metrics use; the report gives the max and the p95 over the window's
+  steps (`maxFloorPenetration`, `p95FloorPenetration`, `maxContactDepth`, `p95ContactDepth`, plus
+  the relative maxima). Pair fields are null if any window step was unmeasured.
+- **Motion**: `maxSpeed` (fastest body's linear speed on any window step), `maxKineticEnergy`
+  (largest total translational KE on any window step), `finalKineticEnergy`, and `restFraction`,
+  the fraction of dynamic bodies with linear speed below 0.01 m/s (`REST_SPEED`) on the last step.
+- **`contactTargetMet`**: the existing contact target (full floor coverage, floor and pair depth
+  ≤ 1 % of the smallest body dimension) holds on **every** window step.
+- **`settled`**: `contactTargetMet` and `maxSpeed` ≤ 0.05 m/s (`SETTLED_MAX_SPEED`); null when
+  pair depth was unmeasured. Angular velocity is not part of either speed test.
+
+The pending batch runs both piles with a 2,400-step lead, 600 measured steps, both engines, 4 and
+10 iterations and margins 0.01 and 0.001; the commands are in
+[RAPIER_COMPARISON.md](RAPIER_COMPARISON.md#final-window-resting-metric). Until it runs, the pile
+rows above say nothing about how either engine rests.
 
 **Browser side by side** (2026-11-02, Chrome on the M4 Max, `/compare-side.html`,
 `pile-1k-settled`, 4 iterations; one observation, not saved as data): at t = 10 s three-avbd's pile
@@ -242,7 +266,8 @@ only; [settling status](RAPIER_COMPARISON.md#settling-status-2026-11-02),
 - **GPU runs of the valid scenes** (section 3, 2026-11-02): the GPU solver holds
   `sphere-pile-hcp-100` and meets the contact target with margin 0.001. On the two piles neither
   engine meets the worst-over-window target, so they do not yet separate resting quality from
-  impact depth; three-avbd's 10k pile was still moving at the end of the window.
+  impact depth; three-avbd's 10k pile was still moving at the end of the window. The final-window
+  metric (section 3) separates them; its GPU numbers are **pending**.
 
 ### Tall stacks at low iteration counts
 
