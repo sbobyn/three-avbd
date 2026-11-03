@@ -11,6 +11,7 @@
 // the CPU owns: body shapes (broadphase configuration), joint endpoints and no-collide pairs.
 
 import { makeArgsWGSL, ARGS_WORDS, BIG, COLOR_WG, C_CLASHES, C_CONTACTS, C_NUM_COLORS, C_OVERFLOW, C_PAIRS, COUNTER_WORDS, IA_COLOR, IA_CONSTRAINTS, IA_CONTACTS, IA_PAIRS, IA_PREV, MAX_COLORS, NO_COLOR, PASS_STRIDE, T_NONE, WORKGROUP_SIZE } from '../../avbd2d/gpu/layout.ts';
+import type { BodyField } from '../../lib/body-commands.ts';
 import { PrefixScan } from '../../avbd2d/gpu/scan.ts';
 import { type GpuCounters, PHASES, type StepProfile } from '../../avbd2d/gpu/layout.ts';
 import { makeTopologyWGSL } from '../../avbd2d/gpu/wgsl-topology.ts';
@@ -29,6 +30,7 @@ import { rotate, vec3 } from '../ref/math.ts';
 import { broadphaseWGSL, contactsHullWGSL, contactsWGSL, refsWGSL } from './wgsl-collision.ts';
 import { solveWGSL } from './wgsl-solve.ts';
 import { LARGE_FACTOR, largestSmall } from './radii.ts';
+import { IGNORE_SLOT, NoCollideTable } from './no-collide.ts';
 
 export { PHASES, type StepProfile };
 
@@ -592,12 +594,9 @@ export class GpuSolver3D {
    * of 80k radii and of every joint ever made, 11 ms, each time such a demo froze its debris.
    */
   private radiiDirty = true;
-  private noCollideDirty = true;
   private large: number[] = [];
-  /** No-collide entries (hi, lo, joint slot or 0xffffffff for IgnoreCollision), sorted by (hi, lo). */
-  private entries: [number, number, number][] = [];
-  private pendingEntries: [number, number, number][] = [];
-  private releasedSlots = new Set<number>();
+  /** No-collide entries (hi, lo, joint slot or IGNORE_SLOT for IgnoreCollision), sorted by (hi, lo). */
+  private readonly noCollideTable = new NoCollideTable();
   /** Joint slots released (releaseJoints), for appendJoints to fill before growing. */
   private freeSlots: number[] = [];
 
@@ -682,7 +681,7 @@ export class GpuSolver3D {
       if (!(f instanceof IgnoreCollision)) continue;
       const a = index.get(f.bodyA!)!;
       const b = index.get(f.bodyB)!;
-      this.pendingEntries.push([Math.max(a, b), Math.min(a, b), 0xffffffff]);
+      this.noCollideTable.add(a, b, IGNORE_SLOT);
     }
     this.allocateJoints(Math.max(joints.length + 256, options.capacity?.joints ?? 0));
     for (const f of joints) this.writeJoint(this.jointCount++, f, index);
@@ -879,15 +878,43 @@ export class GpuSolver3D {
   // --- CPU-owned data ------------------------------------------------------------------------
 
   /** Pack reference bodies into GPU records and upload them in one write, starting at `first`. */
-  private writeBodies(first: number, bodies: Rigid[]): void {
+  private writeBodies(first: number, bodies: Rigid[], resetContacts = true): void {
     this.manifoldsValid = false;
     const f = new Float32Array(Math.max(bodies.length, 1) * BODY_FLOATS);
     bodies.forEach((b, k) => {
       const info = this.pack(b, f, k * BODY_FLOATS, this.bodies[first + k]?.hull);
+      if (!resetContacts) f[k * BODY_FLOATS + B_INITIAL_POS + 3] = 0;
       if (this.bodies[first + k]?.radius !== info.radius || this.bodies[first + k]?.dynamic !== info.dynamic) this.radiiDirty = true;
       this.bodies[first + k] = info;
     });
     this.device.queue.writeBuffer(this.bodyBuffer, first * BODY_FLOATS * 4, f, 0, bodies.length * BODY_FLOATS);
+  }
+
+  /** Masked public-body command. Preserve all unrelated lanes and the existing hull slot. */
+  patchBody(index: number, fields: ReadonlySet<BodyField>, body: Rigid, fixed = false, marker = true): void {
+    const f = new Float32Array(BODY_FLOATS);
+    const info = this.pack(body, f, 0, this.bodies[index]?.hull);
+    const write = (offset: number, count: number) => this.device.queue.writeBuffer(this.bodyBuffer, (index * BODY_FLOATS + offset) * 4, f, offset, count);
+    if (fields.has('position')) {
+      for (const offset of [B_POS, B_INITIAL_POS, B_INERTIAL_POS]) {
+        f.set(body.positionLin, offset); write(offset, 3);
+      }
+    }
+    if (fields.has('rotation')) {
+      for (const offset of [B_ROT, B_INITIAL_ROT, B_INERTIAL_ROT]) {
+        f.set(body.positionAng, offset); write(offset, 4);
+      }
+    }
+    if (fields.has('velocity')) write(B_VEL, 3);
+    if (fields.has('angularVelocity')) write(B_ANGVEL, 3);
+    if (fixed) {
+      write(B_SIZE + 3, 1); write(B_MOMENT, 3);
+      this.bodies[index].dynamic = info.dynamic;
+      this.radiiDirty = true;
+      this.device.queue.writeBuffer(this.colorBuffer, index * 4, new Uint32Array([NO_COLOR]));
+    }
+    if (marker) write(B_INITIAL_POS + 3, 1);
+    this.manifoldsValid = false;
   }
 
   /**
@@ -953,6 +980,8 @@ export class GpuSolver3D {
       f.set(b.moment, o + B_MOMENT);
       f[o + B_MOMENT + 3] = b.radius;
       f.set(b.initialLin, o + B_INITIAL_POS);
+      // Discard the previous occupant's contact reuse AND static-friction anchors.
+      f[o + B_INITIAL_POS + 3] = 1;
       f.set(b.initialAng, o + B_INITIAL_ROT);
       f.set(b.inertialLin, o + B_INERTIAL_POS);
       f.set(b.inertialAng, o + B_INERTIAL_ROT);
@@ -1009,8 +1038,7 @@ export class GpuSolver3D {
   private noCollide(a: number, b: number, slot: number): void {
     this.manifoldsValid = false;
     if (a < 0) return;
-    this.pendingEntries.push([Math.max(a, b), Math.min(a, b), slot]);
-    this.noCollideDirty = true;
+    this.noCollideTable.add(a, b, slot);
   }
 
   /** Broadphase configuration (cell size, large bodies) and the sorted no-collide list. */
@@ -1046,22 +1074,9 @@ export class GpuSolver3D {
       for (let i = 0; i < n; i++) if (this.bodies[i].radius > threshold) this.large.push(i);
       this.radiiDirty = false;
     }
-    if (this.noCollideDirty) {
-      // Released joints' entries go, new ones (sorted) merge into the kept sorted list
-      const by = (x: [number, number, number], y: [number, number, number]) => x[0] - y[0] || x[1] - y[1];
-      const kept = this.releasedSlots.size ? this.entries.filter((e) => !this.releasedSlots.has(e[2])) : this.entries;
-      this.releasedSlots.clear();
-      const fresh = this.pendingEntries.sort(by);
-      this.pendingEntries = [];
-      const merged: [number, number, number][] = [];
-      for (let i = 0, k = 0; i < kept.length || k < fresh.length; ) {
-        if (k >= fresh.length || (i < kept.length && by(kept[i], fresh[k]) <= 0)) merged.push(kept[i++]);
-        else merged.push(fresh[k++]);
-      }
-      this.entries = merged;
-      this.noCollideDirty = false;
-    }
-    const { large, entries } = this;
+    // Released joints' entries go, new ones (sorted) merge into the kept sorted list
+    const entries = this.noCollideTable.flush();
+    const { large } = this;
     this.largeCount = large.length;
     this.noCollideCount = entries.length;
     const data = new Uint32Array(Math.max(large.length + 3 * entries.length, 4));
@@ -1084,7 +1099,8 @@ export class GpuSolver3D {
   seedFrom(ref: Solver): void {
     if (this.refToGpu.some((g, i) => g !== i)) throw new Error('seedFrom needs spatialSort: false');
     const index = new Map<Rigid, number>(ref.bodies.map((b, i) => [b, i]));
-    this.writeBodies(0, ref.bodies);
+    // The matching contact history is imported below, so keep it for these bodies.
+    this.writeBodies(0, ref.bodies, false);
     let slot = 0;
     for (const f of ref.forces) if (f instanceof Joint || f instanceof Spring) this.writeJoint(slot++, f, index);
     if (slot !== this.jointCount) throw new Error('seedFrom: joints differ from the reference');
@@ -1329,7 +1345,6 @@ export class GpuSolver3D {
     for (let k = 0; k < n; k++) {
       const [type, a, b] = fill(k, o.subarray(k * JOINT_FLOATS, (k + 1) * JOINT_FLOATS));
       this.info.set([type, a, b, 0], slots[k] * 4);
-      this.releasedSlots.delete(slots[k]);
       this.noCollide(a, b, slots[k]);
     }
     for (let k = 0; k < n; ) {
@@ -1353,9 +1368,10 @@ export class GpuSolver3D {
     if (!order.length) return;
     for (const slot of order) {
       this.info.set([T_NONE, -1, -1, 0], slot * 4);
-      this.releasedSlots.add(slot);
       this.freeSlots.push(slot);
     }
+    // Their entries go, flushed or not: a slot reused before the next step keeps only its new pair's
+    this.noCollideTable.release(order);
     // Whole records zeroed, a write per run of slots (a write per joint made a freeze of a few
     // thousand a 40 ms frame)
     let zeros = new Float32Array(0);
@@ -1367,7 +1383,6 @@ export class GpuSolver3D {
       this.device.queue.writeBuffer(this.infoBuffer, order[k] * 16, this.info, order[k] * 4, (e - k) * 4);
       k = e;
     }
-    this.noCollideDirty = true;
   }
 
   /**
@@ -1550,7 +1565,7 @@ export class GpuSolver3D {
     this.collisionBackend?.prepare(this);
     // An SDF backend writes its own contacts each step; manifold reuse applies to the built-in narrowphase.
     const reuseManifolds = !this.collisionBackend && !!options.reuseManifolds && this.manifoldsValid && !!this.pipes.reuseManifolds;
-    if (this.radiiDirty || this.noCollideDirty) this.uploadStatics();
+    if (this.radiiDirty || this.noCollideTable.dirty) this.uploadStatics();
     const p = this.params;
     if (this.fixedColors) {
       this.device.queue.writeBuffer(this.colorBuffer, 0, this.fixedColors);

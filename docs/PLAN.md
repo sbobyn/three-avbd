@@ -10,7 +10,7 @@
 | 3 2D WebGPU, fixed topology | done 2026-09-23: WGSL kernels match the CPU to f32 round-off; zero-copy rendering from the solver's buffer; GPU drag; 100k bodies / 204k joints at 3.3 ms GPU per step (M4 Max). |
 | 4 2D WebGPU with contacts | done 2026-09-23: whole step on the GPU (grid broadphase, narrowphase, hash persistence, adjacency, Jones-Plassmann colouring, indirect dispatch). Seeded single-step parity with the CPU (pairs, contacts, colours exact). Added `matchNearest` warm starts. |
 | 5 2D scaling study | done 2026-09-24: per-phase GPU timing; adaptive colour cap, merged dual, locality-preserving colour buckets, register-resident rows; limits and growth fixes; iteration sweep; 250k boxes / 600k contacts at ~7 ms (4 it) on the M4 Max. `bench.html` for target hardware. **Go for 3D** (see below). |
-| 6 3D CPU reference port | done 2026-09-24: `src/avbd3d/ref` is bit-identical to the upstream C++ (f64, no FMA) on all 14 scenes over 600 frames; behaviour tests; `index3d.html` viewer (orbit camera, shadows, drag, shoot). |
+| 6 3D CPU reference port | done 2026-09-24: `src/avbd3d/ref` is bit-identical to the upstream C++ (f64, no FMA) on all 14 scenes over 600 frames; behaviour tests; `index3d.html` viewer (orbit camera, shadows, drag, shoot; since folded into the 3D landing page, `index.html`, in 7a91f74). |
 | 7 3D WebGPU | done 2026-09-24: `src/avbd3d/gpu`, whole step on the GPU (shares the 2D colouring/adjacency/args/scan kernels). Seeded single step matches the f64 reference to ≤ 3e-6; narrowphase matches on 300 random pairs; GPU behaviour suite passes; zero-copy rendering and a CPU/WebGPU switch in the viewer. 100k boxes at 22 ms (10 it, M4 Max). Awaiting check-in. |
 | 8 3D scale + showcase | done 2026-09-24 (first pass): per-kernel profiling and fixes (AABB pair filter, 8-vertex clipper, lean dual write-back, large-body cap); iteration sweep; GPU-only spheres; Box2D-style face bias; showcase scenes after paper Figs 1/3, 7, 12, 13 plus piles to 250k; `pnpm bench3d:gpu`. Then contact-pair records and a leaner layout: 100k boxes at 2.9 ms (4 it) / 5.0 ms (10 it), 250k at 8.7 ms (4 it), M4 Max. Benchmark scenes after the paper's Figs 1, 3, 14 and `bench3d.html` for target hardware: 110k brick ring 11.8 ms (paper 9.8 on an RTX 4090), 506k brick walls 27.6 ms (paper 17.6). Then GPU memory sized from touching pairs (ring 608 -> 278 MB, 506k 1.85 -> 1.21 GB) and 1-8 primal lanes per colour: ring 10.4 ms, 506k 25.5 ms; fixed a colour-cap overflow that hid clashes and could collapse landing stacks. Awaiting check-in. |
 | 9 npm library (v0.1) | published 2026-09-26 (`three-avbd@0.1.0`): `src/lib` (`World`, `Body`, `Joint`, `BodyMesh`; `three-avbd/advanced`) over the 3D GPU solver, y-up (the solver's gravity now pulls against an `up` parameter; reference scenes keep z). Runtime adds, removal with slot reuse, breakable joints with `onBreak`, async readback, zero-copy drawing. GPU tests on the public API; `examples/basic`; `pnpm build:lib` packs 139 kB, verified installed in a blank Vite project (TS 5.9 and 7). Design: `docs/API.md`. |
@@ -157,7 +157,8 @@ static/dynamic μ switching, GPU coloring / LBVH / parallel everything.
 ## 2. Architecture decisions
 
 - **Stack:** Vite + TypeScript, `three` `WebGPURenderer` (r17x+), `lil-gui` (since replaced by `src/ui/controls.ts`), Vitest for
-  headless tests of the CPU solvers.
+  headless tests of the CPU solvers (as built: `node:test`, `pnpm test` for the CPU suites and
+  `pnpm test:gpu` for the Dawn GPU suites).
 - **Solver on GPU = raw WGSL compute on Three's `GPUDevice`** (`renderer.backend.device`).
   Raw WGSL rather than TSL because we need indirect dispatch, atomics, prefix scans,
   sort, and a readable 1:1 mapping to the C++. Rendering: Three `InstancedMesh` whose
@@ -181,7 +182,7 @@ static/dynamic μ switching, GPU coloring / LBVH / parallel everything.
 
 ### Stage 0 — Scaffold (small)
 Vite/TS/three WebGPU app, ortho 2D view + perspective 3D view, GUI, stats, WebGPU
-feature detection (timestamp-query, subgroups), Vitest harness.
+feature detection (timestamp-query, subgroups), Vitest harness (as built: `node:test`).
 **Check-in:** empty app renders; `npm test` green.
 
 ### Stage 1 — 2D CPU reference port (the oracle)

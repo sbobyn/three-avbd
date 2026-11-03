@@ -16,7 +16,7 @@ declaring any change done. GPU tests skip (never pass) when no adapter is availa
 - Later solvers (SoA CPU, WebGPU) are validated against the reference with single-step diffs
   and metric envelopes (f32 and GPU ordering make long trajectories diverge).
 - GPU buffers never hold ±Infinity (WGSL may assume finite floats); use the BIG/HARD
-  sentinels in `src/avbd2d/gpu/shaders.ts`.
+  sentinels in `src/avbd2d/gpu/layout.ts`.
 - The dev machine is an M4 Max; performance claims for the M1/GTX 1080 target must be
   measured there, not extrapolated.
 - Performance target is older hardware (M1, GTX 1080). Optional WebGPU features

@@ -2,9 +2,7 @@
 // with a body that reports contacts. Each such pair goes into this step's hash set; one missing
 // from last step's set began touching (with where, the normal and how hard), and one in last
 // step's set missing from this one's stopped. So only the changes come back, a few bytes each,
-// with the next readback; a pile resting quietly costs a pass, not a readback. (A pair is its
-// two slots: a reporting body removed and its slot filled, in one step, by a body touching the
-// same one reads as the same pair still touching.)
+// with the next readback; pair keys are lifetime IDs, independent of reusable solver slots.
 
 import { B_POS, B_ROT, BODY_FLOATS, C_MANIFOLDS } from '../avbd3d/gpu/layout.ts';
 
@@ -91,9 +89,11 @@ fn touching(@builtin(global_invocation_id) id: vec3u) {
   let count = mf.ids.w & 15u;
   let a = mf.ids.x;
   let b = mf.ids.y;
-  if (count == 0u || (watch[a] | watch[b]) == 0u) { return; }
-  insert(params.now, a, b);
-  if (has(params.prev, a, b)) { return; }
+  let idA = watch[a] & 0x7fffffffu;
+  let idB = watch[b] & 0x7fffffffu;
+  if (count == 0u || ((watch[a] | watch[b]) & 0x80000000u) == 0u || idA == 0u || idB == 0u) { return; }
+  insert(params.now, idA, idB);
+  if (has(params.prev, idA, idB)) { return; }
   // Where (the points' average, on a) and how hard (the normal force over the step)
   let pA = bodies[a * STRIDE + ${B_POS / 4}u].xyz;
   let qA = bodies[a * STRIDE + ${B_ROT / 4}u];
@@ -104,7 +104,7 @@ fn touching(@builtin(global_invocation_id) id: vec3u) {
     point += turn(qA, k.rA) + pA;
     force += k.lam.x;
   }
-  emit(${BEGIN}u, a, b, point / f32(count), abs(force) * params.dt, mf.geo.xyz);
+  emit(${BEGIN}u, idA, idB, point / f32(count), abs(force) * params.dt, mf.geo.xyz);
 }
 
 /** Per slot of last step's set: an end if the pair isn't in this step's. */
@@ -119,7 +119,7 @@ fn ended(@builtin(global_invocation_id) id: vec3u) {
 }
 `;
 
-/** One event as read back: begin or end, the bodies' slots, and for a begin where and how hard. */
+/** One event as read back: begin or end, the bodies' lifetime IDs, and for a begin where and how hard. */
 export interface RawContactEvent {
   kind: typeof BEGIN | typeof END;
   a: number;
@@ -134,13 +134,15 @@ export class ContactWatch {
   private readonly device: GPUDevice;
   private readonly pipelines: Record<'touching' | 'ended', GPUComputePipeline>;
   private readonly layout: GPUBindGroupLayout;
-  /** Per body: reports its contacts (1) or not. */
+  /** Per slot: lifetime ID in bits 0..30, reporting in bit 31. */
   private readonly watch: GPUBuffer;
   private readonly table: GPUBuffer;
   private readonly events: GPUBuffer;
   private readonly params: GPUBuffer;
   /** Slots per set (a power of two). */
   private readonly setSlots: number;
+  /** The pairs it was sized for (each set holds at least twice as many). */
+  readonly pairs: number;
   readonly capacity: number;
   private group: GPUBindGroup | null = null;
   private bound: GPUBuffer[] = [];
@@ -152,6 +154,7 @@ export class ContactWatch {
     this.device = device;
     this.bodies = bodies;
     this.capacity = capacity;
+    this.pairs = pairs;
     this.setSlots = 2 ** Math.ceil(Math.log2(Math.max(64, 2 * pairs)));
     const module = device.createShaderModule({ label: 'contact events', code: WGSL });
     const types: GPUBufferBindingType[] = ['read-only-storage', 'read-only-storage', 'read-only-storage', 'read-only-storage', 'read-only-storage', 'storage', 'storage', 'uniform'];
@@ -166,9 +169,15 @@ export class ContactWatch {
     this.params = device.createBuffer({ label: 'contact params', size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   }
 
+  /** The most pairs a watch can be sized for whose sets fit in `bytes` (one binding). */
+  static maxPairs(bytes: number): number {
+    const slots = Math.floor((bytes / 4 - HEAD_WORDS) / 4);
+    return slots >= 64 ? 2 ** Math.floor(Math.log2(slots)) / 2 : 0;
+  }
+
   /** Which bodies report their contacts. */
-  setWatched(indices: number[], on: boolean[]): void {
-    indices.forEach((index, k) => this.device.queue.writeBuffer(this.watch, index * 4, new Uint32Array([on[k] ? 1 : 0])));
+  setWatched(indices: number[], ids: number[], on: boolean[]): void {
+    indices.forEach((index, k) => this.device.queue.writeBuffer(this.watch, index * 4, new Uint32Array([ids[k] | (on[k] ? 0x80000000 : 0)])));
   }
 
   /** After a step: its pairs against the last step's. */
@@ -196,7 +205,11 @@ export class ContactWatch {
     d.queue.submit([encoder.finish()]);
   }
 
-  /** The events since the last read (and how many didn't fit), clearing them. */
+  /**
+   * The events since the last read (and how many didn't fit), clearing them. `full`: a step since
+   * the last read had more touching pairs than a set holds; those steps' events are unreliable
+   * (a pair left out of a set reads as beginning again, or as ending, at the next step).
+   */
   async read(): Promise<{ events: RawContactEvent[]; dropped: number; full: boolean }> {
     const d = this.device;
     const size = 16 + this.capacity * EVENT_VEC4S * 16;
