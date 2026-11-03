@@ -232,7 +232,7 @@ that plus max speed ≤ 0.05 m/s.
   at every setting, but a few still move at 1.1–2.4 m/s (0.13 m/s at 10 iterations, margin 0.01),
   and at 10 iterations a few pairs stay 98–111 mm deep. Neither engine meets the contact target
   (Rapier's pairs are 31–40 mm deep). At margin 0.001 three-avbd's floor depth (3.7 mm at 10
-  iterations) is under Rapier's (8.1–8.9 mm).
+  iterations) is under Rapier's (8.1–8.9 mm). Section 4 says what the outliers are.
 - No 10k configuration meets the target, so the 10k step times (three-avbd 1.6–3.3 ms, Rapier
   36–63 ms) are still not a quality-matched comparison. At 1k only three-avbd meets it, so no ratio
   is quoted there either.
@@ -310,8 +310,17 @@ on invalid scenes (2026-11-02, CPU only; [settling status](RAPIER_COMPARISON.md#
   margin 0.001 three-avbd settles with less overlap than Rapier (3.0 mm floor and pair against
   Rapier's 2.2 / 12.7 mm). At 10k, 99.4 % or more of the bodies are at rest, but a few keep moving
   (up to 1.1–2.4 m/s on some window step) and a few pairs stay deeply overlapped (33–71 mm at 4
-  iterations, 98–111 mm at 10), where Rapier is fully at rest with 31–40 mm pairs. That 10k tail is the real
-  remaining settling gap.
+  iterations, 98–111 mm at 10), where Rapier is fully at rest with 31–40 mm pairs. That 10k tail
+  is the real remaining settling gap.
+- **What the 10k outliers are** (10 iterations, margin 0.001; `--dump-movers` plus a solver
+  contact probe, [details](RAPIER_COMPARISON.md#the-10k-outliers)):
+  - The deep pairs are overlaps from the landing that the box-box contact manifold reports as
+    resolved (about −1 mm, the margin, at every contact point, with the correct normal). The
+    solver therefore never pushes them apart, and rerunning the narrowphase does not help.
+  - The fast bodies are short bursts of local slipping inside the pile, one buried body and its
+    neighbours, not bodies on edges, the surface or the pile's rim.
+  - With `startAtRest` off, max speed fell from 1.38 to 0.075 m/s (one run). Proposed 0.5 fixes
+    are in the linked section; neither is implemented.
 
 ### Tall stacks at low iteration counts
 

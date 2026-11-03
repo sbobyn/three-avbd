@@ -1,5 +1,6 @@
 import { physicalQuality } from './physical-quality.ts';
 import { contactQuality } from './contact-quality.ts';
+import { dumpMovers, MoverTracker, type MoverDump } from './movers.ts';
 import { FINAL_WINDOW, finalWindow, REST_SPEED, restFraction, SETTLED_MAX_SPEED, type FinalWindow, type WindowSample } from './final-window.ts';
 // Timings wait for completed batches. An independent replay checks EVERY step outside the
 // timer, then must reproduce the timed final snapshot exactly before a result is accepted.
@@ -13,15 +14,18 @@ export interface Options extends Settings {
   jitter: number; jitterSeed: number;
   /** Steps at the end of the measured window used by the final-window (resting) metrics. */
   finalWindow: number;
+  /** Diagnostic: report the N fastest bodies and N deepest pairs of the final window (0: off). */
+  dumpMovers: number;
 }
 export const DEFAULTS: Options = { dt: 1 / 60, avbdIterations: 4, rapierIterations: 4,
   rapierPgsIterations: 1, rapierSleeping: false, rapierCcd: false, rapierCcdSubsteps: 1, avbdMargin: 0.01, lead: 60, steps: 120, repeats: 3,
   timeoutMs: 300_000, batchSize: 10, impactPhase: 0, jitter: 0, jitterSeed: 1,
-  finalWindow: FINAL_WINDOW };
+  finalWindow: FINAL_WINDOW, dumpMovers: 0 };
 export function validateOptions(o: Options): void {
   for (const k of ['lead', 'steps', 'repeats', 'avbdIterations', 'rapierIterations', 'rapierPgsIterations', 'rapierCcdSubsteps', 'batchSize', 'finalWindow'] as const) {
     if (!Number.isInteger(o[k]) || o[k] < (k === 'lead' ? 0 : 1)) throw new Error(`Invalid ${k}`);
   }
+  if (!Number.isInteger(o.dumpMovers) || o.dumpMovers < 0) throw new Error('Invalid dumpMovers');
   if (!Number.isFinite(o.jitter) || o.jitter < 0 || !Number.isInteger(o.jitterSeed)) throw new Error('Invalid jitter');
   if (!Number.isFinite(o.avbdMargin) || o.avbdMargin < 0) throw new Error('Invalid avbdMargin');
   if (!Number.isFinite(o.impactPhase) || o.impactPhase < 0 || o.impactPhase >= 1) throw new Error('Invalid impactPhase');
@@ -41,6 +45,8 @@ export interface Result {
   worstQuality?: Quality; floorTargetMet?: boolean; replayMatches?: boolean;
   /** Resting metrics over the last `finalWindow` measured steps; the worst-over-window fields above are unchanged. */
   finalWindow?: FinalWindow;
+  /** With `dumpMovers`: the final window's fastest bodies and deepest pairs. */
+  movers?: MoverDump;
 }
 const yieldToUI = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -104,6 +110,7 @@ export async function runOne(engine: Engine, scene: Scene, repeat: number, o: Op
     r.measuredMaxRelativeDrift = 0;
     const windowSamples: WindowSample[] = [];
     const windowStart = o.lead + Math.max(0, o.steps - o.finalWindow);
+    const tracker = o.dumpMovers ? new MoverTracker(scene, SETTLED_MAX_SPEED) : undefined;
     // Replay both lead-in and measurement windows, catching transient storage faults and NaNs.
     for (let step = 1; step <= o.lead + o.steps; step++) {
       check();
@@ -131,7 +138,11 @@ export async function runOne(engine: Engine, scene: Scene, repeat: number, o: Op
       }
       r.worstQuality = accumulate(r.worstQuality, q);
       r.qualitySamples.push({ step, quality: q, contacts });
-      if (step > windowStart) windowSamples.push({ step, quality: q, contacts, restFraction: restFraction(scene, snapshot) });
+      if (step > windowStart) {
+        windowSamples.push({ step, quality: q, contacts, restFraction: restFraction(scene, snapshot) });
+        tracker?.add(step, snapshot);
+        if (tracker && step === o.lead + o.steps) r.movers = dumpMovers(scene, tracker, snapshot, step, o.dumpMovers);
+      }
       if (q.nonFiniteBodies || q.invalidRotations) throw new Error(`Invalid body state at replay step ${step}`);
       if (step % 10 === 0) await yieldToUI();
     }

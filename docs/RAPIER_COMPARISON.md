@@ -273,7 +273,104 @@ done
 
 ### The 10k outliers
 
-Diagnosis **pending** (a per-body dump of the final window, `--dump-movers`).
+What the 10k outliers are, for AVBD at 10 iterations with margin 0.001 (2026-11-02, M4 Max). Two
+sources of evidence:
+
+- **`--dump-movers 20`** on the same run (2,400 lead + 600 steps). It reproduced the batch exactly
+  (98.3 mm, 1.377 m/s). Source: `cc5cb2a` plus this flag, uncommitted at run time.
+  Data: [data/final-window-gpu-2026-11-02-movers-avbd-10-0.001.json](data/final-window-gpu-2026-11-02-movers-avbd-10-0.001.json).
+- **A one-off probe**, not in the repo. It builds the same `GpuSolver3D` the adapter does, runs
+  3,000 steps, and reads the solver's own contacts for the deepest pairs (`readContactList`, with
+  each point's separation recomputed from the current poses). It compares those with the
+  harness's independent SAT depth. It also reruns the scene with solver *parameters* changed:
+  `reuseContacts` off from step 2,400, `reuseContacts` off throughout, and `startAtRest` off. No
+  solver code changed. Its default run reproduced the batch.
+
+The dump flag reports, for the top-N bodies by window max speed and the top-N pairs by depth: ids,
+positions, speeds, window displacement, dynamic neighbours within 2 cm (above or below), floor
+contact, distance from the pile's xy bounding box, height, and tilt (the angle from up to the
+nearest body axis). It is geometric, so it says where the outliers are, not what the solver did.
+
+**Deep pairs: impact overlaps the solver does not see.**
+
+- The deepest pairs formed on landing and never changed. The deepest, bodies 1528/4004, is the
+  worst pair from step 452 on (91.7 mm), 98.2 mm at the window start, and 98.3 mm at the end. All
+  seven deepest pairs were as deep at the window start as at the end.
+- They sit inside the pile, not on the floor or at the edges (21–78 % of the height, 21–28 m from
+  the bounding box's edge), and usually involve a tilted body (30–46°).
+- The solver's own contacts for these pairs have the correct normal (0° from the true
+  least-overlap axis). But every contact point reads as already resolved: about −1.0 to −1.5 mm,
+  which is the 1 mm margin. For 7965/9240 (44 mm deep), the one contact reads 26.6 mm *apart*,
+  with zero normal force.
+- The solver therefore holds these bodies at rest with 36–98 mm of real overlap. Its contact
+  points are shallow points of the manifold, not the deepest feature. Most likely, face clipping
+  drops the incident box's penetrating corner when it overhangs the reference face; that part is
+  not instrumented.
+- It is **not** the contact-reuse cache. With `reuseContacts` off from step 2,400, the
+  narrowphase rebuilds the same shallow points every step, and the deepest pair goes from 97.9 to
+  100.6 mm.
+- With `reuseContacts` off, or `startAtRest` off, from the start, these pairs never form: the
+  worst pair is 13.3 mm and 22.9 mm at step 3,000, both under Rapier's 31 mm. These are single
+  runs of a chaotic pile, so they show that the deep pairs depend on the landing, not that either
+  setting prevents them.
+
+**Fast bodies: bursts of local slipping inside the pile, tied to `startAtRest`.**
+
+- The 1.38 m/s comes from one body, 5795. It was above 0.05 m/s on 26 of the 60 window steps,
+  peaked at step 2,956, and moved 0.236 m.
+- It is buried mid-pile, not balanced on an edge: 3 neighbours above and 2 below, 50 % of the
+  height, about 25 m from the bounding box's edge, off the floor, tilted 2°. While it moved, it
+  pushed 13.4 mm into its upper neighbour 7670 (0 mm at the window start).
+- 14 of the other top-20 movers are around it and peak within steps 2,957–2,961, at 0.03–0.09 m/s: the
+  neighbourhood reacting to it. A second, smaller cluster near (19, 7, 5) peaks at 0.07 m/s at
+  step 2,976.
+- The per-step trace of the batch shows such bursts throughout the 600 steps, not one steady
+  jitter. They are 0.05–0.5 m/s at 30-step samples and end within a few dozen steps. By the last
+  step, 100 % of the bodies are below 0.01 m/s.
+- `startAtRest` off is the only variant that removes them. Over the last 60 steps, max speed and
+  steps above 0.05 m/s were:
+  - default: 1.377 m/s on 27 steps;
+  - `reuseContacts` off from step 2,400: 0.28 m/s on 50 steps;
+  - `reuseContacts` off throughout: 0.34 m/s on 36 steps;
+  - `startAtRest` off: **0.075 m/s on 1 step**.
+- `startAtRest` treats any body below the GPU's `REST_SPEED` (0.1 m/s, `layout.ts`, ten times the
+  harness's 0.01 m/s rest speed) as at rest. Its iterations then start from the step-start pose,
+  without the gravity-and-velocity guess. At 10 iterations, a slowly creeping body inside a heavy
+  pile is one plausible way to store a slip that releases as a burst. This is one run per
+  variant, so the link is a correlation, not a proof.
+
+**Hypotheses, ranked:**
+
+1. **`startAtRest` threshold (fast bodies): supported.** With it off, max speed drops from
+   1.38 to 0.075 m/s and steps above 0.05 m/s from 27 to 1.
+2. **Deep impact overlaps that never resolve (deep pairs): confirmed.** They were present from
+   the landing (step 452) and frozen for 2,500 steps. The mechanism is that the box-box manifold
+   reports them as resolved, so the solver applies no correcting force. Rerunning the narrowphase
+   does not help.
+3. **Bodies balanced on edges or corners: rejected for the movers** (the main mover is flat at 2°
+   and buried). It is partly involved in the deep pairs, where most pairs include a body tilted
+   30–46°.
+4. **Pile edge or top surface: rejected.** Movers and deep pairs are interior and mid-height.
+5. **Sphere/box anchoring (H4): not applicable.** `pile-10k-settled` is boxes only.
+
+**Smallest fixes for 0.5** (not implemented; measure each on the 10k pile, the 40-course wall and
+the 110k ring before it ships):
+
+- **Fast bodies:** make `startAtRest` default off at 10 or more iterations, keeping it on at low
+  iteration counts. It was added for 4-iteration walls (FINDINGS Stage 8m), and at 10 iterations
+  every wall contact already stuck without it. This changes one default and no solver code. The alternative, lowering the
+  GPU `REST_SPEED` from 0.1 to about 0.02 m/s, is a one-constant change but unmeasured.
+- **Deep pairs:** in the GPU face manifold (`wgsl-collision.ts`, not `ref/`), when the deepest
+  clipped point is much shallower than the SAT depth (for example by more than 2× the margin),
+  add the incident box's support point along −n as one more contact. That gives the solver the
+  depth SAT already found. It is a few lines in `faceManifold`, behind a parameter, so the oracle
+  stays unchanged.
+
+```bash
+pnpm compare:rapier pile-10k-settled --engines avbd --avbd-iterations 10 --avbd-margin 0.001 \
+  --lead 2400 --steps 600 --final-window 60 --dump-movers 20 --repeats 1 --timeout-ms 3600000 \
+  --machine "M4 Max" --json movers.json
+```
 
 ## Decision
 
