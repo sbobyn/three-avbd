@@ -49,9 +49,11 @@ Research snapshot: 2026-09-29. three-avbd baseline: `b3675de`, package version `
 ## Settling status (2026-11-02)
 
 Which resting and pile scenes can back a quality claim, and why the earlier "piles do not
-settle" finding is mostly about the scenes. Everything in this section ran on the CPU (the
-reference solver in Node, Rapier as WASM); no GPU device was opened. GPU runs of the corrected
-scenes are **pending** (commands at the end). Per-step traces:
+settle" finding is mostly about the scenes. Everything in this subsection ran on the CPU (the
+reference solver in Node, Rapier as WASM); no GPU device was opened. The GPU runs of the corrected
+scenes came later the same day: the settling batch in [COMPARISON.md](COMPARISON.md) section 3,
+and the [final-window batch](#final-window-resting-metric) below, which shows the GPU solver's
+1k pile settling. Per-step traces:
 [data/settling-h1-2026-11-02.json](data/settling-h1-2026-11-02.json).
 
 ### The earlier evidence, re-read
@@ -179,8 +181,196 @@ for it in 4 10; do for m in 0.01 0.001; do
 done; done
 ```
 
-Until they run, AVBD's behaviour on a valid settled pile is unknown and no resting-quality claim
-should rest on `sphere-pile-100` or the `pile-*` scenes.
+These have since run (COMPARISON.md section 3); no resting-quality claim should rest on
+`sphere-pile-100` or the unsettled `pile-*` scenes.
+
+### Final-window (resting) metric
+
+The GPU settling batch (2026-11-02; [COMPARISON.md](COMPARISON.md) section 3) found that neither
+engine meets the contact target on `pile-1k-settled` or `pile-10k-settled`, Rapier included (worst
+pair depth 26–40 cm). Those numbers are the worst over the whole measured window, so the drop's
+impacts and transient interpenetration dominate them. Each result therefore also carries a
+`finalWindow` record (`src/comparison/final-window.ts`), next to the unchanged worst-over-window
+fields (`worstQuality`, `maxContactDepth`, `contactTargetMet`, `measuredContactTargetMet`, …):
+
+- **Window**: the last `--final-window` measured steps (default 60, 1 s at 1/60 s; all measured
+  steps if there are fewer). Lead-in steps are never included.
+- **Floor / pair depth**: for each window step, the same worst floor penetration and worst
+  body–body depth the existing metrics use; the report gives the max and the p95 over the window's
+  steps (`maxFloorPenetration`, `p95FloorPenetration`, `maxContactDepth`, `p95ContactDepth`, plus
+  the relative maxima). Pair fields are null if any window step was unmeasured.
+- **Motion**: `maxSpeed` (fastest body's linear speed on any window step), `maxKineticEnergy`
+  (largest total translational KE on any window step), `finalKineticEnergy`, and `restFraction`,
+  the fraction of dynamic bodies with linear speed below 0.01 m/s (`REST_SPEED`) on the last step.
+- **`contactTargetMet`**: the existing contact target (full floor coverage, floor and pair depth
+  ≤ 1 % of the smallest body dimension) holds on **every** window step.
+- **`settled`**: `contactTargetMet` and `maxSpeed` ≤ 0.05 m/s (`SETTLED_MAX_SPEED`); null when
+  pair depth was unmeasured. Angular velocity is not part of either speed test.
+
+The CLI summary line prints the same fields (`--final-window N` changes the window), and
+`/compare-side.html` shows each engine's live at-rest fraction (the page has no per-step history,
+so it does not compute `settled`). `tests/comparison-final-window.test.ts` checks, on synthetic
+traces, that impacts before the window leave every final-window metric unchanged, that one impact
+step inside it is caught, that a single-step spike moves the max but not the p95, and that a
+resting trace is reported settled.
+
+**GPU results** (2026-11-02, M4 Max, Node + Dawn, Rapier 0.21.0, PR #65 at `e7d4ce5`, run with the
+commands below). The lead is 2,400 steps (40 s): Rapier's piles settle by about step 540
+on the CPU, but the AVBD reference was still moving at step 1,200 and the GPU 10k pile was still
+moving at the end of a 1,200-step run, so the window is 40–50 s. Quality is identical across
+repeats, so the batch ran one repeat; its timings are not headline numbers. Data:
+`docs/data/final-window-gpu-2026-11-02-{rapier-4,rapier-10,avbd-4-0.01,avbd-4-0.001,avbd-10-0.01,avbd-10-0.001}.json`
+(trimmed like the settling batch: body lists and per-step traces removed, the raw file's sha256
+recorded in each).
+
+| Scene | Engine | Iter | Margin | ms/step | Floor max | Pair max | Max speed | At rest | Target | Settled |
+|---|---|---|---|---|---|---|---|---|---|---|
+| pile-1k-settled | Rapier | 4 | — | 2.72 | 3.0 mm | 12.2 mm | 0.000 | 100% | no | no |
+| pile-1k-settled | AVBD | 4 | 0.01 | 1.47 | 14.1 mm | 14.5 mm | 0.073 | 99.5% | no | no |
+| pile-1k-settled | AVBD | 4 | 0.001 | 1.45 | 5.4 mm | 5.6 mm | 0.004 | 100% | no | no |
+| pile-1k-settled | Rapier | 10 | — | 5.17 | 2.2 mm | 12.7 mm | 0.000 | 100% | no | no |
+| pile-1k-settled | AVBD | 10 | 0.01 | 3.37 | 11.7 mm | 21.5 mm | 0.001 | 100% | no | no |
+| pile-1k-settled | AVBD | 10 | 0.001 | 3.22 | 3.0 mm | 3.0 mm | 0.001 | 100% | **yes** | **yes** |
+| pile-10k-settled | Rapier | 4 | — | 35.98 | 8.1 mm | 39.5 mm | 0.000 | 100% | no | no |
+| pile-10k-settled | AVBD | 4 | 0.01 | 1.64 | 17.1 mm | 71.0 mm | 1.109 | 99.4% | no | no |
+| pile-10k-settled | AVBD | 4 | 0.001 | 1.63 | 27.8 mm | 32.7 mm | 2.389 | 99.9% | no | no |
+| pile-10k-settled | Rapier | 10 | — | 62.62 | 8.9 mm | 31.2 mm | 0.003 | 100% | no | no |
+| pile-10k-settled | AVBD | 10 | 0.01 | 3.29 | 12.7 mm | 111.3 mm | 0.132 | 100% | no | no |
+| pile-10k-settled | AVBD | 10 | 0.001 | 3.25 | 3.7 mm | 98.3 mm | 1.377 | 100%* | no | no |
+
+Max speed in m/s, the fastest body on any of the 60 window steps; at rest is the fraction below
+0.01 m/s on the last step; target is the contact target on every window step; settled adds max
+speed ≤ 0.05 m/s. \* Rounds to 100 %; the fast bodies had slowed by the last step (KE 1.0 × 10⁻⁴ J).
+
+- **1k:** after 40 s both engines are at rest. AVBD at 10 iterations with margin 0.001 is the only
+  configuration of either engine that meets the contact target: 3.0 mm floor and pair depth.
+  Rapier rests with about 12 mm of body–body overlap, which misses the 5 mm pair target. AVBD at 4
+  iterations with 0.001 is close (5.6 mm, 0.004 m/s).
+- **10k:** Rapier is fully at rest (pair overlap 31–40 mm, target missed). AVBD has 99.4 % or more
+  of its bodies at rest, but a few move fast on some window step (1.1–2.4 m/s; 0.13 m/s at 10
+  iterations with 0.01), and at 10 iterations the deepest pair is 98–111 mm: a small number of
+  moving or stuck bodies, not a pile-wide failure. What they are: [10k outliers](#the-10k-outliers).
+- **Speed (same runs, one repeat):** AVBD 1.45–3.4 ms/step at both scales; Rapier 2.7–5.2 ms (1k)
+  and 36–63 ms (10k). No configuration meets the target at 10k, so no ratio is quoted there.
+- So "AVBD piles don't settle" is wrong as a general statement. At 1k, AVBD (10 iterations, margin
+  0.001) settles with less overlap than Rapier; at 10k a few bodies keep moving and some pairs stay
+  deeply overlapped.
+
+Run serially, nothing else on the GPU:
+
+```bash
+for it in 4 10; do
+  pnpm compare:rapier pile-1k-settled,pile-10k-settled --engines rapier --rapier-iterations $it \
+    --lead 2400 --steps 600 --final-window 60 --repeats 1 --timeout-ms 3600000 \
+    --machine "M4 Max" --json final-window-rapier-$it.json
+  for m in 0.01 0.001; do
+    pnpm compare:rapier pile-1k-settled,pile-10k-settled --engines avbd --avbd-iterations $it --avbd-margin $m \
+      --lead 2400 --steps 600 --final-window 60 --repeats 1 --timeout-ms 3600000 \
+      --machine "M4 Max" --json final-window-avbd-$it-$m.json
+  done
+done
+```
+
+### The 10k outliers
+
+What the 10k outliers are, for AVBD at 10 iterations with margin 0.001 (2026-11-02, M4 Max). Two
+sources of evidence:
+
+- **`--dump-movers 20`** on the same run (2,400 lead + 600 steps). It reproduced the batch exactly
+  (98.3 mm, 1.377 m/s). Source: `cc5cb2a` plus this flag, uncommitted at run time.
+  Data: [data/final-window-gpu-2026-11-02-movers-avbd-10-0.001.json](data/final-window-gpu-2026-11-02-movers-avbd-10-0.001.json).
+- **A one-off probe**, not in the repo. It builds the same `GpuSolver3D` the adapter does, runs
+  3,000 steps, and reads the solver's own contacts for the deepest pairs (`readContactList`, with
+  each point's separation recomputed from the current poses). It compares those with the
+  harness's independent SAT depth. It also reruns the scene with solver *parameters* changed:
+  `reuseContacts` off from step 2,400, `reuseContacts` off throughout, and `startAtRest` off. No
+  solver code changed. Its default run reproduced the batch.
+
+The dump flag reports, for the top-N bodies by window max speed and the top-N pairs by depth: ids,
+positions, speeds, window displacement, dynamic neighbours within 2 cm (above or below), floor
+contact, distance from the pile's xy bounding box, height, and tilt (the angle from up to the
+nearest body axis). It is geometric, so it says where the outliers are, not what the solver did.
+
+**Deep pairs: impact overlaps the solver does not see.**
+
+- The deepest pairs formed on landing and never changed. The deepest, bodies 1528/4004, is the
+  worst pair from step 452 on (91.7 mm), 98.2 mm at the window start, and 98.3 mm at the end. All
+  seven deepest pairs were as deep at the window start as at the end.
+- They sit inside the pile, not on the floor or at the edges (21–78 % of the height, 21–28 m from
+  the bounding box's edge), and usually involve a tilted body (30–46°).
+- The solver's own contacts for these pairs have the correct normal (0° from the true
+  least-overlap axis). But every contact point reads as already resolved: about −1.0 to −1.5 mm,
+  which is the 1 mm margin. For 7965/9240 (44 mm deep), the one contact reads 26.6 mm *apart*,
+  with zero normal force.
+- The solver therefore holds these bodies at rest with 36–98 mm of real overlap. Its contact
+  points are shallow points of the manifold, not the deepest feature. Most likely, face clipping
+  drops the incident box's penetrating corner when it overhangs the reference face; that part is
+  not instrumented.
+- It is **not** the contact-reuse cache. With `reuseContacts` off from step 2,400, the
+  narrowphase rebuilds the same shallow points every step, and the deepest pair goes from 97.9 to
+  100.6 mm.
+- With `reuseContacts` off, or `startAtRest` off, from the start, these pairs never form: the
+  worst pair is 13.3 mm and 22.9 mm at step 3,000, both under Rapier's 31 mm. These are single
+  runs of a chaotic pile, so they show that the deep pairs depend on the landing, not that either
+  setting prevents them.
+
+**Fast bodies: bursts of local slipping inside the pile, tied to `startAtRest`.**
+
+- The 1.38 m/s comes from one body, 5795. It was above 0.05 m/s on 26 of the 60 window steps,
+  peaked at step 2,956, and moved 0.236 m.
+- It is buried mid-pile, not balanced on an edge: 3 neighbours above and 2 below, 50 % of the
+  height, about 25 m from the bounding box's edge, off the floor, tilted 2°. While it moved, it
+  pushed 13.4 mm into its upper neighbour 7670 (0 mm at the window start).
+- 14 of the other top-20 movers are around it and peak within steps 2,957–2,961, at 0.03–0.09 m/s: the
+  neighbourhood reacting to it. A second, smaller cluster near (19, 7, 5) peaks at 0.07 m/s at
+  step 2,976.
+- The per-step trace of the batch shows such bursts throughout the 600 steps, not one steady
+  jitter. They are 0.05–0.5 m/s at 30-step samples and end within a few dozen steps. By the last
+  step, 100 % of the bodies are below 0.01 m/s.
+- `startAtRest` off is the only variant that removes them. Over the last 60 steps, max speed and
+  steps above 0.05 m/s were:
+  - default: 1.377 m/s on 27 steps;
+  - `reuseContacts` off from step 2,400: 0.28 m/s on 50 steps;
+  - `reuseContacts` off throughout: 0.34 m/s on 36 steps;
+  - `startAtRest` off: **0.075 m/s on 1 step**.
+- `startAtRest` treats any body below the GPU's `REST_SPEED` (0.1 m/s, `layout.ts`, ten times the
+  harness's 0.01 m/s rest speed) as at rest. Its iterations then start from the step-start pose,
+  without the gravity-and-velocity guess. At 10 iterations, a slowly creeping body inside a heavy
+  pile is one plausible way to store a slip that releases as a burst. This is one run per
+  variant, so the link is a correlation, not a proof.
+
+**Hypotheses, ranked:**
+
+1. **`startAtRest` threshold (fast bodies): supported.** With it off, max speed drops from
+   1.38 to 0.075 m/s and steps above 0.05 m/s from 27 to 1.
+2. **Deep impact overlaps that never resolve (deep pairs): confirmed.** They were present from
+   the landing (step 452) and frozen for 2,500 steps. The mechanism is that the box-box manifold
+   reports them as resolved, so the solver applies no correcting force. Rerunning the narrowphase
+   does not help.
+3. **Bodies balanced on edges or corners: rejected for the movers** (the main mover is flat at 2°
+   and buried). It is partly involved in the deep pairs, where most pairs include a body tilted
+   30–46°.
+4. **Pile edge or top surface: rejected.** Movers and deep pairs are interior and mid-height.
+5. **Sphere/box anchoring (H4): not applicable.** `pile-10k-settled` is boxes only.
+
+**Smallest fixes for 0.5** (not implemented; measure each on the 10k pile, the 40-course wall and
+the 110k ring before it ships):
+
+- **Fast bodies:** make `startAtRest` default off at 10 or more iterations, keeping it on at low
+  iteration counts. It was added for 4-iteration walls (FINDINGS Stage 8m), and at 10 iterations
+  every wall contact already stuck without it. This changes one default and no solver code. The alternative, lowering the
+  GPU `REST_SPEED` from 0.1 to about 0.02 m/s, is a one-constant change but unmeasured.
+- **Deep pairs:** in the GPU face manifold (`wgsl-collision.ts`, not `ref/`), when the deepest
+  clipped point is much shallower than the SAT depth (for example by more than 2× the margin),
+  add the incident box's support point along −n as one more contact. That gives the solver the
+  depth SAT already found. It is a few lines in `faceManifold`, behind a parameter, so the oracle
+  stays unchanged.
+
+```bash
+pnpm compare:rapier pile-10k-settled --engines avbd --avbd-iterations 10 --avbd-margin 0.001 \
+  --lead 2400 --steps 600 --final-window 60 --dump-movers 20 --repeats 1 --timeout-ms 3600000 \
+  --machine "M4 Max" --json movers.json
+```
 
 ## Decision
 

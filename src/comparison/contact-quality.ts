@@ -4,7 +4,7 @@ import type { Scene } from './scenes.ts';
 import { STATE_SIZE } from './quality.ts';
 
 const dot = (a: number[], b: number[]) => a.reduce((s, v, i) => s + v * b[i], 0);
-function axes(q: ArrayLike<number>): number[][] {
+export function axes(q: ArrayLike<number>): number[][] {
   const [x, y, z, w] = Array.from(q);
   return [
     [1 - 2 * (y*y + z*z), 2 * (x*y + z*w), 2 * (x*z - y*w)],

@@ -1,0 +1,2143 @@
+{
+ "schema": 5,
+ "date": "2026-11-03T02:02:06.742Z",
+ "rapierVersion": "0.21.0",
+ "options": {
+  "dt": 0.016666666666666666,
+  "avbdIterations": 10,
+  "rapierIterations": 4,
+  "rapierPgsIterations": 1,
+  "rapierSleeping": false,
+  "rapierCcd": false,
+  "rapierCcdSubsteps": 1,
+  "avbdMargin": 0.001,
+  "lead": 2400,
+  "steps": 600,
+  "repeats": 1,
+  "timeoutMs": 3600000,
+  "batchSize": 10,
+  "impactPhase": 0,
+  "jitter": 0,
+  "jitterSeed": 1,
+  "finalWindow": 60,
+  "dumpMovers": 20
+ },
+ "engines": [
+  "avbd"
+ ],
+ "manifests": [
+  {
+   "name": "pile-10k-settled",
+   "seed": 12345,
+   "up": "z",
+   "gravity": -10,
+   "groundTop": 0.5,
+   "hash": "66dc430e",
+   "validity": {
+    "kind": "pile",
+    "status": "valid",
+    "lead": 600,
+    "steps": 600
+   },
+   "bodyCount": 10001
+  }
+ ],
+ "results": [
+  {
+   "scene": "pile-10k-settled",
+   "hash": "66dc430e",
+   "engine": "avbd",
+   "repeat": 0,
+   "bodies": 10001,
+   "dynamicBodies": 10000,
+   "status": "completed",
+   "buildMs": 57.21562499999999,
+   "completedSteps": 3000,
+   "samplesMs": [
+    3.188591700000143,
+    3.148604200000045,
+    3.1403667000000497,
+    3.1165624999999637,
+    3.153166600000077,
+    3.148658299999988,
+    3.210383299999921,
+    3.205133299999943,
+    3.1622833999999784,
+    3.121454199999971,
+    3.1727249999999914,
+    3.1259334000000307,
+    3.1297249999999623,
+    3.1568584000000555,
+    3.1847499999999855,
+    3.1815332999998645,
+    3.201887500000157,
+    3.163724999999977,
+    3.1326624999999693,
+    3.113604200000009,
+    3.2220957999999884,
+    3.387470800000119,
+    3.47724589999998,
+    3.381362500000068,
+    3.288304099999914,
+    3.233854199999951,
+    3.206458300000122,
+    3.1744040999999923,
+    3.1678625000000467,
+    3.179133299999921,
+    3.278608299999905,
+    3.143987500000003,
+    3.170258300000023,
+    3.2293958000000202,
+    3.178454200000124,
+    3.204574999999932,
+    3.2263000000000828,
+    3.172195800000009,
+    3.145116699999926,
+    3.148504099999991,
+    3.163470799999959,
+    3.184820799999943,
+    3.171808299999975,
+    3.3559166000000915,
+    3.287083299999904,
+    3.2153249999999387,
+    3.2126166000000014,
+    3.2130708999999116,
+    3.209779100000014,
+    3.20844589999997,
+    3.140891700000066,
+    3.329937500000051,
+    3.2668750000000726,
+    3.2892791000000217,
+    3.285141599999952,
+    3.2293999999999867,
+    3.18209169999991,
+    3.1967125000001033,
+    3.1619957999999313,
+    3.14603330000009
+   ],
+   "sampleSteps": [
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10
+   ],
+   "settings": {
+    "params": {
+     "dt": 0.016666666666666666,
+     "gravity": -10,
+     "iterations": 10,
+     "betaLin": 10000,
+     "betaAng": 100,
+     "alpha": 0.99,
+     "gamma": 0.999,
+     "matchNearest": true,
+     "faceBias": true,
+     "reuseContacts": true,
+     "startAtRest": true,
+     "massPenalty": true,
+     "contactMargin": 0.001,
+     "windSpeed": 0,
+     "windAngle": 0,
+     "windGust": 0.4,
+     "windPressure": 0.72,
+     "up": [
+      0,
+      0,
+      1
+     ]
+    },
+    "capacity": {
+     "contacts": 320032,
+     "manifolds": 80008,
+     "pairs": 320032,
+     "colors": 32
+    },
+    "adapt": false,
+    "sleeping": false
+   },
+   "initialQuality": {
+    "nonFiniteBodies": 0,
+    "invalidRotations": 0,
+    "outsideFloorBodies": 0,
+    "maxFloorPenetration": 0,
+    "maxRelativeFloorPenetration": 0,
+    "maxBoxFloorPenetration": 0,
+    "maxSphereFloorPenetration": 0,
+    "worstBody": null,
+    "maxSpeed": 0,
+    "translationalKineticEnergy": 0
+   },
+   "initialContacts": {
+    "maxDepth": 0,
+    "maxRelativeDepth": 0,
+    "worstPair": null,
+    "candidatePairs": 0
+   },
+   "finalQuality": {
+    "nonFiniteBodies": 0,
+    "invalidRotations": 0,
+    "outsideFloorBodies": 0,
+    "maxFloorPenetration": 0.0037033853023611396,
+    "maxRelativeFloorPenetration": 0.006577156209903607,
+    "maxBoxFloorPenetration": 0.0037033853023611396,
+    "maxSphereFloorPenetration": 0,
+    "worstBody": 2737,
+    "maxSpeed": 0.0071530752239015285,
+    "translationalKineticEnergy": 0.00010021060309554043
+   },
+   "measuredMaxRelativeDrift": 0.42147327310699667,
+   "diagnostics": {
+    "tailBodies": 0,
+    "pairs": 25713,
+    "contacts": 39239,
+    "manifolds": 22663,
+    "overflow": 0,
+    "clashes": 0,
+    "colors": 7
+   },
+   "physical": {
+    "final": {
+     "maxJointError": 0,
+     "trajectoryError": null,
+     "velocityError": null,
+     "angularError": null,
+     "momentumChange": 0.17036732379254182,
+     "relativeMomentumChange": null,
+     "energyChange": -934775.770163125,
+     "relativeEnergyChange": -0.8584367922988163
+    },
+    "maxJointError": 0,
+    "maxTrajectoryError": null,
+    "maxVelocityError": null,
+    "maxAngularError": null
+   },
+   "worstQuality": {
+    "nonFiniteBodies": 0,
+    "invalidRotations": 0,
+    "outsideFloorBodies": 0,
+    "maxFloorPenetration": 0.2890345789628018,
+    "maxRelativeFloorPenetration": 0.5436478105982099,
+    "maxBoxFloorPenetration": 0.2890345789628018,
+    "maxSphereFloorPenetration": 0,
+    "worstBody": 6400,
+    "maxSpeed": 24.32909393310547,
+    "translationalKineticEnergy": 418075.83032063773
+   },
+   "movers": {
+    "step": 3000,
+    "settledMaxSpeed": 0.05,
+    "movers": [
+     {
+      "id": 5795,
+      "size": [
+       0.9164150010794401,
+       0.6378556370502337,
+       0.6941218205261975
+      ],
+      "position": [
+       -13.869951248168945,
+       13.393396377563477,
+       3.3932275772094727
+      ],
+      "speed": 0.003477790489213632,
+      "angularSpeed": 0.014773384099312257,
+      "maxSpeed": 1.3769370366919993,
+      "maxSpeedStep": 2956,
+      "stepsAboveSettled": 26,
+      "displacement": 0.23610709966083376,
+      "contacts": 8,
+      "above": 3,
+      "below": 2,
+      "onFloor": false,
+      "pileEdgeDistance": 24.872323989868164,
+      "heightFraction": 0.500696018808723,
+      "tilt": 1.7819733845064798
+     },
+     {
+      "id": 7044,
+      "size": [
+       0.6416120703564957,
+       1.1144075779244305,
+       0.6831363836070523
+      ],
+      "position": [
+       -14.164840698242188,
+       12.256970405578613,
+       3.4822840690612793
+      ],
+      "speed": 0.0008312981977220137,
+      "angularSpeed": 0.0013732106753315812,
+      "maxSpeed": 0.09310744241221384,
+      "maxSpeedStep": 2957,
+      "stepsAboveSettled": 2,
+      "displacement": 0.0051004305762096455,
+      "contacts": 7,
+      "above": 3,
+      "below": 2,
+      "onFloor": false,
+      "pileEdgeDistance": 26.008749961853027,
+      "heightFraction": 0.5161079522737976,
+      "tilt": 20.031943218407402
+     },
+     {
+      "id": 9942,
+      "size": [
+       1.1043742150766773,
+       1.1220244785305113,
+       1.1215963850961996
+      ],
+      "position": [
+       19.066356658935547,
+       6.9491286277771,
+       5.237942218780518
+      ],
+      "speed": 0.0009051870669173652,
+      "angularSpeed": 0.0009254311094215534,
+      "maxSpeed": 0.06773196800900373,
+      "maxSpeedStep": 2976,
+      "stepsAboveSettled": 1,
+      "displacement": 0.0017465186007623414,
+      "contacts": 3,
+      "above": 0,
+      "below": 3,
+      "onFloor": false,
+      "pileEdgeDistance": 16.587779998779297,
+      "heightFraction": 0.8199385437136039,
+      "tilt": 35.01885614615948
+     },
+     {
+      "id": 2020,
+      "size": [
+       1.070681694452651,
+       1.1709341501817105,
+       1.1166393117746338
+      ],
+      "position": [
+       -14.87093448638916,
+       13.594962120056152,
+       2.707021713256836
+      ],
+      "speed": 0.00047271853095323245,
+      "angularSpeed": 0.0006543532406690836,
+      "maxSpeed": 0.05400596267444688,
+      "maxSpeedStep": 2959,
+      "stepsAboveSettled": 1,
+      "displacement": 0.0012947460056941709,
+      "contacts": 8,
+      "above": 5,
+      "below": 3,
+      "onFloor": false,
+      "pileEdgeDistance": 24.67075824737549,
+      "heightFraction": 0.3819426421747046,
+      "tilt": 46.987170337259265
+     },
+     {
+      "id": 3895,
+      "size": [
+       1.002903953474015,
+       0.8293482730863615,
+       0.7652252248954028
+      ],
+      "position": [
+       -14.305851936340332,
+       14.257034301757812,
+       3.386408567428589
+      ],
+      "speed": 0.0006747708477850187,
+      "angularSpeed": 0.000597747424115033,
+      "maxSpeed": 0.05222938000646774,
+      "maxSpeedStep": 2957,
+      "stepsAboveSettled": 1,
+      "displacement": 0.0014538548545502948,
+      "contacts": 7,
+      "above": 2,
+      "below": 2,
+      "onFloor": false,
+      "pileEdgeDistance": 24.008686065673828,
+      "heightFraction": 0.4995159349893924,
+      "tilt": 37.82907557868392
+     },
+     {
+      "id": 8295,
+      "size": [
+       0.8927391714416444,
+       0.6945252685574814,
+       0.9909019704442471
+      ],
+      "position": [
+       -13.363626480102539,
+       14.089632034301758,
+       4.301965236663818
+      ],
+      "speed": 0.0008832176859702003,
+      "angularSpeed": 0.0013817450462494617,
+      "maxSpeed": 0.05022803030638889,
+      "maxSpeedStep": 2957,
+      "stepsAboveSettled": 1,
+      "displacement": 0.0010699983583859884,
+      "contacts": 6,
+      "above": 0,
+      "below": 5,
+      "onFloor": false,
+      "pileEdgeDistance": 24.176088333129883,
+      "heightFraction": 0.6579602906601612,
+      "tilt": 26.578523455578942
+     },
+     {
+      "id": 7045,
+      "size": [
+       0.7003966956865042,
+       0.5376851869048551,
+       0.5601839490234852
+      ],
+      "position": [
+       -13.347293853759766,
+       13.789407730102539,
+       3.309133768081665
+      ],
+      "speed": 0.00028645967915938935,
+      "angularSpeed": 0.0014758333064846803,
+      "maxSpeed": 0.04930296968840075,
+      "maxSpeedStep": 2960,
+      "stepsAboveSettled": 0,
+      "displacement": 0.0026388329032212875,
+      "contacts": 7,
+      "above": 2,
+      "below": 2,
+      "onFloor": false,
+      "pileEdgeDistance": 24.4763126373291,
+      "heightFraction": 0.48614291701734424,
+      "tilt": 35.807103326669235
+     },
+     {
+      "id": 9916,
+      "size": [
+       0.5827570420922712,
+       1.1799299217760564,
+       0.6115376036381349
+      ],
+      "position": [
+       18.083772659301758,
+       6.24868106842041,
+       4.555848121643066
+      ],
+      "speed": 0.0009540556225927818,
+      "angularSpeed": 0.001594264369338845,
+      "maxSpeed": 0.049027453400027794,
+      "maxSpeedStep": 2976,
+      "stepsAboveSettled": 0,
+      "displacement": 0.001957527812624367,
+      "contacts": 4,
+      "above": 2,
+      "below": 2,
+      "onFloor": false,
+      "pileEdgeDistance": 17.570363998413086,
+      "heightFraction": 0.7018967409947693,
+      "tilt": 34.22733420932684
+     },
+     {
+      "id": 9917,
+      "size": [
+       0.6378428125288338,
+       0.5392470537917688,
+       0.980553992278874
+      ],
+      "position": [
+       18.412357330322266,
+       7.350215435028076,
+       4.912837028503418
+      ],
+      "speed": 0.0008112399519386881,
+      "angularSpeed": 0.0012957645627335607,
+      "maxSpeed": 0.04896116070986325,
+      "maxSpeedStep": 2977,
+      "stepsAboveSettled": 0,
+      "displacement": 0.0018472448720853881,
+      "contacts": 3,
+      "above": 1,
+      "below": 2,
+      "onFloor": false,
+      "pileEdgeDistance": 17.241779327392578,
+      "heightFraction": 0.7636765075889527,
+      "tilt": 44.10706418880704
+     },
+     {
+      "id": 6420,
+      "size": [
+       0.7934401056962088,
+       0.7301797339692712,
+       0.6251371240010485
+      ],
+      "position": [
+       -15.415587425231934,
+       14.721062660217285,
+       3.890414237976074
+      ],
+      "speed": 0.00033852076798581706,
+      "angularSpeed": 0.0007267144561437247,
+      "maxSpeed": 0.04438332759461531,
+      "maxSpeedStep": 2960,
+      "stepsAboveSettled": 0,
+      "displacement": 0.0015633293852931763,
+      "contacts": 8,
+      "above": 3,
+      "below": 2,
+      "onFloor": false,
+      "pileEdgeDistance": 23.544657707214355,
+      "heightFraction": 0.5867381205816999,
+      "tilt": 33.34220084142538
+     },
+     {
+      "id": 4519,
+      "size": [
+       0.7608267000876368,
+       0.949751956644468,
+       0.8257515053730458
+      ],
+      "position": [
+       -14.307173728942871,
+       12.917712211608887,
+       1.7980767488479614
+      ],
+      "speed": 0.0004761690850009437,
+      "angularSpeed": 0.0008447929843138546,
+      "maxSpeed": 0.04284238058134128,
+      "maxSpeedStep": 2959,
+      "stepsAboveSettled": 0,
+      "displacement": 0.0008254821453264449,
+      "contacts": 7,
+      "above": 3,
+      "below": 3,
+      "onFloor": false,
+      "pileEdgeDistance": 25.348008155822754,
+      "heightFraction": 0.22464249455385601,
+      "tilt": 41.53717286971042
+     },
+     {
+      "id": 3270,
+      "size": [
+       0.7113351349486038,
+       0.8199186065699905,
+       0.709143705596216
+      ],
+      "position": [
+       -13.639898300170898,
+       14.147168159484863,
+       2.6637330055236816
+      ],
+      "speed": 0.0006913973781286197,
+      "angularSpeed": 0.0008216407068729684,
+      "maxSpeed": 0.03414676211447055,
+      "maxSpeedStep": 2960,
+      "stepsAboveSettled": 0,
+      "displacement": 0.0018796311262875003,
+      "contacts": 4,
+      "above": 2,
+      "below": 1,
+      "onFloor": false,
+      "pileEdgeDistance": 24.118552207946777,
+      "heightFraction": 0.37445118737450184,
+      "tilt": 15.47617493515084
+     },
+     {
+      "id": 9521,
+      "size": [
+       0.6062808841932565,
+       0.5593400830635801,
+       1.0002289519645273
+      ],
+      "position": [
+       -14.764524459838867,
+       15.414738655090332,
+       4.623484134674072
+      ],
+      "speed": 0.0002510537233505807,
+      "angularSpeed": 0.0002755221359829171,
+      "maxSpeed": 0.033282340179216545,
+      "maxSpeedStep": 2960,
+      "stepsAboveSettled": 0,
+      "displacement": 0.001603884648186423,
+      "contacts": 3,
+      "above": 0,
+      "below": 3,
+      "onFloor": false,
+      "pileEdgeDistance": 22.85098171234131,
+      "heightFraction": 0.7136016904150919,
+      "tilt": 32.52263662575834
+     },
+     {
+      "id": 7669,
+      "size": [
+       0.7395670134108514,
+       0.5979959354968741,
+       1.0688392903655766
+      ],
+      "position": [
+       -14.425350189208984,
+       12.12923812866211,
+       4.1578474044799805
+      ],
+      "speed": 0.0007526175657956118,
+      "angularSpeed": 0.0009206326589698093,
+      "maxSpeed": 0.032859054464375446,
+      "maxSpeedStep": 2961,
+      "stepsAboveSettled": 0,
+      "displacement": 0.003792896471023698,
+      "contacts": 5,
+      "above": 2,
+      "below": 2,
+      "onFloor": false,
+      "pileEdgeDistance": 26.13648223876953,
+      "heightFraction": 0.6330195547905726,
+      "tilt": 23.30855098687814
+     },
+     {
+      "id": 9317,
+      "size": [
+       0.7285332448314875,
+       1.060865964484401,
+       0.5101671323180199
+      ],
+      "position": [
+       19.74605369567871,
+       6.89686918258667,
+       4.547277927398682
+      ],
+      "speed": 0.00032494972141714124,
+      "angularSpeed": 0.0005936666838523005,
+      "maxSpeed": 0.03248293996179826,
+      "maxSpeedStep": 2976,
+      "stepsAboveSettled": 0,
+      "displacement": 0.0006737094832256385,
+      "contacts": 3,
+      "above": 1,
+      "below": 2,
+      "onFloor": false,
+      "pileEdgeDistance": 15.908082962036133,
+      "heightFraction": 0.7004136007909421,
+      "tilt": 32.68256298558821
+     },
+     {
+      "id": 7020,
+      "size": [
+       0.7751913191052153,
+       0.7242669325321913,
+       0.6986615389352664
+      ],
+      "position": [
+       -15.702239036560059,
+       13.586105346679688,
+       3.8085744380950928
+      ],
+      "speed": 0.0009550203505966939,
+      "angularSpeed": 0.0013371231997367646,
+      "maxSpeed": 0.03157222502370828,
+      "maxSpeedStep": 2960,
+      "stepsAboveSettled": 0,
+      "displacement": 0.0016842488007386984,
+      "contacts": 5,
+      "above": 1,
+      "below": 3,
+      "onFloor": false,
+      "pileEdgeDistance": 24.679615020751953,
+      "heightFraction": 0.572575092998494,
+      "tilt": 14.239902144445454
+     },
+     {
+      "id": 770,
+      "size": [
+       0.9455435937037691,
+       0.6641972801182419,
+       0.9980173580581322
+      ],
+      "position": [
+       -15.705012321472168,
+       13.29636287689209,
+       2.0242838859558105
+      ],
+      "speed": 0.00017166136603918858,
+      "angularSpeed": 0.00042373329252617497,
+      "maxSpeed": 0.03044511355519907,
+      "maxSpeedStep": 2959,
+      "stepsAboveSettled": 0,
+      "displacement": 0.0005238841266684928,
+      "contacts": 6,
+      "above": 3,
+      "below": 3,
+      "onFloor": false,
+      "pileEdgeDistance": 24.96935749053955,
+      "heightFraction": 0.2637894368366541,
+      "tilt": 15.08489524733305
+     },
+     {
+      "id": 6395,
+      "size": [
+       0.950439820997417,
+       0.8257227474590763,
+       0.6643777722958475
+      ],
+      "position": [
+       -14.875707626342773,
+       13.969030380249023,
+       3.8985352516174316
+      ],
+      "speed": 0.0004329512989086796,
+      "angularSpeed": 0.00014102113666911877,
+      "maxSpeed": 0.02708281371850172,
+      "maxSpeedStep": 2960,
+      "stepsAboveSettled": 0,
+      "displacement": 0.0015682151451703672,
+      "contacts": 7,
+      "above": 2,
+      "below": 3,
+      "onFloor": false,
+      "pileEdgeDistance": 24.296689987182617,
+      "heightFraction": 0.588143526513452,
+      "tilt": 37.82365021855705
+     },
+     {
+      "id": 1395,
+      "size": [
+       0.5940161861479283,
+       0.8909986477112397,
+       0.5237394396681339
+      ],
+      "position": [
+       -16.061918258666992,
+       12.912589073181152,
+       2.6367790699005127
+      ],
+      "speed": 0.00014305113727459685,
+      "angularSpeed": 0.0004578337260675226,
+      "maxSpeed": 0.026643023550712564,
+      "maxSpeedStep": 2959,
+      "stepsAboveSettled": 0,
+      "displacement": 0.0003100953283628552,
+      "contacts": 2,
+      "above": 1,
+      "below": 1,
+      "onFloor": false,
+      "pileEdgeDistance": 24.812257766723633,
+      "heightFraction": 0.36978659466701636,
+      "tilt": 41.64174959692167
+     },
+     {
+      "id": 9291,
+      "size": [
+       0.824361608363688,
+       0.5220512157073245,
+       1.0038179954979567
+      ],
+      "position": [
+       17.98271369934082,
+       5.361614227294922,
+       4.3295159339904785
+      ],
+      "speed": 0.0002359259786921119,
+      "angularSpeed": 0.00022454935713490639,
+      "maxSpeed": 0.02647466511048384,
+      "maxSpeedStep": 2981,
+      "stepsAboveSettled": 0,
+      "displacement": 0.0018288341856789615,
+      "contacts": 5,
+      "above": 0,
+      "below": 4,
+      "onFloor": false,
+      "pileEdgeDistance": 17.671422958374023,
+      "heightFraction": 0.6627281577216828,
+      "tilt": 11.125004380526425
+     }
+    ],
+    "deepestPairs": [
+     {
+      "a": 1528,
+      "b": 4004,
+      "depth": 0.09829690570172156,
+      "relativeDepth": 0.16364337944427632,
+      "firstDepth": 0.09818422476507838,
+      "faceOverlap": 0.09829690570172156,
+      "edgeOverlap": 0.1406034231761749,
+      "bodies": [
+       {
+        "id": 1528,
+        "size": [
+         1.129805891797878,
+         0.8897806760855018,
+         0.6667602923465893
+        ],
+        "position": [
+         -4.328278541564941,
+         -20.978069305419922,
+         1.7154234647750854
+        ],
+        "speed": 3.198720696450829e-05,
+        "angularSpeed": 6.413093887023775e-05,
+        "maxSpeed": 0.00014016091844838032,
+        "maxSpeedStep": 2957,
+        "stepsAboveSettled": 0,
+        "displacement": 4.9040679120317305e-05,
+        "contacts": 5,
+        "above": 2,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 22.649890899658203,
+        "heightFraction": 0.21033868706814465,
+        "tilt": 44.03424118287299
+       },
+       {
+        "id": 4004,
+        "size": [
+         0.8630531835602596,
+         0.7045319011434913,
+         0.6006775589426979
+        ],
+        "position": [
+         -4.307760715484619,
+         -20.410465240478516,
+         2.1631171703338623
+        ],
+        "speed": 4.291534060030244e-05,
+        "angularSpeed": 0.00022474870603753162,
+        "maxSpeed": 0.0001769444849014234,
+        "maxSpeedStep": 2976,
+        "stepsAboveSettled": 0,
+        "displacement": 5.993939810907773e-05,
+        "contacts": 4,
+        "above": 1,
+        "below": 3,
+        "onFloor": false,
+        "pileEdgeDistance": 23.21749496459961,
+        "heightFraction": 0.2878156397229392,
+        "tilt": 45.69551222194436
+       }
+      ]
+     },
+     {
+      "a": 7909,
+      "b": 8534,
+      "depth": 0.05720128179444739,
+      "relativeDepth": 0.0808159263070772,
+      "firstDepth": 0.057202135155570266,
+      "faceOverlap": 0.05720128179444739,
+      "edgeOverlap": 0.06353397614443956,
+      "bodies": [
+       {
+        "id": 7909,
+        "size": [
+         0.7077971435617656,
+         0.9878638972761109,
+         0.9293044164776803
+        ],
+        "position": [
+         7.483211994171143,
+         -9.751222610473633,
+         4.620298862457275
+        ],
+        "speed": 8.092194399603758e-05,
+        "angularSpeed": 4.509382456902634e-05,
+        "maxSpeed": 0.00012794882785803317,
+        "maxSpeedStep": 2990,
+        "stepsAboveSettled": 0,
+        "displacement": 1.3934745022013148e-05,
+        "contacts": 4,
+        "above": 1,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 28.1709246635437,
+        "heightFraction": 0.7130504537511201,
+        "tilt": 29.900819523693926
+       },
+       {
+        "id": 8534,
+        "size": [
+         1.1823707640869543,
+         1.112254582857713,
+         0.804604087327607
+        ],
+        "position": [
+         7.543982982635498,
+         -10.84221363067627,
+         4.99472188949585
+        ],
+        "speed": 9.047348209764063e-05,
+        "angularSpeed": 7.382865820083455e-05,
+        "maxSpeed": 0.00017166136603918858,
+        "maxSpeedStep": 2991,
+        "stepsAboveSettled": 0,
+        "displacement": 2.3326062791128176e-05,
+        "contacts": 4,
+        "above": 0,
+        "below": 3,
+        "onFloor": false,
+        "pileEdgeDistance": 28.110153675079346,
+        "heightFraction": 0.7778473333555038,
+        "tilt": 42.780381509031955
+       }
+      ]
+     },
+     {
+      "a": 7965,
+      "b": 9240,
+      "depth": 0.04438251955227934,
+      "relativeDepth": 0.07641498867057045,
+      "firstDepth": 0.04438935972691782,
+      "faceOverlap": 0.04438251955227934,
+      "edgeOverlap": 0.1123401296525659,
+      "bodies": [
+       {
+        "id": 7965,
+        "size": [
+         0.5808090837206692,
+         0.7202417410211638,
+         1.0021980905905365
+        ],
+        "position": [
+         11.976264953613281,
+         2.963834524154663,
+         4.008103370666504
+        ],
+        "speed": 0.00019666279836344166,
+        "angularSpeed": 0.0002841969442945459,
+        "maxSpeed": 0.0003621765454146888,
+        "maxSpeedStep": 2982,
+        "stepsAboveSettled": 0,
+        "displacement": 8.482610054149915e-05,
+        "contacts": 5,
+        "above": 2,
+        "below": 1,
+        "onFloor": false,
+        "pileEdgeDistance": 23.677871704101562,
+        "heightFraction": 0.6071051600290372,
+        "tilt": 29.505405154265894
+       },
+       {
+        "id": 9240,
+        "size": [
+         1.001881198422052,
+         1.1376063008792698,
+         0.6283331830753014
+        ],
+        "position": [
+         13.057755470275879,
+         2.6296043395996094,
+         4.030007839202881
+        ],
+        "speed": 0.00011172650895937255,
+        "angularSpeed": 6.419945037087796e-05,
+        "maxSpeed": 0.00041583368143392524,
+        "maxSpeedStep": 2982,
+        "stepsAboveSettled": 0,
+        "displacement": 0.00012355972417270854,
+        "contacts": 6,
+        "above": 2,
+        "below": 3,
+        "onFloor": false,
+        "pileEdgeDistance": 22.596381187438965,
+        "heightFraction": 0.6108959023393478,
+        "tilt": 24.443214761487987
+       }
+      ]
+     },
+     {
+      "a": 2303,
+      "b": 2928,
+      "depth": 0.03583442184796648,
+      "relativeDepth": 0.061126610810048235,
+      "firstDepth": 0.03584232483278882,
+      "faceOverlap": 0.03583442184796648,
+      "edgeOverlap": 0.041192893950380394,
+      "bodies": [
+       {
+        "id": 2303,
+        "size": [
+         0.7126921587623656,
+         0.5862327613634989,
+         1.0830699977930633
+        ],
+        "position": [
+         10.708995819091797,
+         -22.477651596069336,
+         2.615717887878418
+        ],
+        "speed": 4.291534060030244e-05,
+        "angularSpeed": 4.590169403597108e-05,
+        "maxSpeed": 9.159741899577525e-05,
+        "maxSpeedStep": 2966,
+        "stepsAboveSettled": 0,
+        "displacement": 2.84508397868658e-05,
+        "contacts": 6,
+        "above": 2,
+        "below": 3,
+        "onFloor": false,
+        "pileEdgeDistance": 21.15030860900879,
+        "heightFraction": 0.3661417897878787,
+        "tilt": 43.591329573616
+       },
+       {
+        "id": 2928,
+        "size": [
+         0.5871570281917229,
+         0.9184630475006997,
+         0.9861833437113091
+        ],
+        "position": [
+         11.376184463500977,
+         -22.081050872802734,
+         2.5971457958221436
+        ],
+        "speed": 2.8610227673198096e-05,
+        "angularSpeed": 9.511892450153728e-05,
+        "maxSpeed": 0.00012874601816292852,
+        "maxSpeedStep": 2992,
+        "stepsAboveSettled": 0,
+        "displacement": 4.141146101759411e-05,
+        "contacts": 4,
+        "above": 0,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 21.54690933227539,
+        "heightFraction": 0.3629277417030424,
+        "tilt": 22.211046952398494
+       }
+      ]
+     },
+     {
+      "a": 5479,
+      "b": 7354,
+      "depth": 0.02033443813261515,
+      "relativeDepth": 0.03150808493036213,
+      "firstDepth": 0.01918030748998134,
+      "faceOverlap": 0.02033443813261515,
+      "edgeOverlap": 0.02374221067558646,
+      "bodies": [
+       {
+        "id": 5479,
+        "size": [
+         0.8157104141078889,
+         1.0733205287484453,
+         0.6453720744233579
+        ],
+        "position": [
+         14.502071380615234,
+         -21.381088256835938,
+         2.6349782943725586
+        ],
+        "speed": 0.0008753046404188453,
+        "angularSpeed": 0.0013731218622803174,
+        "maxSpeed": 0.0015263629851441421,
+        "maxSpeedStep": 2952,
+        "stepsAboveSettled": 0,
+        "displacement": 0.0010636810506747328,
+        "contacts": 4,
+        "above": 2,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 21.15206527709961,
+        "heightFraction": 0.3694749561548173,
+        "tilt": 18.36706773576776
+       },
+       {
+        "id": 7354,
+        "size": [
+         0.9260928906267509,
+         0.8927392200101167,
+         1.090574840665795
+        ],
+        "position": [
+         14.202010154724121,
+         -21.039703369140625,
+         3.3508450984954834
+        ],
+        "speed": 0.0014080912081319988,
+        "angularSpeed": 0.00012206709619437031,
+        "maxSpeed": 0.00217211732540676,
+        "maxSpeedStep": 2952,
+        "stepsAboveSettled": 0,
+        "displacement": 0.0015389609573817425,
+        "contacts": 9,
+        "above": 4,
+        "below": 4,
+        "onFloor": false,
+        "pileEdgeDistance": 21.452126502990723,
+        "heightFraction": 0.4933613941402387,
+        "tilt": 19.229817829387766
+       }
+      ]
+     },
+     {
+      "a": 394,
+      "b": 2270,
+      "depth": 0.016586489449253117,
+      "relativeDepth": 0.02672816412366679,
+      "firstDepth": 0.01658782685413085,
+      "faceOverlap": 0.016586489449253117,
+      "edgeOverlap": 0.06150181480689243,
+      "bodies": [
+       {
+        "id": 394,
+        "size": [
+         1.016409661225043,
+         0.6271226000506431,
+         0.7399244299391284
+        ],
+        "position": [
+         5.902282238006592,
+         11.703459739685059,
+         0.8125526905059814
+        ],
+        "speed": 0,
+        "angularSpeed": 1.1715686823281905e-05,
+        "maxSpeed": 5.8217595396292505e-05,
+        "maxSpeedStep": 2958,
+        "stepsAboveSettled": 0,
+        "displacement": 2.3360154559928683e-06,
+        "contacts": 2,
+        "above": 1,
+        "below": 0,
+        "onFloor": true,
+        "pileEdgeDistance": 26.562260627746582,
+        "heightFraction": 0.054089726310171136,
+        "tilt": 0
+       },
+       {
+        "id": 2270,
+        "size": [
+         0.6205622418550775,
+         0.758457053778693,
+         1.1225746819050983
+        ],
+        "position": [
+         6.036024570465088,
+         12.714276313781738,
+         0.9779067635536194
+        ],
+        "speed": 3.576278459149762e-06,
+        "angularSpeed": 2.1967346573161193e-05,
+        "maxSpeed": 3.198720696450829e-05,
+        "maxSpeedStep": 2945,
+        "stepsAboveSettled": 0,
+        "displacement": 2.106499319919621e-06,
+        "contacts": 2,
+        "above": 0,
+        "below": 2,
+        "onFloor": true,
+        "pileEdgeDistance": 25.551444053649902,
+        "heightFraction": 0.08270556238228972,
+        "tilt": 38.49605254102528
+       }
+      ]
+     },
+     {
+      "a": 2520,
+      "b": 4395,
+      "depth": 0.016012418263587014,
+      "relativeDepth": 0.028282925094871625,
+      "firstDepth": 0.016013649635392868,
+      "faceOverlap": 0.016768776245663197,
+      "edgeOverlap": 0.016012418263587014,
+      "bodies": [
+       {
+        "id": 2520,
+        "size": [
+         0.5661514220992103,
+         0.8649105046875775,
+         1.0833877299679444
+        ],
+        "position": [
+         -30.43444061279297,
+         14.05918025970459,
+         0.9314441680908203
+        ],
+        "speed": 5.722045534639619e-05,
+        "angularSpeed": 2.1639002136763003e-05,
+        "maxSpeed": 0.00011449677640795421,
+        "maxSpeedStep": 2990,
+        "stepsAboveSettled": 0,
+        "displacement": 2.1333134374825097e-06,
+        "contacts": 3,
+        "above": 2,
+        "below": 1,
+        "onFloor": true,
+        "pileEdgeDistance": 10.439735412597656,
+        "heightFraction": 0.07466484109406614,
+        "tilt": 0.014883359168428046
+       },
+       {
+        "id": 4395,
+        "size": [
+         1.1163412706926463,
+         1.1320091379573567,
+         1.015253478148952
+        ],
+        "position": [
+         -30.42591094970703,
+         13.849124908447266,
+         1.9262726306915283
+        ],
+        "speed": 7.152556918299524e-06,
+        "angularSpeed": 3.814990387944257e-05,
+        "maxSpeed": 7.152556918299524e-06,
+        "maxSpeedStep": 2942,
+        "stepsAboveSettled": 0,
+        "displacement": 5.960464477539062e-07,
+        "contacts": 3,
+        "above": 1,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 10.448265075683594,
+        "heightFraction": 0.2468278104178283,
+        "tilt": 6.058789707148961
+       }
+      ]
+     },
+     {
+      "a": 5795,
+      "b": 7670,
+      "depth": 0.013418499649384796,
+      "relativeDepth": 0.021036891217954438,
+      "firstDepth": 0,
+      "faceOverlap": 0.013418499649384796,
+      "edgeOverlap": 0.02483367895709432,
+      "bodies": [
+       {
+        "id": 5795,
+        "size": [
+         0.9164150010794401,
+         0.6378556370502337,
+         0.6941218205261975
+        ],
+        "position": [
+         -13.869951248168945,
+         13.393396377563477,
+         3.3932275772094727
+        ],
+        "speed": 0.003477790489213632,
+        "angularSpeed": 0.014773384099312257,
+        "maxSpeed": 1.3769370366919993,
+        "maxSpeedStep": 2956,
+        "stepsAboveSettled": 26,
+        "displacement": 0.23610709966083376,
+        "contacts": 8,
+        "above": 3,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 24.872323989868164,
+        "heightFraction": 0.500696018808723,
+        "tilt": 1.7819733845064798
+       },
+       {
+        "id": 7670,
+        "size": [
+         0.8926928483648225,
+         0.6730570358689875,
+         1.0359414759324863
+        ],
+        "position": [
+         -13.072891235351562,
+         13.400495529174805,
+         3.990510940551758
+        ],
+        "speed": 0.0005723833169302788,
+        "angularSpeed": 0.0007947915102679501,
+        "maxSpeed": 0.020593183904176318,
+        "maxSpeedStep": 2960,
+        "stepsAboveSettled": 0,
+        "displacement": 0.002254074272575984,
+        "contacts": 7,
+        "above": 2,
+        "below": 4,
+        "onFloor": false,
+        "pileEdgeDistance": 24.865224838256836,
+        "heightFraction": 0.6040606502265558,
+        "tilt": 36.04545808316877
+       }
+      ]
+     },
+     {
+      "a": 5033,
+      "b": 8158,
+      "depth": 0.011998753323615441,
+      "relativeDepth": 0.021641413760924183,
+      "firstDepth": 0.01200584900321644,
+      "faceOverlap": 0.011998753323615441,
+      "edgeOverlap": 0.04499921438695531,
+      "bodies": [
+       {
+        "id": 5033,
+        "size": [
+         0.661875973129645,
+         0.8477756198728457,
+         0.9690122137777507
+        ],
+        "position": [
+         -23.490060806274414,
+         -11.175835609436035,
+         3.807433605194092
+        ],
+        "speed": 4.291534060030244e-05,
+        "angularSpeed": 0.00014583178239422628,
+        "maxSpeed": 0.00014016091844838032,
+        "maxSpeedStep": 2965,
+        "stepsAboveSettled": 0,
+        "displacement": 3.219975093104197e-05,
+        "contacts": 7,
+        "above": 4,
+        "below": 3,
+        "onFloor": false,
+        "pileEdgeDistance": 17.38411521911621,
+        "heightFraction": 0.5723776628011058,
+        "tilt": 51.05545167762199
+       },
+       {
+        "id": 8158,
+        "size": [
+         1.0198814197210595,
+         0.5544348191004247,
+         0.9361377963097766
+        ],
+        "position": [
+         -24.584264755249023,
+         -11.607573509216309,
+         4.024521827697754
+        ],
+        "speed": 0,
+        "angularSpeed": 9.808980727183311e-05,
+        "maxSpeed": 0.00014016091844838032,
+        "maxSpeedStep": 2986,
+        "stepsAboveSettled": 0,
+        "displacement": 2.7325723232067876e-05,
+        "contacts": 3,
+        "above": 0,
+        "below": 3,
+        "onFloor": false,
+        "pileEdgeDistance": 16.2899112701416,
+        "heightFraction": 0.6099465044622525,
+        "tilt": 16.999400396448245
+       }
+      ]
+     },
+     {
+      "a": 2124,
+      "b": 5250,
+      "depth": 0.009841838372448675,
+      "relativeDepth": 0.015835621945179092,
+      "firstDepth": 0.009834994090268778,
+      "faceOverlap": 0.009841838372448675,
+      "edgeOverlap": 0.011306776691324849,
+      "bodies": [
+       {
+        "id": 2124,
+        "size": [
+         0.6659395643742755,
+         0.7356739182025194,
+         1.0853651858633384
+        ],
+        "position": [
+         -7.2259721755981445,
+         22.18431854248047,
+         1.935185432434082
+        ],
+        "speed": 2.9490747667391287e-05,
+        "angularSpeed": 8.746705474699205e-05,
+        "maxSpeed": 0.0001181796354630417,
+        "maxSpeedStep": 2956,
+        "stepsAboveSettled": 0,
+        "displacement": 3.0251926280139733e-06,
+        "contacts": 6,
+        "above": 4,
+        "below": 1,
+        "onFloor": false,
+        "pileEdgeDistance": 16.081401824951172,
+        "heightFraction": 0.24837024157121593,
+        "tilt": 1.3976944872528994
+       },
+       {
+        "id": 5250,
+        "size": [
+         0.7732753610005603,
+         0.8469986727926879,
+         0.6214999579126015
+        ],
+        "position": [
+         -7.173666000366211,
+         23.06097984313965,
+         2.001577138900757
+        ],
+        "speed": 1.4305113836599048e-05,
+        "angularSpeed": 5.644538596026869e-05,
+        "maxSpeed": 0.00015407079017647852,
+        "maxSpeedStep": 2973,
+        "stepsAboveSettled": 0,
+        "displacement": 7.996802249550067e-06,
+        "contacts": 5,
+        "above": 1,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 15.204740524291992,
+        "heightFraction": 0.2598598538546173,
+        "tilt": 1.4265395086837533
+       }
+      ]
+     },
+     {
+      "a": 6230,
+      "b": 6832,
+      "depth": 0.005420547520469499,
+      "relativeDepth": 0.01050304330556349,
+      "firstDepth": 0.005419432968841842,
+      "faceOverlap": 0.015467938378844193,
+      "edgeOverlap": 0.005420547520469499,
+      "bodies": [
+       {
+        "id": 6230,
+        "size": [
+         0.5205681920750067,
+         0.9168600489851086,
+         0.5865162770496681
+        ],
+        "position": [
+         24.382272720336914,
+         -15.97438907623291,
+         1.9463646411895752
+        ],
+        "speed": 0,
+        "angularSpeed": 3.432258870079981e-05,
+        "maxSpeed": 5.766575743470673e-05,
+        "maxSpeedStep": 2950,
+        "stepsAboveSettled": 0,
+        "displacement": 1.6689300537109375e-06,
+        "contacts": 7,
+        "above": 3,
+        "below": 4,
+        "onFloor": false,
+        "pileEdgeDistance": 11.27186393737793,
+        "heightFraction": 0.25030489246470206,
+        "tilt": 40.52586358250162
+       },
+       {
+        "id": 6832,
+        "size": [
+         0.5160930373007432,
+         0.6997257417999208,
+         0.8951483516721055
+        ],
+        "position": [
+         24.296770095825195,
+         -16.327083587646484,
+         2.735025405883789
+        ],
+        "speed": 0,
+        "angularSpeed": 2.354470082138147e-05,
+        "maxSpeed": 0.00011444091069279239,
+        "maxSpeedStep": 2995,
+        "stepsAboveSettled": 0,
+        "displacement": 1.9073486328125e-06,
+        "contacts": 4,
+        "above": 1,
+        "below": 3,
+        "onFloor": false,
+        "pileEdgeDistance": 11.357366561889648,
+        "heightFraction": 0.3867889036719706,
+        "tilt": 27.589808777416643
+       }
+      ]
+     },
+     {
+      "a": 2020,
+      "b": 5795,
+      "depth": 0.004905695164429735,
+      "relativeDepth": 0.00769091763007088,
+      "firstDepth": 0,
+      "faceOverlap": 0.052375815622108246,
+      "edgeOverlap": 0.004905695164429735,
+      "bodies": [
+       {
+        "id": 2020,
+        "size": [
+         1.070681694452651,
+         1.1709341501817105,
+         1.1166393117746338
+        ],
+        "position": [
+         -14.87093448638916,
+         13.594962120056152,
+         2.707021713256836
+        ],
+        "speed": 0.00047271853095323245,
+        "angularSpeed": 0.0006543532406690836,
+        "maxSpeed": 0.05400596267444688,
+        "maxSpeedStep": 2959,
+        "stepsAboveSettled": 1,
+        "displacement": 0.0012947460056941709,
+        "contacts": 8,
+        "above": 5,
+        "below": 3,
+        "onFloor": false,
+        "pileEdgeDistance": 24.67075824737549,
+        "heightFraction": 0.3819426421747046,
+        "tilt": 46.987170337259265
+       },
+       {
+        "id": 5795,
+        "size": [
+         0.9164150010794401,
+         0.6378556370502337,
+         0.6941218205261975
+        ],
+        "position": [
+         -13.869951248168945,
+         13.393396377563477,
+         3.3932275772094727
+        ],
+        "speed": 0.003477790489213632,
+        "angularSpeed": 0.014773384099312257,
+        "maxSpeed": 1.3769370366919993,
+        "maxSpeedStep": 2956,
+        "stepsAboveSettled": 26,
+        "displacement": 0.23610709966083376,
+        "contacts": 8,
+        "above": 3,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 24.872323989868164,
+        "heightFraction": 0.500696018808723,
+        "tilt": 1.7819733845064798
+       }
+      ]
+     },
+     {
+      "a": 9778,
+      "b": 9804,
+      "depth": 0.004705959073807664,
+      "relativeDepth": 0.006905716022974029,
+      "firstDepth": 0.004713507021012031,
+      "faceOverlap": 0.004705959073807664,
+      "edgeOverlap": 0.01201155190818981,
+      "bodies": [
+       {
+        "id": 9778,
+        "size": [
+         0.9175532663008198,
+         1.0625014329794795,
+         1.1272033374989405
+        ],
+        "position": [
+         7.0288615226745605,
+         -21.31125831604004,
+         4.099374771118164
+        ],
+        "speed": 2.8610227673198096e-05,
+        "angularSpeed": 2.6673728709081612e-05,
+        "maxSpeed": 0.00011796299066956515,
+        "maxSpeedStep": 2968,
+        "stepsAboveSettled": 0,
+        "displacement": 3.873843385999661e-06,
+        "contacts": 5,
+        "above": 2,
+        "below": 3,
+        "onFloor": false,
+        "pileEdgeDistance": 22.316701889038086,
+        "heightFraction": 0.622900401024673,
+        "tilt": 40.87714740888296
+       },
+       {
+        "id": 9804,
+        "size": [
+         0.6814585277112201,
+         0.8645883340388536,
+         1.0610294319456441
+        ],
+        "position": [
+         7.616352081298828,
+         -20.842884063720703,
+         5.018589973449707
+        ],
+        "speed": 4.046097199801879e-05,
+        "angularSpeed": 5.9640711745693095e-05,
+        "maxSpeed": 0.00011444091069279239,
+        "maxSpeedStep": 2975,
+        "stepsAboveSettled": 0,
+        "displacement": 2.1542276378777538e-05,
+        "contacts": 2,
+        "above": 0,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 22.785076141357422,
+        "heightFraction": 0.781977894914652,
+        "tilt": 44.64866171561777
+       }
+      ]
+     },
+     {
+      "a": 370,
+      "b": 4745,
+      "depth": 0.004565078348741869,
+      "relativeDepth": 0.007586494394401142,
+      "firstDepth": 0.00456136259211104,
+      "faceOverlap": 0.010849175864118044,
+      "edgeOverlap": 0.004565078348741869,
+      "bodies": [
+       {
+        "id": 370,
+        "size": [
+         1.0389734038850293,
+         0.6366740236524493,
+         0.7959703412139788
+        ],
+        "position": [
+         3.0646469593048096,
+         13.427034378051758,
+         0.8171539902687073
+        ],
+        "speed": 3.576278459149762e-06,
+        "angularSpeed": 1.9082895694205387e-05,
+        "maxSpeed": 1.4745373833695643e-05,
+        "maxSpeedStep": 2968,
+        "stepsAboveSettled": 0,
+        "displacement": 1.0990553447357282e-06,
+        "contacts": 4,
+        "above": 3,
+        "below": 0,
+        "onFloor": true,
+        "pileEdgeDistance": 24.838685989379883,
+        "heightFraction": 0.05488601779124585,
+        "tilt": 0.11635245374838206
+       },
+       {
+        "id": 4745,
+        "size": [
+         0.9883227544371038,
+         0.6017375234747305,
+         0.8429125475697219
+        ],
+        "position": [
+         3.2393529415130615,
+         14.243402481079102,
+         1.6955559253692627
+        ],
+        "speed": 2.9490747667391287e-05,
+        "angularSpeed": 1.818299162512274e-05,
+        "maxSpeed": 5.9413599978426596e-05,
+        "maxSpeedStep": 2950,
+        "stepsAboveSettled": 0,
+        "displacement": 9.252361255613449e-06,
+        "contacts": 6,
+        "above": 3,
+        "below": 3,
+        "onFloor": false,
+        "pileEdgeDistance": 24.02231788635254,
+        "heightFraction": 0.20690045152719375,
+        "tilt": 28.080272344697498
+       }
+      ]
+     },
+     {
+      "a": 5035,
+      "b": 5036,
+      "depth": 0.004542022771431231,
+      "relativeDepth": 0.006666471008499235,
+      "firstDepth": 0.004512241532954819,
+      "faceOverlap": 0.004542022771431231,
+      "edgeOverlap": 0.00487438845571897,
+      "bodies": [
+       {
+        "id": 5035,
+        "size": [
+         0.8366851912811398,
+         0.9444809181382879,
+         1.1771997957024722
+        ],
+        "position": [
+         -25.845439910888672,
+         -6.6189188957214355,
+         2.1572978496551514
+        ],
+        "speed": 1.4305113836599048e-05,
+        "angularSpeed": 7.65132502851818e-05,
+        "maxSpeed": 0.00012138291599405635,
+        "maxSpeedStep": 2984,
+        "stepsAboveSettled": 0,
+        "displacement": 1.616330266635732e-05,
+        "contacts": 5,
+        "above": 2,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 15.028736114501953,
+        "heightFraction": 0.2868085600452278,
+        "tilt": 27.020688170988088
+       },
+       {
+        "id": 5036,
+        "size": [
+         0.7880059586139396,
+         0.6813234116882085,
+         1.0733513667946681
+        ],
+        "position": [
+         -24.89252281188965,
+         -6.357166767120361,
+         2.1173059940338135
+        ],
+        "speed": 4.046097199801879e-05,
+        "angularSpeed": 0.00011093528434774485,
+        "maxSpeed": 0.00014016091844838032,
+        "maxSpeedStep": 2985,
+        "stepsAboveSettled": 0,
+        "displacement": 3.0473774527108066e-05,
+        "contacts": 5,
+        "above": 2,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 15.981653213500977,
+        "heightFraction": 0.2798876516963277,
+        "tilt": 26.865784626691376
+       }
+      ]
+     },
+     {
+      "a": 2614,
+      "b": 4489,
+      "depth": 0.004406333268048845,
+      "relativeDepth": 0.005484446914825165,
+      "firstDepth": 0.006668578953181292,
+      "faceOverlap": 0.006982122003923674,
+      "edgeOverlap": 0.004406333268048845,
+      "bodies": [
+       {
+        "id": 2614,
+        "size": [
+         1.0525443144841118,
+         1.171293875342235,
+         1.0152878928231075
+        ],
+        "position": [
+         -20.396148681640625,
+         1.9333854913711548,
+         3.0638608932495117
+        ],
+        "speed": 0.00010728835040936248,
+        "angularSpeed": 0.0010125871367001845,
+        "maxSpeed": 0.0006282860697794907,
+        "maxSpeedStep": 2972,
+        "stepsAboveSettled": 0,
+        "displacement": 0.00030689620687773957,
+        "contacts": 8,
+        "above": 3,
+        "below": 5,
+        "onFloor": false,
+        "pileEdgeDistance": 20.47802734375,
+        "heightFraction": 0.443696497344863,
+        "tilt": 32.141813395012484
+       },
+       {
+        "id": 4489,
+        "size": [
+         1.0455331342760474,
+         0.8262522999430075,
+         0.8034234511666
+        ],
+        "position": [
+         -19.51941680908203,
+         1.6249301433563232,
+         3.714184522628784
+        ],
+        "speed": 0.0009092753832960345,
+        "angularSpeed": 0.0016702217980018716,
+        "maxSpeed": 0.0017384833541167681,
+        "maxSpeedStep": 2941,
+        "stepsAboveSettled": 0,
+        "displacement": 0.0010856919536470632,
+        "contacts": 5,
+        "above": 3,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 21.354759216308594,
+        "heightFraction": 0.5562401682031013,
+        "tilt": 32.47226025100754
+       }
+      ]
+     },
+     {
+      "a": 1909,
+      "b": 7559,
+      "depth": 0.004078058318649269,
+      "relativeDepth": 0.007429543447296302,
+      "firstDepth": 0.004078010443768876,
+      "faceOverlap": 0.022989914887373675,
+      "edgeOverlap": 0.004078058318649269,
+      "bodies": [
+       {
+        "id": 1909,
+        "size": [
+         0.8873228776734322,
+         0.549904610333033,
+         0.7982883509248495
+        ],
+        "position": [
+         -23.603822708129883,
+         -8.890583992004395,
+         3.028820753097534
+        ],
+        "speed": 6.397441392901659e-05,
+        "angularSpeed": 6.641778407667115e-05,
+        "maxSpeed": 0.0001831948379915505,
+        "maxSpeedStep": 2981,
+        "stepsAboveSettled": 0,
+        "displacement": 5.6344015653459304e-05,
+        "contacts": 5,
+        "above": 3,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 17.270353317260742,
+        "heightFraction": 0.43763252269910885,
+        "tilt": 40.30433139704269
+       },
+       {
+        "id": 7559,
+        "size": [
+         0.8869728355668485,
+         0.5488975665299222,
+         1.1091728943865746
+        ],
+        "position": [
+         -23.12671661376953,
+         -9.660558700561523,
+         3.3929343223571777
+        ],
+        "speed": 2.8610227673198096e-05,
+        "angularSpeed": 0.0001019834136256485,
+        "maxSpeed": 0.00018151154162491628,
+        "maxSpeedStep": 2982,
+        "stepsAboveSettled": 0,
+        "displacement": 3.665138025393607e-05,
+        "contacts": 5,
+        "above": 1,
+        "below": 3,
+        "onFloor": false,
+        "pileEdgeDistance": 17.747459411621094,
+        "heightFraction": 0.5006452687266358,
+        "tilt": 29.18653155582252
+       }
+      ]
+     },
+     {
+      "a": 756,
+      "b": 3256,
+      "depth": 0.004032054440064825,
+      "relativeDepth": 0.006986207945547146,
+      "firstDepth": 0.00401901325089471,
+      "faceOverlap": 0.014316361721729898,
+      "edgeOverlap": 0.004032054440064825,
+      "bodies": [
+       {
+        "id": 756,
+        "size": [
+         0.8349892406957224,
+         1.0187060879543424,
+         1.1319296760251745
+        ],
+        "position": [
+         -15.518336296081543,
+         -16.77271842956543,
+         0.9160427451133728
+        ],
+        "speed": 5.733210512153116e-05,
+        "angularSpeed": 4.819309520589117e-05,
+        "maxSpeed": 0.00011444091069279239,
+        "maxSpeedStep": 2951,
+        "stepsAboveSettled": 0,
+        "displacement": 4.306409804389105e-06,
+        "contacts": 2,
+        "above": 2,
+        "below": 0,
+        "onFloor": true,
+        "pileEdgeDistance": 25.355839729309082,
+        "heightFraction": 0.07199950248415463,
+        "tilt": 0.1370391468268672
+       },
+       {
+        "id": 3256,
+        "size": [
+         1.0328225618461147,
+         0.5771449220366776,
+         0.7418121916009113
+        ],
+        "position": [
+         -15.291690826416016,
+         -16.856977462768555,
+         1.8080549240112305
+        ],
+        "speed": 7.152556863729843e-05,
+        "angularSpeed": 0.0001268309502385248,
+        "maxSpeed": 0.00013887753313340584,
+        "maxSpeedStep": 2944,
+        "stepsAboveSettled": 0,
+        "displacement": 5.9512185864713616e-05,
+        "contacts": 5,
+        "above": 3,
+        "below": 1,
+        "onFloor": false,
+        "pileEdgeDistance": 25.58248519897461,
+        "heightFraction": 0.22636929704204592,
+        "tilt": 41.83555942130576
+       }
+      ]
+     },
+     {
+      "a": 9317,
+      "b": 9942,
+      "depth": 0.003932378348541876,
+      "relativeDepth": 0.0077080197829964715,
+      "firstDepth": 0.0015368461987939064,
+      "faceOverlap": 0.003932378348541876,
+      "edgeOverlap": 0.004039653969791668,
+      "bodies": [
+       {
+        "id": 9317,
+        "size": [
+         0.7285332448314875,
+         1.060865964484401,
+         0.5101671323180199
+        ],
+        "position": [
+         19.74605369567871,
+         6.89686918258667,
+         4.547277927398682
+        ],
+        "speed": 0.00032494972141714124,
+        "angularSpeed": 0.0005936666838523005,
+        "maxSpeed": 0.03248293996179826,
+        "maxSpeedStep": 2976,
+        "stepsAboveSettled": 0,
+        "displacement": 0.0006737094832256385,
+        "contacts": 3,
+        "above": 1,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 15.908082962036133,
+        "heightFraction": 0.7004136007909421,
+        "tilt": 32.68256298558821
+       },
+       {
+        "id": 9942,
+        "size": [
+         1.1043742150766773,
+         1.1220244785305113,
+         1.1215963850961996
+        ],
+        "position": [
+         19.066356658935547,
+         6.9491286277771,
+         5.237942218780518
+        ],
+        "speed": 0.0009051870669173652,
+        "angularSpeed": 0.0009254311094215534,
+        "maxSpeed": 0.06773196800900373,
+        "maxSpeedStep": 2976,
+        "stepsAboveSettled": 1,
+        "displacement": 0.0017465186007623414,
+        "contacts": 3,
+        "above": 0,
+        "below": 3,
+        "onFloor": false,
+        "pileEdgeDistance": 16.587779998779297,
+        "heightFraction": 0.8199385437136039,
+        "tilt": 35.01885614615948
+       }
+      ]
+     },
+     {
+      "a": 2212,
+      "b": 6612,
+      "depth": 0.003930240474720792,
+      "relativeDepth": 0.005953030229027511,
+      "firstDepth": 0.003923404421587229,
+      "faceOverlap": 0.003930240474720792,
+      "edgeOverlap": 0.11283054834738271,
+      "bodies": [
+       {
+        "id": 2212,
+        "size": [
+         0.8386888492153957,
+         1.1206975093111395,
+         1.0583739908179268
+        ],
+        "position": [
+         2.6793928146362305,
+         -3.3417508602142334,
+         2.381845712661743
+        ],
+        "speed": 2.0230485999009396e-05,
+        "angularSpeed": 3.472008040788824e-05,
+        "maxSpeed": 5.3524834126134894e-05,
+        "maxSpeedStep": 2942,
+        "stepsAboveSettled": 0,
+        "displacement": 1.9392680556929354e-05,
+        "contacts": 6,
+        "above": 2,
+        "below": 3,
+        "onFloor": false,
+        "pileEdgeDistance": 32.97474384307861,
+        "heightFraction": 0.3256683517619397,
+        "tilt": 17.659222674869227
+       },
+       {
+        "id": 6612,
+        "size": [
+         0.721076414664276,
+         0.691972073353827,
+         0.6602083852281794
+        ],
+        "position": [
+         3.6469380855560303,
+         -3.307870388031006,
+         2.4286046028137207
+        ],
+        "speed": 2.47771839730461e-05,
+        "angularSpeed": 1.3504791746878444e-05,
+        "maxSpeed": 5.157782068246192e-05,
+        "maxSpeedStep": 2943,
+        "stepsAboveSettled": 0,
+        "displacement": 1.1411760276579209e-05,
+        "contacts": 5,
+        "above": 2,
+        "below": 2,
+        "onFloor": false,
+        "pileEdgeDistance": 32.00719857215881,
+        "heightFraction": 0.33376034920017456,
+        "tilt": 40.533689723473756
+       }
+      ]
+     }
+    ]
+   },
+   "replayMatches": true,
+   "floorTargetMet": false,
+   "finalWindow": {
+    "steps": 60,
+    "firstStep": 2941,
+    "lastStep": 3000,
+    "restSpeed": 0.01,
+    "settledMaxSpeed": 0.05,
+    "maxFloorPenetration": 0.0037263418498311163,
+    "p95FloorPenetration": 0.0037241114827708532,
+    "maxRelativeFloorPenetration": 0.00657766381580595,
+    "maxContactDepth": 0.09829690570172156,
+    "p95ContactDepth": 0.09829191455296826,
+    "maxRelativeContactDepth": 0.16364337944427632,
+    "maxSpeed": 1.3769370366919993,
+    "maxKineticEnergy": 0.3850495436579095,
+    "finalKineticEnergy": 0.00010021060309554043,
+    "restFraction": 1,
+    "contactTargetMet": false,
+    "settled": false
+   },
+   "maxContactDepth": 0.762104367356164,
+   "maxRelativeContactDepth": 1.1706922472259167,
+   "contactTargetMet": false,
+   "measuredContactTargetMet": false,
+   "meanMs": 3.2037481866666684,
+   "medianMs": 3.18209169999991,
+   "p95Ms": 3.3559166000000915,
+   "p99Ms": 3.47724589999998
+  }
+ ],
+ "timing": "Completed batches; samples are batch wall time / steps, quantiles are batch-average quantiles, mean is step-weighted; no rendering",
+ "quality": {
+  "floorTarget": 0.01,
+  "normalization": "smallest full body dimension (sphere diameter)",
+  "scope": "Floor every step; independent swept candidates and exact box/sphere overlap; contact target requires both \u22641%",
+  "resting": "rest-stack/rest-grid only: at least 10 measured seconds, floor and pair depth \u22641%, center drift from lead-in endpoint \u22641%; not overall accuracy",
+  "finalWindow": "Last options.finalWindow measured steps only (worst-over-window fields unchanged): max and p95 over those steps of each step's worst floor and pair depth; max speed and kinetic energy; fraction of bodies below 0.01 m/s on the last step; settled = contact target on every window step and max speed \u2264 0.05 m/s",
+  "replay": "Per-step counter/state validation; timed final snapshot must match replay exactly"
+ },
+ "limitations": [
+  "No SIMD variant comparison yet",
+  "Dense diagnostic candidate searches can be quadratic; analytic trajectories cover only named diagnostic cases",
+  "Timeout checked between batches/steps; cannot interrupt a blocked synchronous step or diagnostic",
+  "No portable peak-memory measurement; capacities recorded",
+  "Pipelined batch averages are not frame latency"
+ ],
+ "environment": {
+  "machine": "M4 Max",
+  "runtime": "v25.2.1",
+  "backend": "Node + Dawn; no browser/rendering",
+  "processMemory": {
+   "rss": 471859200,
+   "heapTotal": 200998912,
+   "heapUsed": 104908720,
+   "external": 22485435,
+   "arrayBuffers": 8092292,
+   "maxRssKiB": 460800,
+   "scope": "Process high-water RSS and final JS/external memory; includes harness and all selected engines, not GPU allocation or per-engine peak"
+  },
+  "os": "darwin 25.6.0",
+  "cpu": "Apple M4 Max",
+  "ramBytes": 137438953472,
+  "adapter": {
+   "subgroupMatrixConfigs": []
+  },
+  "maxBufferSize": 4294967295,
+  "maxStorageBufferBindingSize": 4294967292,
+  "gitHead": "cc5cb2a1a772b24379a826bf96f6565e5f32b69b",
+  "dirty": true,
+  "gitProvenance": "git"
+ },
+ "trimmed": "Derived from the raw compare:rapier JSON (--dump-movers 20): manifests[].bodies replaced by bodyCount and results[].qualitySamples removed; every other field, including finalWindow and movers, is unchanged. Raw sha256 617e5953b19be8349c0eca49128c0eb4b503e64b2e4a65fc9490d2766bd798ec. Raw files are not retained in the repo."
+}
