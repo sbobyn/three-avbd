@@ -1228,3 +1228,11 @@ Final verification after renderer lifecycle fixes: `pnpm check` passed with
 both builds. The existing large-bundle warning remains. `git diff --check` passed.
 No commits or publishing were performed. M1/older-discrete-GPU testing remains pending
 because those devices were not available in this session.
+
+## 2026-11-03 follow-up: explicit start-at-rest comparison
+
+The comparison CLI accepts `--avbd-start-at-rest on|off` and records the actual
+solver setting. Defaults remain on. Targeted semantic/wiring tests are not a
+large-scene qualification: the matched seed batches were skipped above load 8.
+See [the qualification checkpoint](START_AT_REST_QUALIFICATION_2026-11-03.md)
+for evidence, pending wall coverage, and the unexecuted batch recipe.
