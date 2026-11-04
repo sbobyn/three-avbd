@@ -3,6 +3,17 @@ import { SDF_MAX_POINTS } from './sdf-layout.ts';
  * witness between two dynamic meshes (meshMeshContacts). Other pairs use Algorithm 1 only. */
 /** SDF_SUPPORTS_WGSL for a pass whose pair results hold `maxPoints` points. */
 export const sdfSupportsSource = (maxPoints: number = SDF_MAX_POINTS, parallel = false) => /* wgsl */ `
+fn dropOpposedAmbiguous(normal: vec3f, count: u32) {
+  for(var index=0u;index<count;index++) {
+    let point=work.points[index];
+    if(point.flags.x==0u || dot(point.normal.xyz,normal)>=0.0) { continue; }
+    let sampleA=worldField(bodyA,point.x.xyz);
+    let sampleB=worldField(bodyB,point.x.xyz);
+    work.stats.x+=1u;
+    if((sampleA.phi<0.0 && sampleB.phi<0.0 && dot(sampleA.gradient,sampleB.gradient)>0.0) ||
+      (sampleA.phi>0.0 && sampleB.phi>0.0)) { work.points[index].flags.x=0u; }
+  }
+}
 fn meshPlaneContacts(pair: vec4u) -> bool {
   if(params.distances.w==0.0) { return false; }
   let fixedA=bodyA.velocity.w!=0.0 && atlas[bodyHeader(bodyA)].x==0u;
@@ -43,6 +54,7 @@ fn meshPlaneContacts(pair: vec4u) -> bool {
     }
   }
   let slot=min(work.identity.w,${maxPoints - 1}u);
+  dropOpposedAmbiguous(normal,slot);
   work.points[slot]=Point(vec4f(p,min(0.0,separation)),vec4f(normal,separation),
     vec4f(rot(bodyA.anchorRotation,invrot(bodyA.rotation,a-bodyA.position.xyz)),0),
     vec4f(rot(bodyB.anchorRotation,invrot(bodyB.rotation,b-bodyB.position.xyz)),0),vec4u(1,cached,id,0),vec4f(1,0,0,1),vec4f(0,1,0,0));
@@ -83,6 +95,7 @@ fn meshMeshContacts(pair: vec4u) -> bool {
     }
   }
   let slot=min(work.identity.w,${maxPoints - 1}u);
+  dropOpposedAmbiguous(normal,slot);
   work.points[slot]=Point(vec4f(p,min(0.0,separation)),vec4f(normal,separation),
     vec4f(rot(bodyA.anchorRotation,invrot(bodyA.rotation,a-bodyA.position.xyz)),0),
     vec4f(rot(bodyB.anchorRotation,invrot(bodyB.rotation,b-bodyB.position.xyz)),0),vec4u(1,cached,id,0),vec4f(1,0,0,1),vec4f(0,1,0,0));
