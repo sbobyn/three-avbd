@@ -36,6 +36,10 @@
     "./advanced": {
       "types": "./build/lib/advanced.d.ts",
       "import": "./build/lib/advanced.js"
+    },
+    "./pool": {
+      "types": "./build/lib/pool.d.ts",
+      "import": "./build/lib/pool.js"
     }
   },
   "files": [
@@ -63,9 +67,11 @@
     "sweep2d": "node --experimental-transform-types --no-warnings scripts/sweep2d.ts",
     "scaling2d": "node --experimental-transform-types --no-warnings scripts/scaling2d.ts",
     "build:lib": "rm -rf build && tsc -p tsconfig.lib.json",
-    "prepublishOnly": "pnpm check"
+    "prepublishOnly": "pnpm check",
+    "compare:rapier": "node --experimental-transform-types --no-warnings scripts/compare-rapier.ts"
   },
   "devDependencies": {
+    "@dimforge/rapier3d-compat": "0.21.0",
     "@types/node": "^25.0.0",
     "@types/three": "0.187.0",
     "@webgpu/types": "^0.1.74",

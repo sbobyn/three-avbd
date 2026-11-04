@@ -13,5 +13,5 @@
     "types": ["@webgpu/types"]
   },
   "include": [],
-  "files": ["src/lib/index.ts", "src/lib/advanced.ts", "src/lib/sdf.ts", "src/lib/queries.ts"]
+  "files": ["src/lib/index.ts", "src/lib/advanced.ts", "src/lib/sdf.ts", "src/lib/queries.ts", "src/lib/pool.ts"]
 }

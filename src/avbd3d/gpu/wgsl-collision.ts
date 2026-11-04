@@ -8,7 +8,7 @@
 //   warm-started from last step's point with the same feature in the same pair, found
 //   through a hash table of last step's pairs.
 
-import { PRELUDE_3D, REUSE_ANG_TOL, REUSE_LIN_TOL } from './layout.ts';
+import { BODY_LIFECYCLE_WGSL, PRELUDE_3D, REUSE_ANG_TOL, REUSE_LIN_TOL } from './layout.ts';
 import { HULL_WGSL } from './wgsl-hull.ts';
 
 /**
@@ -19,6 +19,7 @@ import { HULL_WGSL } from './wgsl-hull.ts';
  */
 export const refsWGSL = /* wgsl */ `
 ${PRELUDE_3D}
+${BODY_LIFECYCLE_WGSL}
 
 struct RefPose {
   pos: vec4f,
@@ -32,7 +33,7 @@ struct RefPose {
 @compute @workgroup_size(64)
 fn updateRefs(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
-  if (i >= params.bodyCount) { return; }
+  if (i >= params.bodyCount || !bodyEnabled(i)) { return; }
   let pos = bodies[i].pos.xyz;
   let rot = bodies[i].rot;
   let last = refs[i];
@@ -78,6 +79,7 @@ fn ignored(hi: u32, lo: u32) -> bool {
 
 export const broadphaseWGSL = /* wgsl */ `
 ${PRELUDE_3D}
+${BODY_LIFECYCLE_WGSL}
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> bodies: array<Body>;
@@ -128,7 +130,7 @@ fn cellHash(c: vec3i, level: u32) -> u32 {
 @compute @workgroup_size(64)
 fn gridCount(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
-  if (i >= params.bodyCount || isLarge(i)) { return; }
+  if (i >= params.bodyCount || !bodyEnabled(i) || isLarge(i)) { return; }
   let c = cellAt(i, levelOf(i));
   for (var k = 0u; k < 3u; k++) { atomicStore(&grid[params.gridCellOffset + 3u * i + k], bitcast<u32>(c[k])); }
   atomicAdd(&grid[cellHash(c, levelOf(i))], 1u);
@@ -137,7 +139,7 @@ fn gridCount(@builtin(global_invocation_id) gid: vec3u) {
 @compute @workgroup_size(64)
 fn gridScatter(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
-  if (i >= params.bodyCount || isLarge(i)) { return; }
+  if (i >= params.bodyCount || !bodyEnabled(i) || isLarge(i)) { return; }
   let h = cellHash(cellAt(i, levelOf(i)), levelOf(i));
   let slot = atomicLoad(&grid[h]) + atomicAdd(&grid[params.gridCursorOffset + h], 1u);
   atomicStore(&grid[params.gridSortedOffset + slot], i);
@@ -204,6 +206,7 @@ fn probeOf(i: u32) -> Probe {
 }
 
 fn testPair(P: Probe, j: u32) {
+  if (!bodyEnabled(j)) { return; }
   if (!P.dynamic && bodies[j].size.w <= 0.0) { return; }
   // Each in a group the other collides with
   let fi = filters[P.index];
@@ -239,7 +242,7 @@ fn testPair(P: Probe, j: u32) {
 @compute @workgroup_size(64)
 fn findPairs(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
-  if (i >= params.bodyCount || bodies[i].size.w <= 0.0) { return; }
+  if (i >= params.bodyCount || !bodyEnabled(i) || bodies[i].size.w <= 0.0) { return; }
   let small = !isLarge(i);
   let P = probeOf(i);
   if (small) {
@@ -282,7 +285,7 @@ fn findPairs(@builtin(global_invocation_id) gid: vec3u) {
 @compute @workgroup_size(64)
 fn findFixedLarge(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
-  if (i >= params.bodyCount || bodies[i].size.w > 0.0 || isLarge(i)) { return; }
+  if (i >= params.bodyCount || !bodyEnabled(i) || bodies[i].size.w > 0.0 || isLarge(i)) { return; }
   // Fine fixed bodies own their pairs with coarse movers, since fixed bodies do not
   // run findPairs and a coarse body cannot cover fine cells with just 27 probes.
   if (params.fineGrid.z > 0.0 && levelOf(i) == 0u) {
@@ -310,7 +313,7 @@ fn findFixedLarge(@builtin(global_invocation_id) gid: vec3u) {
   var loaded = false;
   for (var k = 0u; k < params.largeCount; k++) {
     let l = statics[k];
-    if (bodies[l].size.w <= 0.0) { continue; }
+    if (!bodyEnabled(l) || bodies[l].size.w <= 0.0) { continue; }
     if (!loaded) {
       P = probeOf(i);
       loaded = true;
@@ -741,7 +744,7 @@ fn copyContacts(prev: Manifold) {
     var k = prevContacts[prev.ids.z + i];
     // C(x-) at the current poses, then the usual warm start (Eq. 19)
     let d = (qrotate(qA, k.rA) + pA) - (qrotate(qB, k.rB) + pB);
-    k.c0x = dot(basis[0], d) + COLLISION_MARGIN;
+    k.c0x = dot(basis[0], d) + params.contactMargin;
     k.c0y = dot(basis[1], d);
     k.c0z = dot(basis[2], d);
     k.lam = k.lam * params.alpha * params.gamma;
@@ -877,7 +880,7 @@ fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
 
     // C(x-) in the contact basis, plus the collision margin on the normal row
     let d = (qrotate(qA, rA) + A.c) - (qrotate(qB, rB) + B.c);
-    let c0 = vec3f(dot(basis[0], d) + COLLISION_MARGIN, dot(basis[1], d), dot(basis[2], d));
+    let c0 = vec3f(dot(basis[0], d) + params.contactMargin, dot(basis[1], d), dot(basis[2], d));
 
     // Warm start the dual variables and penalty parameters (Eq. 19)
     lam = lam * params.alpha * params.gamma;

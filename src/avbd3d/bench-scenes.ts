@@ -37,16 +37,19 @@ export function boxColumns(solver: Solver, n: number, h: number): void {
   }
 }
 
-/** An n × n × h block of randomly sized and turned boxes dropped into a pile. */
-export function boxPile(solver: Solver, n: number, h: number): void {
+/**
+ * An n × n × h block of randomly sized and turned boxes dropped into a pile. At the default
+ * 1.6 m spacing neighbours can start overlapping; 2.1 m clears the largest box's diagonal.
+ */
+export function boxPile(solver: Solver, n: number, h: number, spacing = 1.6): void {
   solver.clear();
-  ground(solver, n * 1.6);
+  ground(solver, n * spacing);
   const rand = random(12345);
   for (let z = 0; z < h; z++) {
     for (let x = 0; x < n; x++) {
       for (let y = 0; y < n; y++) {
         const size = [0.5 + rand() * 0.7, 0.5 + rand() * 0.7, 0.5 + rand() * 0.7];
-        const b = new Rigid(solver, size, 1, 0.5, [(x - n / 2) * 1.6, (y - n / 2) * 1.6, 2 + z * 1.6]);
+        const b = new Rigid(solver, size, 1, 0.5, [(x - n / 2) * spacing, (y - n / 2) * spacing, 2 + z * spacing]);
         const q = [rand() - 0.5, rand() - 0.5, rand() - 0.5, rand() - 0.5];
         const l = Math.hypot(...q);
         b.positionAng.set(q.map((c) => c / l));

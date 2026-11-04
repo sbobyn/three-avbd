@@ -1,3 +1,4 @@
+import { capsuleContact, sweepCapsuleTriangle } from './capsule.ts';
 import { TriangleBvh, type QueryStats } from './bvh.ts';
 import { add, sub, mul, cross, dot, length, unit, normal, vector, tolerance, contact, rayTriangle, sweepTriangle, type Triangle, type Vec3 } from './geometry.ts';
 export type { Vec3, QueryStats };
@@ -23,6 +24,11 @@ export interface OverlapHit { meshId: number; triangle: number; point: Vec3; nor
 export interface SphereSweep { center: ArrayLike<number>; radius: number; translation: ArrayLike<number> }
 export interface SweepHit { meshId: number; triangle: number; fraction: number; point: Vec3; normal: Vec3; startedOverlapping: boolean }
 export type SweepResult = { status: 'hit'; hit: SweepHit } | { status: 'miss' };
+/** Endpoints are cap centers; full height = segment length + twice radius. */
+export interface Capsule { start: ArrayLike<number>; end: ArrayLike<number>; radius: number }
+export interface CapsuleSweep extends Capsule { translation: ArrayLike<number> }
+export interface CapsuleSweepOptions extends QueryOptions { maxIterations?: number }
+export type CapsuleSweepResult = SweepResult | { status: 'indeterminate'; fraction: number };
 interface Mesh {
   handle: MeshHandle; triangles: Triangle[]; indices: number[]; bvh: TriangleBvh;
   group: number; collidesWith: number; epsilon: number;
@@ -123,6 +129,50 @@ export class StaticQueryScene {
       if (hits.length > max) hits.pop();
     }, options.stats);
     return { hits, complete: count <= max };
+  }
+  private capsule(input: Capsule) {
+    const start = vector(input.start, 'start'), end = vector(input.end, 'end'), radius = radiusValue(input.radius);
+    const segment = sub(end, start), segmentLength = length(segment);
+    const bound = radius + segmentLength / 2;
+    if (!segment.every(Number.isFinite) || !Number.isFinite(bound)) throw new Error('capsule exceeds numeric range');
+    const center = add(mul(start, .5), mul(end, .5));
+    return { start, end, radius, segmentLength, center, bound };
+  }
+  overlapCapsule(input: Capsule, options: OverlapOptions = {}): { hits: OverlapHit[]; complete: boolean } {
+    const meshes = this.selected(options), c = this.capsule(input);
+    if (c.segmentLength === 0) return this.overlapSphere(c.start, c.radius, options);
+    const max = options.maxResults ?? 64;
+    if (!Number.isSafeInteger(max) || max < 0) throw new Error('maxResults must be a nonnegative safe integer');
+    const hits: OverlapHit[] = []; let count = 0;
+    for (const m of meshes) m.bvh.visit(c.center, [0, 0, 0], c.bound + m.epsilon + 1e-10 * c.bound, () => 0, i => {
+      const hit = capsuleContact(c.start, c.end, m.triangles[i]);
+      if (!Number.isFinite(hit.distance) || !hit.normal.every(Number.isFinite)) throw new Error('capsule distance exceeds numeric range');
+      if (hit.distance > c.radius + tolerance(m.triangles[i], c.radius)) return;
+      count++;
+      if (max === 0) return;
+      hits.push({ meshId: m.handle.id, triangle: m.indices[i], ...hit }); hits.sort(order);
+      if (hits.length > max) hits.pop();
+    }, options.stats);
+    return { hits, complete: count <= max };
+  }
+  sweepCapsule(input: CapsuleSweep, options: CapsuleSweepOptions = {}): CapsuleSweepResult {
+    const meshes = this.selected(options), c = this.capsule(input), translation = vector(input.translation, 'translation');
+    const budget = options.maxIterations ?? 256;
+    if (!Number.isSafeInteger(budget) || budget < 1 || budget > 4096) throw new Error('maxIterations must be an integer from 1 to 4096');
+    if (!Number.isFinite(length(translation)) || !add(c.start, translation).every(Number.isFinite) || !add(c.end, translation).every(Number.isFinite)) throw new Error('sweep exceeds numeric range');
+    if (c.segmentLength === 0) return this.sweepSphere({ center: c.start, radius: c.radius, translation }, options);
+    let best: SweepHit | null = null, unresolved = Infinity;
+    for (const m of meshes) m.bvh.visit(c.center, translation, c.bound + 2 * (m.epsilon + 1e-10 * c.bound), () => best?.fraction ?? 1, i => {
+      const result = sweepCapsuleTriangle(c.start, c.end, c.radius, translation, m.triangles[i], budget);
+      if (result.status === 'indeterminate') { unresolved = Math.min(unresolved, result.fraction); return; }
+      if (result.status === 'miss') return;
+      const { status: _, ...contact } = result;
+      const hit = { meshId: m.handle.id, triangle: m.indices[i], ...contact };
+      if (!best || hit.fraction < best.fraction || (hit.fraction === best.fraction && order(hit, best) < 0)) best = hit;
+    }, options.stats);
+    // An unresolved earlier candidate prevents a claim that a known hit is nearest.
+    if (unresolved <= ((best as SweepHit | null)?.fraction ?? 1)) return { status: 'indeterminate', fraction: unresolved };
+    return best ? { status: 'hit', hit: best } : { status: 'miss' };
   }
   sweepSphere(input: SphereSweep, options: QueryOptions = {}): SweepResult {
     const meshes = this.selected(options), center = vector(input.center, 'center'), translation = vector(input.translation, 'translation'), radius = radiusValue(input.radius);

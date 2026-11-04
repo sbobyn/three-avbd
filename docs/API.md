@@ -1,7 +1,8 @@
 # three-avbd: library API
 
-Status: v0.4 release candidate; npm 0.3.0 does not include the SDF entry point.
-See [release scope and verification](SDF_RELEASE_0.4.md).
+Status: 0.4.0. npm 0.3.0 does not include the `sdf`, `queries` or `pool` entry points.
+See [0.4.0 release notes and migration](RELEASE_0.4.md), [audit dispositions](AUDIT_DISPOSITION.md)
+and [historical SDF verification](SDF_RELEASE_0.4.md).
 
 ## Goal
 
@@ -25,7 +26,12 @@ preparation API also include the reference utilities they depend on.
   exported constant.
 - **`three-avbd/sdf`**: experimental analytic/voxel fields, baking, curvature seeds, mass/inertia
   preparation and collision parameters; see [baking](SDF_BAKING.md) and [World integration](SDF_WORLD.md).
-- Built by `tsc` from the three public entry points and their transitive dependencies into `build/`
+- **`three-avbd/queries`** (new in 0.4.0): CPU-only static triangle queries (`StaticQueryScene`,
+  `boxMesh`): nearest rays, sphere/capsule overlaps and translational sweeps, with no GPU or Three
+  runtime import; see [static queries](QUERIES.md).
+- **`three-avbd/pool`** (new in 0.4.0): `BodyPool`, fixed-template
+  pools in a fixed-storage World (`WorldOptions.storage`); see [Body pools](BODY_LIFECYCLE.md#body-pools).
+- Built by `tsc` from the five public entry points and their transitive dependencies into `build/`
   (the site builds to `dist/`). The tarball includes that runtime, declarations, README, license
   and third-party notices. Demo assets, benchmarks and test fixtures are excluded.
 
@@ -53,6 +59,9 @@ renderer.setAnimationLoop(() => {
 
 ### World
 
+Activation/reset (new in 0.4.0) and its GPU/lifetime semantics are described in
+[Body lifecycle](BODY_LIFECYCLE.md).
+
 - `World.create({ renderer | device, maxBodies, gravity?, dt?, iterations? })`. With a renderer,
   it uses the renderer's GPUDevice, which zero-copy drawing requires. With a bare `device` it
   runs headless (Node with Dawn, tests, workers).
@@ -79,8 +88,40 @@ renderer.setAnimationLoop(() => {
   applying anything. Calling `destroy()` again does nothing. Handle setters (`body.set`,
   `applyImpulse`, ...) also throw before changing CPU-side state. Raycasts submitted before
   destruction may still resolve with their captured inputs and body identity.
+- `error` is null until device loss or an automatic counter/body read fails. Automatic reads
+  retain the failure instead of rejecting without a caller; later GPU work throws or rejects.
+  Applications should check `world.error` even while paused, show the error, destroy the old
+  world and recreate the device/renderer and world. There is no automatic device recovery.
+- Renderer-backed body storage is owned by World. `destroy()` also releases BodyMesh ID and
+  colour storage; disposing a mesh's `geometry` releases its ID/colour storage earlier.
+  Both disposal orders are safe and idempotent. Remove meshes from the scene before reuse;
+  caller-provided geometry/materials and the shared device/renderer remain caller-owned.
+  The renderer bridge uses Three's attribute disposal/cache path (r186 and r187); it does not
+  infer storage release from geometry or texture counters.
 
-### Experimental SDF mode (0.4 release candidate; API may change)
+### Choosing settings
+
+- **`iterations`** (default 10): more is stiffer and costs more. Tall stacks and walls hold best at
+  10; 4 is the paper's large-scene setting, where walls stand unhit but fall more under impact
+  ([FINDINGS 8m](FINDINGS.md#2026-09-24--stage-8m-tall-brick-walls-at-4-iterations-slow-bodies-start-at-rest)).
+  `world.iterations` can change between steps.
+- **Contact margin** (`world.solver.params.contactMargin`, default 0.01 m): a resting contact
+  sits about this deep. 0.001 rests about 1.9 mm deep instead of 10.4 mm (one box on a floor,
+  M4 Max); its effect on tall-wall stability is not yet re-measured, so the default is unchanged.
+- **`maxBodies`**: the body buffer's fixed size (160 bytes a body). Adds past it return `null`;
+  disabled bodies still hold slots, and every step traverses up to the highest slot used, so size
+  it near the real peak rather than far above it.
+- **`dt` and `maxSubsteps`**: there is no CCD, so a fast body moves `v·dt` a step unchecked; a
+  smaller `dt` (e.g. 1/240 with `maxSubsteps = 8`) is the remedy for thin walls and fast shots.
+- **Fixed storage** (`storage: { growth: 'fixed', ... }`): every capacity explicit, checked
+  against the device before allocation and never grown. Needed for `three-avbd/pool`; no growth
+  readbacks; overflow is dropped and counted rather than repaired, so size for the worst case. The
+  default adaptive storage grows contacts, pairs and joints on its own and suits most scenes. See
+  [Body pools](BODY_LIFECYCLE.md#body-pools).
+
+How these compare with Rapier's defaults: [three-avbd vs Rapier](COMPARISON.md).
+
+### Experimental SDF mode (new in 0.4.0; API may change)
 
 `await world.enableSdfCollisions([{ body, field, scale?, rotation? }], params?, broadphase?)` installs SDF
 collisions for allocated body slots. Unassigned boxes/spheres use
@@ -333,3 +374,56 @@ All World methods accepting body handles reject handles from another World.
 - `pnpm build:lib` then `pnpm pack`: installed into a blank Vite project, it typechecks with
   full library checking on TypeScript 5.9 (with `@webgpu/types`) and 7, and builds. The first
   publish is `0.1.0`, with the README's section on using it.
+
+### Collision capability preflight
+
+`deviceCapabilities(device)` is a synchronous, allocation-free, frozen snapshot of
+**negotiated GPUDevice limits**. `standardHullCollisions` means the standard
+narrowphase can use native convex hull SAT (nine storage buffers per shader stage).
+Adapter support alone is insufficient: request the limit when creating the device,
+or pass `requiredLimits: await recommendedLimits()` to Three's renderer constructor.
+World and its solver use the supplied device; neither requests nor upgrades it.
+
+```ts
+const world = await World.create({ device, maxBodies: 256, requireHulls: true });
+const capabilities = world.capabilities;
+// capabilities.backend === 'standard'; capabilities.hullCollisions === 'native'
+```
+
+`requireHulls: true` rejects unsupported standard hull collisions before World
+allocates solver buffers or renderer storage attributes. A renderer must first be
+initialized to discover its actual device, so renderer initialization may itself
+allocate resources. Caller devices and renderer resources remain caller-owned.
+Omitting the option (or using false) preserves legacy behavior: hulls collide as
+principal-frame bounding boxes on eight-buffer devices. The first successful
+`addHull` using that fallback warns once per World. Hull mass and visual geometry
+remain hull-derived; the warning concerns collision geometry.
+
+`world.capabilities` returns a new frozen snapshot of the **installed** backend.
+Re-read after enabling/disabling SDF; retained snapshots never change. While SDF
+setup is pending, it reports the previous installed backend (operations still obey
+SDF preparation guards). Failed setup retains the previous backend. The creation
+option checks initial standard support, and does not prohibit later backend switches.
+`standardHullCollisions` remains a device capability across those switches;
+`hullCollisions` describes actual backend semantics:
+
+| backend | hullCollisions | geometry |
+|---|---|---|
+| standard | native or box-fallback | Boxes, spheres and device-dependent convex hulls |
+| sdf | explicit-sdf-field | Analytic boxes/spheres; hull bodies need explicit SDF bindings |
+| custom | unknown | Advanced caller backend; shape support is not inferred |
+
+`sdfFields` means the experimental SDF collision backend is installed, not that
+native hull SAT is running. SDF fields replace collision geometry only; mass,
+inertia and meshes remain caller-owned. `boxes`/`spheres` report built-in support
+and are false (unverified) for custom backends. `capsules`, `compounds`, `sensors`
+remain false: there are no native body helpers/encodings for those features. An
+analytic capsule SDF field does not provide a native capsule body API.
+`hullsEnabled` retains its historical meaning (standard solver hull support), even
+while SDF is installed. Direct advanced backend installation is reflected as
+`custom`; capabilities do not certify arbitrary shaders or device health.
+
+A separate collider handle/view is deferred: hull poses already use principal
+mass frames, and SDF bindings have independent field frames and transactional
+refresh ownership. A useful view needs explicit resource/lifetime and geometry
+semantics across those paths. C1 leaves existing body layouts and shape codes intact.

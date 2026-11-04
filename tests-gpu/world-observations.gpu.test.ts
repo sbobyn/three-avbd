@@ -145,6 +145,8 @@ gpuTest('observations: worlds without reporting bodies create no contact watch o
   const world = await create(device);
   try {
     box(world, 0); box(world, .9);
+    const retired = (world as unknown as { retiredBodies: { snapshot: () => unknown } }).retiredBodies;
+    retired.snapshot = () => { throw new Error('unreported read must not snapshot identities'); };
     world.step();
     await world.read([]);
     // Inspect resource presence rather than mocking the queue or running a benchmark.

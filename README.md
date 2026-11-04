@@ -19,10 +19,37 @@ destructible city of 94,000 voxel bodies ([code](https://github.com/sbobyn/three
 Needs a browser with WebGPU: Chrome or Edge on any platform, Safari 26 on macOS and iOS,
 Firefox where it ships WebGPU. Nothing is baked: every scene is simulated live on your GPU.
 
-## Experimental SDF collisions (0.4 release candidate)
+## What's new in 0.4
 
-The experimental `three-avbd/sdf` entry point is included in the 0.4 release candidate;
-published 0.3.0 does not contain it. Its API may change. It provides mesh-to-voxel baking,
+Partial body writes that keep the GPU state you didn't set, GPU kinematic targets, lifetime body
+IDs and step-stamped reads, body activation and reset, fixed storage with `three-avbd/pool`,
+CPU static queries (`three-avbd/queries`), capability and hull preflight, an opt-in contact
+margin, and the experimental `three-avbd/sdf` entry point. `body.set` and `world.read()` changed
+behaviour: read [the 0.4.0 release notes and migration](docs/RELEASE_0.4.md) before upgrading
+from 0.3.
+
+## three-avbd or Rapier?
+
+**[three-avbd vs Rapier](docs/COMPARISON.md)**: features side by side, the measurements so far,
+the cons and how to shrink each one today. In short, why three-avbd (M4 Max, sources in that page):
+
+- **Scale.** A 110,000-brick ring steps in 9.3 ms headless (10.4 ms in Chrome), 4 iterations. On a 9,132-body ring,
+  Rapier 0.21 took 67 ms a step and three-avbd 2.1 ms (serialized, 4 iterations each; neither met
+  the shared quality target).
+- **No copy to draw.** `BodyMesh` renders straight from the solver's GPU buffer.
+- **Structures that break and bend.** Breakable and plastic joints run on the GPU; Rapier has
+  neither built in.
+- **Churn without allocation.** Fixed-storage body pools acquire, release and step with no new GPU
+  buffers or pipelines.
+
+Where Rapier is better: small scenes (at 1,000 resting boxes it was slightly faster per step and rested tighter), sleeping,
+CCD, more joint types and shapes, character and vehicle controllers, synchronous queries,
+cross-machine determinism, and it runs without WebGPU.
+
+## Experimental SDF collisions (new in 0.4)
+
+The experimental `three-avbd/sdf` entry point is new in 0.4.0; 0.3.0 does not contain it.
+Its API may change. It provides mesh-to-voxel baking,
 analytic/voxel sampling, mass properties and curvature seeds, plus a cancellable
 worker helper. [CPU baking/API usage](docs/SDF_BAKING.md) feeds the experimental
 [`World.enableSdfCollisions()` API](docs/SDF_WORLD.md): automatic GPU candidate
@@ -56,7 +83,7 @@ CPU-reference metrics; that mode is for numerical inspection, not FPS measuremen
 The playground and reference-scene pages offer **Measure 4s**: one second of warmup, four seconds of visible browser
 frame intervals, then automatic pause. The report separates frame cadence from simulation
 speed and records final GPU drain time; **Save JSON** exports the raw intervals and context.
-Package scope and release instructions are in [the 0.4 release notes](docs/SDF_RELEASE_0.4.md).
+The historical SDF package checkpoint is in [SDF_RELEASE_0.4.md](docs/SDF_RELEASE_0.4.md).
 Current local desktop results, verification and release boundaries are in
 [SDF demo release notes](docs/SDF_DEMO_RELEASE.md). These are short observations on one device,
 not a promise of 60 FPS across browsers or a reproduction of paper GPU performance.
@@ -66,7 +93,7 @@ See [paper reproduction status](docs/SDF_REPRODUCTION_STATUS.md) and
 [research reconciliation](docs/SDF_RECONCILIATION.md) for historical evidence and acceptance limits.
 
 `three-avbd/queries` provides CPU-only static triangle BVHs, nearest rays, bounded sphere
-overlaps and translational sphere sweeps, with no GPU or Three runtime import. See
+and capsule overlaps and translational sweeps, with no GPU or Three runtime import. See
 [static queries](docs/QUERIES.md) and the [Node projectile example](examples/static-projectile.ts).
 These queries are independent of solver collisions and GPU bodies.
 
@@ -104,7 +131,9 @@ await world.read();
 ```
 
 - **Bodies**: `addBox`, `addSphere`, `addHull({ points })` (convex hulls; pass the renderer
-  `requiredLimits: await recommendedLimits()` so they collide as hulls), with position, rotation,
+  `requiredLimits: await recommendedLimits()` so they collide as hulls;
+  use `World.create({ ..., requireHulls: true })` to reject unsupported devices and
+  `world.capabilities` to inspect the installed collision backend), with position, rotation,
   velocity, density, friction, `fixed`;
   `body.applyImpulse(J, point)`, `applyForce(F, point)` (every step until `clearForces()`),
   `applyTorque`, collision groups (`group`, `collidesWith`), `body.moveTo(position, rotation)` (a
@@ -135,8 +164,12 @@ await world.read();
   readbacks. `appendJoints` takes each joint's own break threshold, rest rotation, yield and bend
   limit. (0.3 grew the joint record to 40 floats: stride by `JOINT_FLOATS`.)
 
-The design and what's planned: [docs/API.md](docs/API.md). A runnable example:
-[examples/basic.ts](examples/basic.ts) (`pnpm dev`, then `/examples/basic.html`).
+The design and what's planned: [docs/API.md](docs/API.md). Runnable examples are indexed at
+[`/examples/index.html`](https://three-avbd.vercel.app/examples/index.html) (`pnpm dev`, then
+`/examples/`): [basic](examples/basic.ts), [body lifecycle](examples/body-lifecycle.ts),
+[body pool](examples/body-pool.ts), and experimental SDF examples
+([gears](examples/sdf-gear.ts), [balls in a torus](examples/sdf-hollow.ts),
+[mesh baked in a worker](examples/sdf-from-mesh.ts)).
 
 ## What's in the demo
 
@@ -207,6 +240,7 @@ URL parameters: `?scene=Pyramid`, `&backend=gpu` or `cpu`, `&paused`.
 Benchmarks and studies, headless through Dawn (the `webgpu` package):
 
 ```bash
+pnpm compare:rapier # experimental Rapier/AVBD batched-throughput comparison (Node + Dawn)
 pnpm bench3d:gpu # 3D suite: the paper's large scenes and small ones (args: tiers or case names)
 pnpm bench2d:gpu # 2D GPU benchmark with per-phase timing
 pnpm bench2d     # 2D CPU scaling baseline
@@ -216,6 +250,10 @@ pnpm scaling2d   # box rain 10k-250k, writes docs/data/scaling2d-<adapter>.json
 
 `pnpm bench3d:gpu <tiers> --json <file> --machine <name>` writes a report for the results
 page (they live in `docs/data/bench3d/`). Keep a browser benchmark's tab visible while it runs.
+
+The experimental [Rapier comparison](docs/RAPIER_COMPARISON.md) also runs at `/compare.html`
+(`/compare-frame.html` for a rendered workflow, `/compare-side.html` for a live side-by-side view). Its completed-batch timing is not a rendered FPS
+comparison, and the numbers in that document are historical (see its header).
 
 ## Layout
 

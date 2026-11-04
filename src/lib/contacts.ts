@@ -4,6 +4,7 @@
 // step's set missing from this one's stopped. So only the changes come back, a few bytes each,
 // with the next readback; pair keys are lifetime IDs, independent of reusable solver slots.
 
+import { BindGroupCache } from '../avbd3d/gpu/bind-group-cache.ts';
 import { B_POS, B_ROT, BODY_FLOATS, C_MANIFOLDS } from '../avbd3d/gpu/layout.ts';
 
 /** Words at the start of the table buffer: events written (may pass the capacity), set full. */
@@ -144,8 +145,11 @@ export class ContactWatch {
   /** The pairs it was sized for (each set holds at least twice as many). */
   readonly pairs: number;
   readonly capacity: number;
-  private group: GPUBindGroup | null = null;
-  private bound: GPUBuffer[] = [];
+  /**
+   * Its bind groups by the step storage they read: two, for the solver's two ping-pong contact
+   * storages (one group made each step, as the parity swapped, before).
+   */
+  private readonly groups: BindGroupCache;
   /** Which set is this step's. */
   private flip = 0;
   private readonly bodies: GPUBuffer;
@@ -167,6 +171,22 @@ export class ContactWatch {
     this.table = device.createBuffer({ label: 'contact sets', size: (HEAD_WORDS + 4 * this.setSlots) * 4, usage: storage });
     this.events = device.createBuffer({ label: 'contact events', size: capacity * EVENT_VEC4S * 16, usage: storage });
     this.params = device.createBuffer({ label: 'contact params', size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.groups = new BindGroupCache(device, 2);
+  }
+
+  /** The bind group for a step that left `storage`, made only the first time. */
+  private group(storage: { manifolds: GPUBuffer; contacts: GPUBuffer; counters: GPUBuffer }): GPUBindGroup {
+    const buffers = [this.bodies, storage.manifolds, storage.contacts, storage.counters, this.watch, this.table, this.events, this.params];
+    return this.groups.get(this.layout, () => this.layout, buffers);
+  }
+
+  /**
+   * Make the bind groups for these step storages now (at most two: the solver's
+   * `contactStorages()`), so `run` over either makes none. Runs no pass.
+   */
+  prewarm(storages: readonly { manifolds: GPUBuffer; contacts: GPUBuffer; counters: GPUBuffer }[]): void {
+    if (storages.length > 2) throw new Error('ContactWatch.prewarm: at most two storages (the solver ping-pongs two)');
+    for (const storage of storages) this.group(storage);
   }
 
   /** The most pairs a watch can be sized for whose sets fit in `bytes` (one binding). */
@@ -183,11 +203,7 @@ export class ContactWatch {
   /** After a step: its pairs against the last step's. */
   run(storage: { manifolds: GPUBuffer; contacts: GPUBuffer; counters: GPUBuffer }, pairs: number, step: number, dt: number): void {
     const d = this.device;
-    const buffers = [this.bodies, storage.manifolds, storage.contacts, storage.counters, this.watch, this.table, this.events, this.params];
-    if (!this.group || buffers.some((b, k) => b !== this.bound[k])) {
-      this.bound = buffers;
-      this.group = d.createBindGroup({ layout: this.layout, entries: buffers.map((buffer, binding) => ({ binding, resource: { buffer } })) });
-    }
+    const group = this.group(storage);
     this.flip = 1 - this.flip;
     const [old, now] = this.flip ? [0, this.setSlots] : [this.setSlots, 0];
     const params = new Uint32Array([old, now, this.setSlots - 1, this.capacity, pairs, step, 0, 0]);
@@ -196,7 +212,7 @@ export class ContactWatch {
     const encoder = d.createCommandEncoder({ label: 'contact events' });
     encoder.clearBuffer(this.table, (HEAD_WORDS + 2 * now) * 4, 2 * this.setSlots * 4);
     const pass = encoder.beginComputePass({ label: 'contact events' });
-    pass.setBindGroup(0, this.group);
+    pass.setBindGroup(0, group);
     pass.setPipeline(this.pipelines.touching);
     pass.dispatchWorkgroups(Math.max(1, Math.ceil(pairs / 64)));
     pass.setPipeline(this.pipelines.ended);
@@ -245,6 +261,7 @@ export class ContactWatch {
   }
 
   destroy(): void {
+    this.groups.clear();
     for (const b of [this.watch, this.table, this.events, this.params]) b.destroy();
   }
 }

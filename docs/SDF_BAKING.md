@@ -2,7 +2,7 @@
 
 The experimental `three-avbd/sdf` subpath is available in this source build (not
 published yet). It has no renderer/device dependency. It prepares and samples
-fields on CPU. The unpublished `World.enableSdfCollisions()` API now accepts them;
+fields on CPU. The experimental `World.enableSdfCollisions()` API (new in 0.4.0) accepts them;
 see `SDF_WORLD.md` for its fixed-topology limits and rendering/frame contract.
 There is no `World.addSdf` or automatic SDF mesh generation.
 
@@ -126,8 +126,9 @@ Create a module worker in your application:
 
 ```ts
 // sdf-worker.ts
-import { installSdfWorker } from 'three-avbd/sdf';
-installSdfWorker(self);
+import { installSdfWorker, type SdfWorkerScope } from 'three-avbd/sdf';
+// The cast is needed when the project type-checks with DOM (not WebWorker) typings.
+installSdfWorker(self as unknown as SdfWorkerScope);
 ```
 
 ```ts

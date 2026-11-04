@@ -4,7 +4,7 @@
 // distance (ties), then per ray the hit's normal. The rays and hits are small buffers; the hits
 // come back with an async read.
 
-import { B_ANGVEL, B_POS, B_ROT, B_SIZE, BODY_FLOATS, SHAPE_HULL, SHAPE_SPHERE } from '../avbd3d/gpu/layout.ts';
+import { LIFECYCLE_FLAGS_WGSL, B_ANGVEL, B_POS, B_ROT, B_SIZE, BODY_FLOATS, SHAPE_HULL, SHAPE_SPHERE } from '../avbd3d/gpu/layout.ts';
 
 /** Bodies a cast can skip (the caster's own body, say). */
 export const MAX_IGNORED = 16;
@@ -66,7 +66,9 @@ fn turn(q: vec4f, v: vec3f) -> vec3f {
   return v + q.w * t + cross(q.xyz, t);
 }
 
+${LIFECYCLE_FLAGS_WGSL}
 fn ignored(b: u32) -> bool {
+  if ((lifecycleBits(bodies[b * STRIDE + 2u].w) & 2u) != 0u) { return true; }
   if ((filters[b].x & params.mask) == 0u) { return true; }
   for (var i = 0u; i < params.ignored; i++) {
     if (params.ignore[i / 4u][i % 4u] == b) { return true; }

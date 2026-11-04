@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rapier and AVBD side by side</title>
+    <style>
+      body { font: 14px/1.45 system-ui, sans-serif; margin: 16px 20px; background: #181b20; color: #eee; }
+      a { color: #9cf; } h1 { font-size: 20px; margin: 4px 0 8px; } h2 { font-size: 15px; margin: 0 0 4px; }
+      label { display: inline-block; margin: 4px 10px 4px 0; } button, select, input { font: inherit; }
+      input[type=number] { width: 56px; }
+      #views { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+      canvas { display: block; width: 100%; aspect-ratio: 16 / 10; background: #222831; touch-action: none; border-radius: 4px; }
+      .panel { margin-top: 6px; font-variant-numeric: tabular-nums; min-height: 7.5em; }
+      .muted { color: #9aa3ad; } .bad { color: #ff8a80; }
+      #validity.valid { color: #9be39b; } #validity.invalid { color: #ffb36b; } #validity.unclassified { color: #9aa3ad; }
+      footer { margin-top: 14px; color: #b8c0c8; max-width: 1100px; } footer li { margin: 3px 0; }
+      @media (max-width: 800px) { #views { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <a href="/">Demo</a> · <a href="/compare.html">Physics quality comparison</a> · <a href="/compare-frame.html">Rendered workflow benchmark</a>
+    <h1>Rapier and AVBD, side by side</h1>
+    <div>
+      <label>Scene <select id="scene"></select></label>
+      <label id="scale-label">Bodies <select id="scale"></select></label>
+      <button id="pause">Pause</button> <button id="step">Step</button> <button id="reset">Reset</button>
+      <span id="steps" class="muted"></span>
+    </div>
+    <div>
+      <label>Rapier iterations <input id="rapier-iterations" type="number" min="1" max="64" /></label>
+      <label><input id="sleep" type="checkbox" /> Rapier sleeping</label>
+      <label>AVBD iterations <input id="avbd-iterations" type="number" min="1" max="64" /></label>
+      <label>AVBD margin <select id="margin"></select></label>
+      <button id="defaults">Defaults</button>
+      <label><input id="link" type="checkbox" /> Both: one camera drives both views</label>
+    </div>
+    <div id="validity"></div>
+    <div id="status" role="status" class="muted">Loading…</div>
+    <div id="views">
+      <section><h2>Rapier (WASM, CPU)</h2><canvas id="rapier"></canvas><div id="rapier-panel" class="panel"></div></section>
+      <section><h2>three-avbd (WebGPU)</h2><canvas id="avbd"></canvas><div id="avbd-panel" class="panel"></div></section>
+    </div>
+    <footer>
+      <ul>
+        <li>Both engines run at the comparison harness defaults unless changed here: Rapier's own defaults (4 solver iterations,
+          1 internal PGS iteration, sleeping and CCD off), AVBD 4 iterations and a 0.01 m contact margin (the <code>World</code> API's
+          default is 10 iterations). Equal iteration counts are different amounts of work. Changing a setting rebuilds both worlds from step 0.</li>
+        <li>Same scene manifest (<code>src/comparison/scenes.ts</code>), seed, masses, friction and dt; each animation frame advances
+          each engine by one step. Neither engine's stepping is used to build the other's input.</li>
+        <li>Timings are from this machine and this tab, rolling over the last 120 steps, and include no rendering.
+          Rapier runs as WASM on the CPU: its ms/step is the synchronous <code>world.step()</code>.
+          AVBD runs on the GPU: the headline figure is <em>completed</em> time, from the start of the step's CPU encode until
+          <code>queue.onSubmittedWorkDone()</code> resolves, with the queue drained first (batch size 1, as in <code>compare.html</code>; it
+          includes completion-promise latency). The second figure is CPU encode + submit only, which is not finished simulation.
+          Use <a href="/compare.html">compare.html</a> for batched throughput with replay validation.</li>
+        <li>Quality is read about once a second (and on every manual step): max floor penetration, max body–body overlap from an
+          independent sweep-and-prune check (skipped above 12k bodies), and max linear speed. Invalid scenes are marked ✗ per
+          <code>SCENE_VALIDITY</code>: they cannot back resting-quality claims.</li>
+      </ul>
+    </footer>
+    <script type="module" src="/src/comparison/side.ts"></script>
+  </body>
+</html>

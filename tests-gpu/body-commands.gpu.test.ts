@@ -312,3 +312,23 @@ gpuTest('body commands: sphere and hull fixed transitions retain shape slots and
     }
   } finally { w.destroy(); }
 });
+
+
+gpuTest('body commands: cancelling an active slide stops mover velocity but respects explicit velocity', async device => {
+  const w = await World.create({ device, maxBodies: 2, gravity: [0, 0, 0] });
+  try {
+    const b = w.addBox({ size: [1, 1, 1], fixed: true })!;
+    b.moveTo([4, 0, 0], [0, 0, Math.sin(0.4), Math.cos(0.4)]);
+    await captureUpdate(w, 4, i => { if (i === 1) b.set({ position: [0, 2, 0] }); });
+    steps(w, 2);
+    await w.read();
+    near(b.position, [0, 2, 0]);
+    near(b.velocity, [0, 0, 0]);
+    near(b.angularVelocity, [0, 0, 0]);
+    b.moveTo([4, 2, 0]);
+    await captureUpdate(w, 4, i => { if (i === 1) b.set({ position: [0, 3, 0], velocity: [1, 0, 0] }); });
+    await w.read();
+    near(b.position, [3 * w.dt, 3, 0]);
+    near(b.velocity, [1, 0, 0]);
+  } finally { w.destroy(); }
+});
