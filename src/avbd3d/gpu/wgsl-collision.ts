@@ -542,6 +542,15 @@ fn faceManifold(A: Box, B: Box, refIsA: bool, refAxis: u32, nAB: vec3f) -> Found
     addFound(&found, select(p, onRef, refIsA), select(onRef, p, refIsA), prefix | i);
   }
   if (found.count == 0u) { addFound(&found, support(A, nAB), support(B, -nAB), prefix); }
+  if ((params.flags & FLAG_DEEPEST_BOX_WITNESS) != 0u) {
+    var deepest = 0u;
+    for (var index = 1u; index < found.count; index++) {
+      if (dot(nAB, found.xA[index] - found.xB[index]) > dot(nAB, found.xA[deepest] - found.xB[deepest])) {
+        deepest = index;
+      }
+    }
+    found.feature[deepest] |= BOX_DEPTH_WITNESS_FEATURE;
+  }
   return found;
 }
 
@@ -872,7 +881,9 @@ fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
       stick = prev.key & STICK_BIT;
       // Static friction last step: keep the old anchors. Not for spheres: their contact point
       // moves over both surfaces as they roll, and pinned anchors would rotate away with them
-      if (stick != 0u && !anySphere) {
+      let depthWitness = (params.flags & FLAG_DEEPEST_BOX_WITNESS) != 0u && !isHull(a) && !isHull(b) &&
+        (found.feature[i] & BOX_DEPTH_WITNESS_FEATURE) != 0u;
+      if (stick != 0u && !anySphere && !depthWitness) {
         rA = prev.rA;
         rB = prev.rB;
       }
