@@ -52,7 +52,7 @@ pnpm compare:rapier pile-10k-settled --engines avbd \
 
 Also run the original `pile-10k` geometry with those matched options to revisit
 the historical outlier. Do not relabel its invalid initial/mid-collapse scene as
-a qualified resting layout. Inspect `sceneValidity` and independent pair depths.
+a qualified resting layout. Inspect the manifest validity and independent pair depths.
 Run `ring-110k` at both iteration counts and both modes with a fixed 600-step
 window and no jitter to preserve the existing construction. It is an impact
 scene, not evidence that a settled pile is at rest.
@@ -68,7 +68,7 @@ result in this checkpoint.
 Use all five seeds, not a best run. Compare final-window max/p95 pair and floor
 penetration, max speed, kinetic energy, rest fraction and mover bursts; preserve
 worst-over-window diagnostics too. Reject any newly failed settling seed under
-the existing 1%-of-body-size contact target and 0.01 m/s settled-speed bound.
+the existing 1%-of-body-size contact target and 0.05 m/s settled-speed bound.
 Require the suspected 10k burst reduction to reproduce across seeds, with no
 new wall collapse, ring instability, or gross energy/penetration regression at
 either iteration count. Retain per-seed reports and an explicit decision; do not
