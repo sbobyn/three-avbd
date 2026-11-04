@@ -8,7 +8,7 @@ import { snapshotSdfField } from '../src/avbd3d/gpu/sdf-snapshot.ts';
 import { gpuTest } from './device.ts';
 
 for (const parallelMeshWitnesses of [false, true]) {
-  gpuTest(`SDF witnesses reject opposed ambiguous points (${parallelMeshWitnesses ? 'parallel' : 'serial'})`, async device => {
+  gpuTest(`SDF witnesses do not cull contacts by ambiguous direction alone (${parallelMeshWitnesses ? 'parallel' : 'serial'})`, async device => {
     const geometry = new BoxGeometry();
     const field = snapshotSdfField(bakeVoxelSdf(geometry, { resolution: 8 }).field, true);
     const pass = await SdfNarrowphasePass.create(device, [field], {
@@ -21,7 +21,7 @@ for (const parallelMeshWitnesses of [false, true]) {
       return state / 2 ** 32;
     };
     let witnessed = 0;
-    let dropped = 0;
+    let ambiguousRetained = 0;
     try {
       for (let pose = 0; pose < 48; pose++) {
         const rotation = new Quaternion().setFromEuler(new Euler(random() * 6.3, random() * 6.3, random() * 6.3)).toArray() as [number, number, number, number];
@@ -34,12 +34,12 @@ for (const parallelMeshWitnesses of [false, true]) {
           const [result] = await pass.readResults();
           const witness = result.points.find(point => point.id >= 0x40000000);
           const rejected = result.points.filter(point => point.id < 0x40000000 && !point.active && point.separation < params.margin);
+          assert.equal(rejected.length, 0, `pose ${pose}: direction alone must not disable supplemental points`);
           if (!meshVertexContacts || !witness) {
             assert.equal(rejected.length, 0, `pose ${pose}: no witness means no filter`);
             continue;
           }
           witnessed++;
-          dropped += rejected.length;
           for (const point of result.points) {
             if (point.id >= 0x40000000 || !point.active) continue;
             const opposed = point.normal.reduce((sum, value, axis) => sum + value * witness.normal[axis], 0) < 0;
@@ -48,16 +48,12 @@ for (const parallelMeshWitnesses of [false, true]) {
             const aligned = sampleA.gradient.reduce((sum, value, axis) => sum + value * sampleB.gradient[axis], 0) > 0;
             const ambiguous = (sampleA.phi < -1e-5 && sampleB.phi < -1e-5 && aligned)
               || (sampleA.phi > 1e-5 && sampleB.phi > 1e-5);
-            assert.ok(!(opposed && ambiguous), `pose ${pose}: active optimizer contact opposes its witness with an ambiguous normal`);
-          }
-          for (const point of rejected) {
-            assert.ok(point.normal.reduce((sum, value, axis) => sum + value * witness.normal[axis], 0) < 0,
-              `pose ${pose}: only opposed points are filtered`);
+            if (opposed && ambiguous) ambiguousRetained++;
           }
         }
       }
       assert.ok(witnessed > 10, 'the regression exercises witnessed pairs');
-      assert.ok(dropped > 0, 'the regression exercises filtering');
+      assert.ok(ambiguousRetained > 0, 'the fixture exercises contacts the rejected direction-only filter would remove');
     } finally {
       pass.destroy();
       geometry.dispose();

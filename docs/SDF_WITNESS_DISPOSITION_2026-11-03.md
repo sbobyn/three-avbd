@@ -1,58 +1,42 @@
 # SDF witness PR #36 disposition on current main
 
 Base: `afc1442e64e4b36f2d49be70bf35ea0c9b85cf6c`. Historical PR head:
-`e6753450f050c4d262ff3fe9e9237fb6f7da8442` (parent implementation `711eb81`).
+`e6753450f050c4d262ff3fe9e9237fb6f7da8442` (implementation `711eb81`).
 
-## Decision
+## Decision: rejected; no runtime port
 
-Port only the narrow witness filter and a current-main regression on a new branch. Do not
-merge the old branch wholesale or import its measurements as fresh evidence. #36's branch
-is untouched. Current main has the parallel witness path added after #36; both scalar and
-parallel support sources need the same filtering rule.
+Keep #36 quarantined. The existing October 24 findings already reject both its
+outside-both direction filter and a narrowed inside-both version. Current main
+preserves valid opposing supplemental contacts and includes parallel witnesses.
+Do not merge the historical branch or revive its filter behind meshVertexContacts.
+That opt-in does not make removal of genuine gap contacts correct.
 
-The filter is confined to existing opt-in `meshVertexContacts`. A successful exact witness
-supplies the contact direction. An optimizer point is disabled only when its normal opposes
-that witness and its sample is either inside both fields with aligned gradients, or outside
-both fields. Other points remain available. No witness means no filter; default SDF collision
-does not enable vertex witnesses. Two field evaluations count as one paired query, consistent
-with the existing SDF statistics convention.
+The initial reconciliation commit on this draft attempted a current-main port.
+Its five selected tests passed, but that selection missed the existing test
+`a mesh witness retains valid opposing gap contacts in the same non-convex pair`.
+The light self-check ran that test: the attempted port fails, exit 1, with
+`a gap-derived near contact must survive the opposing witness`.
+The filter has therefore been removed from this branch. Production source is
+identical to the base; no historical PR branch was modified.
 
-This is separate from the rigid box-box face manifold investigation. It adds no general CCD,
-changes no reference solver, and makes no claim that every genuine mesh interlock is solved.
+## Retained bounded evidence
 
-## Reproduction before implementation
+The added serial/parallel 48-pose fixture demonstrates why direction-only culling
+can be tempting: an exact witness and an active optimizer point may oppose one
+another with an ambiguous local gradient/sign classification. That observation
+is not sufficient to prove a contact spurious. The fixture now guards retention,
+not the rejected assumption that all such contacts should disappear.
 
-The new `tests-gpu/sdf-witness-filter.gpu.test.ts` tests 48 seeded, tilted two-box overlaps
-using a baked resolution-8 field and exact vertex witnesses. Each pose also runs with
-vertex witnesses disabled. It checks that active optimizer points cannot oppose an exact
-witness where their own normal is ambiguous, and that the fixture actually filters points.
+The existing non-convex two-flank regression is the decisive control: a 2.5 mm
+penetration on one flank must not remove valid 12.5 mm gap-derived near contacts
+on the other, within the 20 mm margin. The historical narrowed candidate also
+failed the full matched chair ensemble (see `SDF_RECONCILIATION.md` and
+`FINDINGS.md`); a new tiny passing fixture cannot supersede that evidence.
 
-On unchanged current main, both scalar and parallel tests failed at pose 17:
-
-```text
-active optimizer contact opposes its witness with an ambiguous normal
-tests 2; pass 0; fail 2; skipped 0; exit 1
-```
-
-After the narrow port, the new tests pass. Existing plane-edge/default-off behavior,
-mesh witness identity and scalar/parallel history equality also pass in the targeted run:
-
-```sh
-node --experimental-transform-types --test --test-concurrency=1 \
-  --test-name-pattern='SDF witnesses|cooperative mesh witnesses|mesh plane contacts retain|mesh-to-mesh vertex witness' \
-  tests-gpu/sdf-witness-filter.gpu.test.ts \
-  tests-gpu/sdf-witness-parallel.gpu.test.ts tests-gpu/sdf-supports.gpu.test.ts
-pnpm typecheck
-```
-
-Results: five real-device GPU tests passed, zero failed/skipped, exit 0; typecheck exit 0.
-The serial targeted GPU command took about 1.5 seconds on this machine with shader caches.
-That duration is a test observation under contention, not a performance benchmark.
-
-## Qualification still outstanding
-
-`uptime` before broader qualification reported one-minute load 10.03 (>8). The old chair/bunny
-multi-seed measurement batch and full GPU gate were not run. Nightly should compare current
-baseline and this branch with the same seeds/settings and explicitly check genuine opposed
-contacts, penetration, energy and retention. Historical #36 numbers do not establish that
-envelope on this implementation. Keep this PR draft until that evidence is available.
+Targeted recheck covers the two new retention fixtures, genuine opposing-gap
+retention, parallel witness history and existing witness supports: six real-Dawn
+tests pass, zero fail/skip, exit 0. Typecheck passes, exit 0; staged whitespace
+passes, exit 0. No full measurement ensemble or GPU suite is
+rerun under the load cap. No penetration, settling or performance improvement is
+claimed. A genuinely different topology-aware filter would need a new proposal,
+not automatic incorporation of #36.
