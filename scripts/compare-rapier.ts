@@ -41,6 +41,11 @@ const json = option('--json');
 const machine = option('--machine') ?? 'unspecified';
 const engines = (option('--engines') ?? 'rapier,avbd').split(',') as import('../src/comparison/adapters.ts').Engine[];
 const config = { ...DEFAULTS };
+const startAtRest = option('--avbd-start-at-rest');
+if (startAtRest !== undefined) {
+  if (startAtRest !== 'on' && startAtRest !== 'off') throw new Error('Invalid --avbd-start-at-rest: expected on or off');
+  config.avbdStartAtRest = startAtRest === 'on';
+}
 for (const [flag, key] of [['--steps', 'steps'], ['--lead', 'lead'], ['--repeats', 'repeats'],
   ['--avbd-iterations', 'avbdIterations'], ['--rapier-iterations', 'rapierIterations'],
   ['--ccd-substeps', 'rapierCcdSubsteps'], ['--impact-phase', 'impactPhase'], ['--batch-size', 'batchSize'], ['--dt', 'dt'], ['--rapier-pgs-iterations', 'rapierPgsIterations'], ['--timeout-ms', 'timeoutMs'],

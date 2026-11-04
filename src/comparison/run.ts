@@ -20,8 +20,9 @@ export interface Options extends Settings {
 export const DEFAULTS: Options = { dt: 1 / 60, avbdIterations: 4, rapierIterations: 4,
   rapierPgsIterations: 1, rapierSleeping: false, rapierCcd: false, rapierCcdSubsteps: 1, avbdMargin: 0.01, lead: 60, steps: 120, repeats: 3,
   timeoutMs: 300_000, batchSize: 10, impactPhase: 0, jitter: 0, jitterSeed: 1,
-  finalWindow: FINAL_WINDOW, dumpMovers: 0 };
+  finalWindow: FINAL_WINDOW, dumpMovers: 0, avbdStartAtRest: true };
 export function validateOptions(o: Options): void {
+  if (typeof o.avbdStartAtRest !== 'boolean') throw new Error('Invalid avbdStartAtRest');
   for (const k of ['lead', 'steps', 'repeats', 'avbdIterations', 'rapierIterations', 'rapierPgsIterations', 'rapierCcdSubsteps', 'batchSize', 'finalWindow'] as const) {
     if (!Number.isInteger(o[k]) || o[k] < (k === 'lead' ? 0 : 1)) throw new Error(`Invalid ${k}`);
   }
