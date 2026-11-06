@@ -85,6 +85,23 @@ test('rest fraction counts dynamic bodies below the rest speed', () => {
   assert.equal(restFraction(scene, state), (dynamic - 1) / dynamic);
 });
 
+test('large final windows retain maxima without exceeding the call argument limit', () => {
+  const samples = Array.from({ length: 150_000 }, (_, i) => sample(i + 1, 0.002, 0.003, 0.001));
+  samples[75_000] = sample(75_001, 0.05, 0.06, 2);
+  const result = finalWindow(samples, samples.length);
+  assert.deepEqual([result.steps, result.firstStep, result.lastStep], [150_000, 1, 150_000]);
+  assert.equal(result.maxFloorPenetration, 0.05);
+  assert.equal(result.maxRelativeFloorPenetration, 0.05);
+  assert.equal(result.p95FloorPenetration, 0.002);
+  assert.equal(result.maxContactDepth, 0.06);
+  assert.equal(result.maxRelativeContactDepth, 0.06);
+  assert.equal(result.p95ContactDepth, 0.003);
+  assert.equal(result.maxSpeed, 2);
+  assert.equal(result.maxKineticEnergy, 2);
+  assert.equal(result.finalKineticEnergy, 0.5 * 0.001 * 0.001);
+  assert.equal(result.settled, false);
+});
+
 test('runOne reports final-window metrics alongside the unchanged worst-over-window metrics', async () => {
   const scene = makeScene('rest-stack');
   const factory: typeof createAdapter = async () => {

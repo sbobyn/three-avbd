@@ -46,6 +46,10 @@ export interface FinalWindow {
   settled: boolean | null;
 }
 
+function maximum(values: number[]): number {
+  return values.reduce((max, value) => Math.max(max, value), -Infinity);
+}
+
 /** Final-window metrics over the last `window` of the measured samples (steps after the lead-in). */
 export function finalWindow(measured: WindowSample[], window = FINAL_WINDOW): FinalWindow {
   if (!Number.isInteger(window) || window < 1) throw new Error('Invalid final window');
@@ -54,16 +58,16 @@ export function finalWindow(measured: WindowSample[], window = FINAL_WINDOW): Fi
   const floor = w.map(s => s.quality.maxFloorPenetration);
   const measuredContacts = w.every(s => s.contacts !== null);
   const pair = measuredContacts ? w.map(s => s.contacts!.maxDepth) : null;
-  const maxSpeed = Math.max(...w.map(s => s.quality.maxSpeed));
+  const maxSpeed = maximum(w.map(s => s.quality.maxSpeed));
   const contactTargetMet = measuredContacts
     ? w.every(s => passesFloorTarget(s.quality) && s.contacts!.maxRelativeDepth <= FLOOR_TARGET) : null;
   return {
     steps: w.length, firstStep: w[0].step, lastStep: last.step, restSpeed: REST_SPEED, settledMaxSpeed: SETTLED_MAX_SPEED,
-    maxFloorPenetration: Math.max(...floor), p95FloorPenetration: percentile(floor, 0.95),
-    maxRelativeFloorPenetration: Math.max(...w.map(s => s.quality.maxRelativeFloorPenetration)),
-    maxContactDepth: pair && Math.max(...pair), p95ContactDepth: pair && percentile(pair, 0.95),
-    maxRelativeContactDepth: measuredContacts ? Math.max(...w.map(s => s.contacts!.maxRelativeDepth)) : null,
-    maxSpeed, maxKineticEnergy: Math.max(...w.map(s => s.quality.translationalKineticEnergy)),
+    maxFloorPenetration: maximum(floor), p95FloorPenetration: percentile(floor, 0.95),
+    maxRelativeFloorPenetration: maximum(w.map(s => s.quality.maxRelativeFloorPenetration)),
+    maxContactDepth: pair && maximum(pair), p95ContactDepth: pair && percentile(pair, 0.95),
+    maxRelativeContactDepth: measuredContacts ? maximum(w.map(s => s.contacts!.maxRelativeDepth)) : null,
+    maxSpeed, maxKineticEnergy: maximum(w.map(s => s.quality.translationalKineticEnergy)),
     finalKineticEnergy: last.quality.translationalKineticEnergy, restFraction: last.restFraction,
     contactTargetMet, settled: contactTargetMet === null ? null : contactTargetMet && maxSpeed <= SETTLED_MAX_SPEED,
   };
