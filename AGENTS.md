@@ -2,6 +2,18 @@
 
 Read `docs/PLAN.md` (stages and check-ins) and `docs/FINDINGS.md` (measured decisions) first.
 
+When changing architecture, public interfaces, data flow or dependencies, update the relevant
+diagram/map in `docs/API.md` in the same work, with source/date qualification. Unrelated changes
+need no regeneration; preserve dated historical evidence. No additional CI gate is required.
+
+## User-controlled installations
+
+`~/releases` is Steven's personal download/install area, separate from `~/dev` and agent
+worktrees. Do not create, install, copy, move, modify or update anything there, including
+README files, manifests, symlinks, launchers, build output or automatic sync. Versions there
+change only when Steven explicitly chooses an update. Development and review continue
+outside it; an exact-version release proposal is not installation authorization.
+
 ## Gate
 
 `pnpm check` (typecheck, CPU tests, GPU tests via headless Dawn, vite build). Run it before

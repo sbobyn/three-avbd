@@ -4,6 +4,140 @@ Status: 0.4.0. npm 0.3.0 does not include the `sdf`, `queries` or `pool` entry p
 See [0.4.0 release notes and migration](RELEASE_0.4.md), [audit dispositions](AUDIT_DISPOSITION.md)
 and [historical SDF verification](SDF_RELEASE_0.4.md).
 
+## Architecture and repository map
+
+**Source inspection: 2026-11-05, branch `main`, HEAD
+`afc1442e64e4b36f2d49be70bf35ea0c9b85cf6c`.** This describes the inspected source,
+not a newly qualified release. The accompanying large-window metrics fix in
+`src/comparison/final-window.ts` and regression in `tests/comparison-final-window.test.ts`
+were subsequently covered by the November 6 gate (255 CPU and 260 GPU tests; no skips).
+See [review verification](REVIEW_20261106.md) for the exact snapshot and tooling-update limits. Package metadata
+says 0.4.0; that is not evidence of registry publication or downstream compatibility.
+
+### Boundaries and data flow
+
+The primary product is an in-process TypeScript/WebGPU physics library. Three.js supplies
+rendering and, optionally, the shared GPU device. The site, comparison tools and research
+fixtures are separate consumers/validation surfaces, not a hosted physics service.
+The diagram is editable Mermaid; arrows describe source-inspected responsibilities.
+
+```mermaid
+flowchart TD
+  App[Consumer or examples] --> World[World / Body / Joint]
+  World --> Commands[Masked commands, lifetime identity, capacity checks]
+  Commands --> Solver[GpuSolver3D.step]
+  Solver --> Collision[Built-in broadphase and narrowphase]
+  Mesh[Input triangle mesh or analytic shape] --> Bake[CPU SDF bake / optional worker]
+  Bake --> Fields[Fields, seeds, mass and inertia]
+  Fields --> SDF[Opt-in SDF backend: atlas, candidates, contacts]
+  Solver --> SDF
+  Collision --> Solve[GPU adjacency, coloring, primal / dual iterations]
+  SDF --> Solve
+  Solve --> Buffers[GPU body, joint and contact buffers]
+  Buffers --> Draw[BodyMesh / Three.js zero-copy drawing]
+  Buffers --> Read[Explicit asynchronous readback]
+  Read --> World
+  World --> App
+  Static[Static triangle geometry] --> Queries[CPU StaticQueryScene BVH queries]
+  Queries --> App
+  Oracle[Upstream C++ oracle fixtures] --> Tests[Reference parity and metric envelopes]
+  Solver -. validation .-> Tests
+  Fields -. validation .-> Tests
+```
+
+- **Public state and commands:** [`World`](../src/lib/world.ts) owns body/joint handles,
+  queues changes through `flush`, and advances via `step`/`update`. `read` returns
+  asynchronous, step-stamped observations; CPU handle poses are not continuously synced
+  GPU state. [`body-commands.ts`](../src/lib/body-commands.ts),
+  [`identity.ts`](../src/lib/identity.ts) and [lifecycle contracts](BODY_LIFECYCLE.md)
+  define masked writes, slot reuse and lifetime identity.
+- **Compute:** [`GpuSolver3D.step`](../src/avbd3d/gpu/solver.ts) encodes collision,
+  adjacency/coloring and iterative solve passes; [`layout.ts`](../src/avbd3d/gpu/layout.ts)
+  is the buffer/parameter ABI. Custom `advanced` users must honor that ABI and ownership
+  contract. Device capability validation lives in [`capabilities.ts`](../src/lib/capabilities.ts);
+  optional timestamp/subgroup features cannot become mandatory. GPU buffers use finite
+  sentinels, not infinity.
+- **Rendering and observations:** [`BodyMesh`](../src/lib/mesh.ts) reads solver-backed
+  storage with the same renderer/device. Contact events and raycasts cross the asynchronous
+  observation boundary through [`contacts.ts`](../src/lib/contacts.ts) and
+  [`raycast.ts`](../src/lib/raycast.ts). Caller-owned renderer/materials remain separate
+  from World-owned storage; see the destruction contract below.
+- **SDF extension:** [`src/lib/sdf.ts`](../src/lib/sdf.ts) exports analytic/voxel fields,
+  baking, mass preparation and `bakeVoxelSdfInWorker`. `World.enableSdfCollisions` attaches
+  [`sdf-bridge.ts`](../src/avbd3d/gpu/sdf-bridge.ts), with spatial candidate generation,
+  atlas data and independent contact identities. This is opt-in and experimental; it
+  replaces the built-in collision backend for that World, not a second independent world
+  solver. [SDF_WORLD](SDF_WORLD.md) documents integration limits.
+- **Independent CPU queries:** [`StaticQueryScene`](../src/queries/scene.ts), exported
+  through [`queries`](../src/lib/queries.ts), owns a static triangle BVH. Rays and
+  sphere/capsule sweeps do not automatically query dynamic GPU bodies. [`BodyPool`](../src/lib/pool.ts)
+  instead manages reusable body slots in a fixed-storage World.
+
+### Entries, persistence and assets
+
+[`package.json`](../package.json) and [`tsconfig.lib.json`](../tsconfig.lib.json) define
+five ESM/type entry points: root, `advanced`, `sdf`, `queries`, `pool`. They emit to `build/`;
+the package includes build output, README, license and notices, not the site's fixtures.
+[`vite.config.ts`](../vite.config.ts) separately builds `dist/`: the 3D/2D demos,
+SDF showcase/gears/released scenes, comparison pages, benchmarks/results and examples.
+`pnpm dev` uses strict port 5317. Attribute browser evidence to the actual source
+checkout serving that port; a different running checkout is not this version.
+
+Physics state and caches live in process/GPU memory; there is no application database,
+account service or server-side world persistence in this architecture. Demo-local
+`localStorage` holds device/build budgets, UI state and imported benchmark reports
+([device-budget](../src/ui/device-budget.ts), [build-progress](../src/ui/build-progress.ts),
+[title-card](../src/ui/title-card.ts), [results](../src/results/main.ts)). These are not
+world save files. Released SDF scenes fetch Vite-emitted local fixture URLs lazily via
+[`readBrowserAsset`](../src/sdf-released/assets.ts). Baking workers are local computation,
+not remote services. JSON measurements/source manifests are research outputs whose
+device, settings and provenance must accompany performance claims.
+
+| Area | Responsibility / representative source |
+|---|---|
+| `src/lib/` | Public handles, lifecycle, rendering bridge, exports and storage policy |
+| `src/avbd3d/ref/`, `src/avbd2d/ref/` | Reference/oracle implementations; SDF preparation under `ref/sdf/` |
+| `src/avbd3d/gpu/`, `src/avbd2d/gpu/`, `src/avbd2d/soa/` | GPU kernels/layouts and 2D CPU SoA validation path |
+| `src/queries/` | Independent CPU triangle BVH and shape queries |
+| `src/app3d/`, `src/app2d/`, `src/ui/` | Interactive solver demos and shared controls/calibration |
+| `src/sdf-showcase/`, `src/sdf-released/`, `src/sdf-gears/` | Bounded SDF demos; reference metrics and playback queue policy |
+| `src/comparison/`, `src/results/`, `scripts/` | AVBD/Rapier adapters, quality metrics, benchmark and provenance tools |
+| `examples/` | Public API consumer journeys, including lifecycle/pool/SDF |
+| `tests/`, `tests-gpu/`, `tools/cpp-oracle*/` | CPU/GPU checks and upstream-generated oracle fixtures; never regenerate fixtures to hide failures |
+| `docs/data/`, `docs/measurements/`, `research/` | Dated raw results and retained experiments; not automatically accepted runtime behavior |
+| `public/`, `tools/trailer/` | Demo assets and capture tooling; licenses/provenance remain attached |
+
+### Related repositories, reuse and gaps
+
+These are distinct repositories, not a proposed consolidation:
+
+| Repository / boundary | Observed relationship and limits |
+|---|---|
+| [three-avbd](https://github.com/sbobyn/three-avbd) | Library and reference/demo infrastructure described here; MIT package, Three peer `>=0.186.0`, development baseline Three 0.187.0. Peer range is not proof of every version being tested. |
+| [three-destruction](https://github.com/sbobyn/three-destruction) | Separate consumer. Its inspected `packages/destruction/package.json` pins dev AVBD 0.3.0 and optional peer `>=0.3.0 <0.4.0`; the 0.4.0 pair needs exact-artifact qualification, not a silent dependency bump. |
+| [avbd-ship-demo](https://github.com/sbobyn/avbd-ship-demo) | Separate Windward demo. Inspected main `83b25adb24f671e93a55683913ca9a794dc0f613` vendors solver revision `b3675de` plus ship changes, and uses Three 0.186.0. It is not a consumer of this HEAD's package; its README defines the approximation and asset limits. |
+
+**Reuse candidates, not integration commitments:** CPU `queries` can serve static scene
+queries without a GPU; cost is explicit geometry ownership/updates and no dynamic-body
+coupling. `sdf` preparation/worker utilities can serve mesh-field workflows; cost is
+baking memory/time, units/inertia decisions and experimental API compatibility. `pool`
+and lifetime-safe readback can support destruction churn; downstream packed-consumer
+tests must establish version/ABI compatibility. Do not replace Windward's vendored engine
+without separate rigging/cloth/rendering qualification.
+
+Licensing follows [`LICENSE`](../LICENSE) and [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md),
+including upstream research/assets and the development-only Rapier comparison dependency.
+Windward's asset manifest/notices remain in its own repo. Shared capability does not grant
+asset redistribution rights. Local recovery logs, deployment association files and captures
+are not public package inputs; keep them out of documentation uploads and releases.
+
+Known gaps: #70's witness protection and #71's start-at-rest trials remain experimental;
+large-scene quality/performance and current canonical interactive use are not established
+by this static map. The [reconciliation](SDF_RECONCILIATION.md),
+[release handoff](RELEASE_0.4.md) and [comparison status](COMPARISON_TEST_STATUS.md)
+remain the detailed evidence, with their dates and limits intact. November release direction
+is draft until Steven's hands-on use. No new architecture or service is proposed by this map.
+
 ## Goal
 
 Let a Three.js WebGPU project add GPU rigid-body physics in a few lines: boxes and spheres,
