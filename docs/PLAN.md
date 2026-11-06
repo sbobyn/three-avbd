@@ -2,6 +2,10 @@
 
 ## Status
 
+Current source map (2026-11-05): [architecture, data flow and repository boundaries](API.md#architecture-and-repository-map).
+Older paths and checkpoints below are retained history. See that map's source qualification and [0.4 release notes](RELEASE_0.4.md)
+before treating an earlier stage as current publication or acceptance status.
+
 | Stage | State |
 |---|---|
 | 0 Scaffold | done 2026-09-23 |

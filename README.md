@@ -1,294 +1,95 @@
 # three-avbd
 
-[![npm](https://img.shields.io/npm/v/three-avbd)](https://www.npmjs.com/package/three-avbd)
+GPU rigid-body physics for Three.js, implemented in TypeScript and WebGPU using
+[Augmented Vertex Block Descent](https://graphics.cs.utah.edu/research/projects/avbd/).
+For developers building scenes with boxes, spheres, convex hulls, friction, joints and
+breakable structures; experimental non-convex SDF collisions are also available.
 
-Rigid-body physics on the GPU, in the browser: an implementation of *Augmented Vertex Block
-Descent* ([Giles, Diaz, Yuksel — SIGGRAPH 2025](https://graphics.cs.utah.edu/research/projects/avbd/))
-in TypeScript, Three.js and WGSL compute. Hundreds of thousands of bodies with contacts,
-friction and joints, stepped entirely on the GPU and drawn straight from the solver's buffers.
+![Historical Chrome showcase: brick ring, joints and box columns](docs/media/trailer.gif)
 
-**Live demo: [three-avbd.vercel.app](https://three-avbd.vercel.app)** ·
-[2D demo](https://three-avbd.vercel.app/2d.html) ·
-[Results vs the paper](https://three-avbd.vercel.app/results.html)
+[Repository](https://github.com/sbobyn/three-avbd) ·
+[Hosted showcase](https://three-avbd.vercel.app) ·
+[Media provenance](docs/MEDIA.md)
 
-**Built with it: [Voxel City](https://three-voxel-destruction.vercel.app)**, a Teardown-inspired
-destructible city of 94,000 voxel bodies ([code](https://github.com/sbobyn/three-voxel-destruction)).
+## Status and requirements
 
-![Trailer: a 110,000-brick ring smashed, cannonballs, rope, chain mail, springs, ragdolls on cloth, friction, a flag in the wind, and 100,000 box columns, all recorded live in Chrome](docs/media/trailer.gif)
+Current source has **0.4.0 candidate APIs**; npm latest was **0.3.0** at the November 6 check.
+Publication is pending. The prepared **review-20261106-1** has exact source/package hashes and
+[verification notes](docs/REVIEW_20261106.md). This branch includes the setup guides and
+standalone consumer example. The deployed showcase is not verified against this source.
+Keep a frozen candidate's own README with it; do not substitute registry 0.3 for its new APIs.
 
-Needs a browser with WebGPU: Chrome or Edge on any platform, Safari 26 on macOS and iOS,
-Firefox where it ships WebGPU. Nothing is baked: every scene is simulated live on your GPU.
+Use Node **22.18+**, pnpm **10.18.0**, and a browser with a **hardware WebGPU adapter**.
+The tested environment is Node 25.2.1, Three 0.187.0, Chromium/Metal on Apple M4 Max.
+Minimum Node and other platforms are not separately qualified. WebGL fallback cannot run the
+compute solver. Hull collisions need additional device limits; optional subgroups/timestamps
+have fallbacks. [Device limits and configuration](docs/USER_GUIDE.md#physics-concepts-and-configuration).
 
-## What's new in 0.4
+The library is available for bounded developer review. Large-scene quality/performance,
+M1/GTX 1080 targets and release qualification remain open. No CCD, native sleeping or
+cross-device bitwise determinism is promised. SDF APIs are experimental.
 
-Partial body writes that keep the GPU state you didn't set, GPU kinematic targets, lifetime body
-IDs and step-stamped reads, body activation and reset, fixed storage with `three-avbd/pool`,
-CPU static queries (`three-avbd/queries`), capability and hull preflight, an opt-in contact
-margin, and the experimental `three-avbd/sdf` entry point. `body.set` and `world.read()` changed
-behaviour: read [the 0.4.0 release notes and migration](docs/RELEASE_0.4.md) before upgrading
-from 0.3.
+## Get and run the demos
 
-## three-avbd or Rapier?
-
-**[three-avbd vs Rapier](docs/COMPARISON.md)**: features side by side, the measurements so far,
-the cons and how to shrink each one today. In short, why three-avbd (M4 Max, sources in that page):
-
-- **Scale.** A 110,000-brick ring steps in 9.3 ms headless (10.4 ms in Chrome), 4 iterations. On a 9,132-body ring,
-  Rapier 0.21 took 67 ms a step and three-avbd 2.1 ms (serialized, 4 iterations each; neither met
-  the shared quality target).
-- **No copy to draw.** `BodyMesh` renders straight from the solver's GPU buffer.
-- **Structures that break and bend.** Breakable and plastic joints run on the GPU; Rapier has
-  neither built in.
-- **Churn without allocation.** Fixed-storage body pools acquire, release and step with no new GPU
-  buffers or pipelines.
-
-Where Rapier is better: small scenes (at 1,000 resting boxes it was slightly faster per step and rested tighter), sleeping,
-CCD, more joint types and shapes, character and vehicle controllers, synchronous queries,
-cross-machine determinism, and it runs without WebGPU.
-
-## Experimental SDF collisions (new in 0.4)
-
-The experimental `three-avbd/sdf` entry point is new in 0.4.0; 0.3.0 does not contain it.
-Its API may change. It provides mesh-to-voxel baking,
-analytic/voxel sampling, mass properties and curvature seeds, plus a cancellable
-worker helper. [CPU baking/API usage](docs/SDF_BAKING.md) feeds the experimental
-[`World.enableSdfCollisions()` API](docs/SDF_WORLD.md): automatic GPU candidate
-spatial filtering, runtime body/field refresh, automatic capacity growth,
-independent normals and warm starts.
-Pair-level contact events and bounded SDF surface raycasts are supported.
-
-Run `pnpm dev` and open `/sdf.html` for the interactive SDF playground: rings,
-twisted solids and a mesh-baked gear pile. Start with **Play**, grab a body with
-left-drag, right-drag to orbit, or drop another shape. It starts paused with 12
-bodies and caps spawning at 36. Rendering follows the browser's animation frames;
-physics retains its fixed timestep and bounded catch-up. Hidden tabs pause, and
-paused views stop rendering once camera motion settles. Contact points/normals are
-an optional throttled readback; body drawing reads the GPU buffer directly.
-Mass/inertia use box proxies, so this is a collision playground, not a paper benchmark.
-
-Open `/sdf-gears.html` for a contact-driven gear train. One motorized input drives
-20/12/28-tooth gears through baked SDF collisions; follower rotations are not scripted.
-Drag the gold gear or handwheel, reverse the motor, and toggle the contact-load overlay.
-Disabling tooth collisions resets the train with stationary followers as a negative control.
-The gears use polygon-integrated mass/inertia and two ball joints per follower axle.
-See [gear-demo validation and limitations](docs/SDF_GEARS.md).
-
-Open `/sdf-released.html` for eleven scenes using the released resolution-100 fields,
-original geometry, poses, mass and full inertia: box/gear stacks, plain and distorted
-planks, chairs, cows on spikes, bunnies, a spiky wheel and analytic primitives.
-Default **smooth playback** runs without per-substep reference readbacks. Expand
-**Reference comparison** to reset into the bounded six-second diagnostic mode with
-CPU-reference metrics; that mode is for numerical inspection, not FPS measurement.
-
-The playground and reference-scene pages offer **Measure 4s**: one second of warmup, four seconds of visible browser
-frame intervals, then automatic pause. The report separates frame cadence from simulation
-speed and records final GPU drain time; **Save JSON** exports the raw intervals and context.
-The historical SDF package checkpoint is in [SDF_RELEASE_0.4.md](docs/SDF_RELEASE_0.4.md).
-Current local desktop results, verification and release boundaries are in
-[SDF demo release notes](docs/SDF_DEMO_RELEASE.md). These are short observations on one device,
-not a promise of 60 FPS across browsers or a reproduction of paper GPU performance.
-See [API & limitations](docs/SDF_WORLD.md) and
-[released-scene comparisons](docs/SDF_RELEASED_COMPARISON.md).
-See [paper reproduction status](docs/SDF_REPRODUCTION_STATUS.md) and
-[research reconciliation](docs/SDF_RECONCILIATION.md) for historical evidence and acceptance limits.
-
-`three-avbd/queries` provides CPU-only static triangle BVHs, nearest rays, bounded sphere
-and capsule overlaps and translational sweeps, with no GPU or Three runtime import. See
-[static queries](docs/QUERIES.md) and the [Node projectile example](examples/static-projectile.ts).
-These queries are independent of solver collisions and GPU bodies.
-
-## Use it in your project
-
-[three-avbd on npm](https://www.npmjs.com/package/three-avbd):
+Choose your own parent folder. For the ordinary committed development source:
 
 ```sh
-npm install three-avbd three
+git clone https://github.com/sbobyn/three-avbd.git
+cd three-avbd
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
-```ts
-import * as THREE from 'three/webgpu';
-import { World, BodyMesh } from 'three-avbd';
+For the already supplied frozen review snapshot, extract it into your chosen folder, open
+a terminal there and run the same install/start commands. Its exact changes differ from main;
+see [candidate identity](docs/REVIEW_20261106.md).
 
-const renderer = new THREE.WebGPURenderer();
-const world = await World.create({ renderer, maxBodies: 50_000 }); // y-up, gravity -9.81
+Open **http://127.0.0.1:5317/examples/** for focused examples, or **/sdf.html** for the paused
+SDF playground. The root URL is the large-scene showcase. If 5317 is occupied, use a free port
+with `pnpm dev --port 5318` and follow Vite's printed URL. Ctrl-C stops your own server.
+Serve through localhost/HTTPS, not `file://`.
 
-world.addBox({ size: [40, 1, 40], position: [0, -0.5, 0], fixed: true });
-const crate = world.addBox({ size: [1, 1, 1], position: [0, 5, 0] })!;
-const ball = world.addSphere({ radius: 0.5, position: [0, 7, 0], density: 3 })!;
-world.addJoint(crate, ball, { anchorA: [0, 0.5, 0], anchorB: [0, -0.5, 0], breakForce: 200 });
+No account, API key, environment file or paid service is needed. Installing dependencies
+uses the registry; the demos fetch their assets. Some demo preferences/reports use browser
+storage. Physics state is transient: the demos do not save editable worlds.
 
-// Every box, drawn straight from the solver's GPU buffer (a mesh per material or shape)
-scene.add(new BodyMesh(world, { bodies: 'box', material: new THREE.MeshStandardNodeMaterial() }));
-scene.add(new BodyMesh(world, { bodies: 'sphere' }));
+## First useful session — about 20 minutes
 
-renderer.setAnimationLoop(() => {
-  world.update(clock.getDelta()); // fixed steps
-  renderer.render(scene, camera);
-});
+1. Open `/examples/`: try basic bodies/materials/joints, then lifecycle and body pool examples.
+   Expect a box pyramid, falling spheres, convex rocks and a breakable hanging chain in basic.
+2. Open `/sdf.html`, press **Play**, drag a body, drop a shape, then **Pause**. Its 12-body start
+   and 36-body cap are a collision playground, not a large-scene benchmark or exact mesh inertia.
+3. Follow the [fresh Three.js consumer recipe](docs/SETUP.md#fresh-threejs-consumer). It installs
+   a locally built package in a new project and supplies a complete scene. The crate and sphere
+   should fall onto the ground; **Kick the crate** applies an upward impulse. Change size,
+   density/friction and material color separately: visual roughness does not alter physics friction.
 
-// Poses come back from the GPU on request (an async copy): after this, crate.position is current
-await world.read();
-```
+Your durable result is the consumer's source and pinned dependency files. Reopening reconstructs
+the scene; it does not restore its last simulation frame. [Save/reopen and recovery](docs/SETUP.md#keep-and-reopen-your-first-result).
 
-- **Bodies**: `addBox`, `addSphere`, `addHull({ points })` (convex hulls; pass the renderer
-  `requiredLimits: await recommendedLimits()` so they collide as hulls;
-  use `World.create({ ..., requireHulls: true })` to reject unsupported devices and
-  `world.capabilities` to inspect the installed collision backend), with position, rotation,
-  velocity, density, friction, `fixed`;
-  `body.applyImpulse(J, point)`, `applyForce(F, point)` (every step until `clearForces()`),
-  `applyTorque`, collision groups (`group`, `collidesWith`), `body.moveTo(position, rotation)` (a
-  fixed body as a moving platform or door, carrying what it touches), `body.set({ position, velocity, ... })`,
-  `body.setFixed()`, `body.remove()` (its slot is
-  reused). Adds, changes and removals go to the GPU together at the next step.
-- **Joints**: `addJoint(a, b, { anchorA, anchorB, type: 'fixed' | 'ball', breakForce, breakOnPull, rest, yieldForce, breakBend })`,
-  `addSpring(a, b, { stiffness, rest })`, `joint.remove()`, and `world.onBreak(joint => ...)` at
-  each readback. A fixed joint can hold two bodies turned apart (`rest`: a rotation, or
-  `'current'`, which takes the rotations as last read, so read first or add the joint before the
-  bodies move), bend for good under load (`yieldForce`: a plastic hinge, on the GPU with no
-  readback) and break once it has bent too far (`breakBend`, in radians: a `breakForce` above the
-  yield only catches a sudden jump, and with `breakOnPull` it is in newtons);
-  `world.readJoints()` then `joint.force` and `joint.bend` say what it carries and how far it has
-  given.
-- **Drawing**: `BodyMesh` takes any node material, geometry (scaled to each body's size) and
-  a set of bodies (a shape, a list or a test), with `setColor(body, color)` per body.
-- **Raycasts**: `await world.raycast(origin, direction)` gives the first body hit, the point and
-  the normal; `world.raycasts([...])` casts many rays in one GPU pass.
-- **Contact events**: `reportContacts: true` on a body and `world.onContact(e => ...)` for
-  begin and end, with where, the normal and how hard (for sounds, damage, triggers).
-- **Reading back**: `await world.read()` (or `world.readbackEvery = n`) for positions,
-  rotations and velocities, and to learn which joints broke. `world.read(bodies)` and
-  `world.track(bodies)` read only the bodies you need (160 bytes each, not the whole world).
-- **Headless**: `World.create({ device })` runs without a renderer (Node with Dawn, workers).
-- **Advanced**: `three-avbd/advanced` exposes the solver underneath (`world.solver`) and the
-  layout of its body, joint and contact buffers and counters, for your own compute passes and
-  readbacks. `appendJoints` takes each joint's own break threshold, rest rotation, yield and bend
-  limit. (0.3 grew the joint record to 40 floats: stride by `JOINT_FLOATS`.)
+## Learn and integrate
 
-The design and what's planned: [docs/API.md](docs/API.md). Runnable examples are indexed at
-[`/examples/index.html`](https://three-avbd.vercel.app/examples/index.html) (`pnpm dev`, then
-`/examples/`): [basic](examples/basic.ts), [body lifecycle](examples/body-lifecycle.ts),
-[body pool](examples/body-pool.ts), and experimental SDF examples
-([gears](examples/sdf-gear.ts), [balls in a torus](examples/sdf-hollow.ts),
-[mesh baked in a worker](examples/sdf-from-mesh.ts)).
+- [Core concepts, APIs, demos and configuration](docs/USER_GUIDE.md): units, fixed stepping,
+ bodies, materials, forces, joints, async readback, expected behavior and limitations.
+- [Fresh project, packaging, persistence and deliberate updates](docs/SETUP.md).
+ Use a local built tarball for candidate 0.4; a bare Git dependency does not build its exports.
+- [API and editable architecture/map](docs/API.md), [static queries](docs/QUERIES.md),
+ [experimental SDF API](docs/SDF_WORLD.md), [SDF baking](docs/SDF_BAKING.md).
+- [0.4 release/migration notes](docs/RELEASE_0.4.md), [measured findings](docs/FINDINGS.md),
+ [plan/status](docs/PLAN.md), [Rapier comparison](docs/COMPARISON.md).
+- [Setup troubleshooting](docs/USER_GUIDE.md#troubleshooting-and-updates) and
+ [onboarding acceptance/tasks](docs/ONBOARDING.md).
 
-## What's in the demo
+For maintainers, `pnpm check` runs typecheck, CPU tests, hardware GPU tests and site/library builds.
+Latest candidate evidence:255 CPU +260 GPU tests passed without skips; independent consumer
+build and bounded browser settling/impulse checks passed. These are not full visual, large-scene,
+other-device or user-acceptance tests. Reuse [the dated evidence](docs/REVIEW_20261106.md).
 
-- **The paper's scenes.** Brick Ring (110,000 bricks, Fig. 1), Brick Walls (Fig. 3), Wall
-  Smash, Breakable Wall, Chain Mail, Ragdolls on Cloth (Fig. 14), Heavy Pendulum (a 50,000:1
-  mass ratio), a Flag in the Wind (pressure drag and skin friction on bodies marked as sails),
-  and scale tests: Jointed Drop, box piles and Box Columns (100,000 boxes).
-- **Plastic Beam**: a cantilever welded to a wall with a weight on its end. The welds are
-  plastic: they hold up to a moment, bend past it and keep the bend (take the weight off and the
-  beam stays bent), and the wall's weld tears under a heavy enough weight.
-- **Starry Night** pours 20,000 spheres into a glass-fronted box and they come to rest as the
-  painting. **Mona Lisa Tower** drops 50,000 bricks that stack into the Mona Lisa. Both lean
-  on the solver being deterministic: the scene runs once off screen to find where each body
-  lands, colours it from the painting there, and then runs again for real.
-- **The 2D demo**: the 19 scenes of the authors' 2D demo (stacks, ropes, springs, soft
-  bodies, a motor, fracture), on the CPU reference or the GPU, plus scalable box rain.
-- **Custom** builds any showcase scene at a size you pick.
+## Feedback and license
 
-Controls, 3D: left-drag a body to grab it (it glows under the pointer), left-drag elsewhere to
-orbit, right-drag to pan, wheel to zoom. Space, B or middle-click fires a cannonball (its
-radius, mass and speed are in the scene panel, and under Settings → Advanced). P pauses, `.`
-steps, R resets. 2D: left-drag grabs, right-click spawns a box, wheel zooms, shift-drag or
-middle-drag pans, WASD/QE move the camera.
+Record the exact candidate, device/browser, example/settings, expected and actual behavior.
+[Report a bug or friction](https://github.com/sbobyn/three-avbd/issues) or share it during review;
+existing [release/consumer work](https://linear.app/sbobyn/issue/STE-3003) tracks acceptance.
 
-On a device's first visit the demo times a few solver steps off screen and remembers what
-the GPU can run: a weaker GPU lands on a smaller scene, scenes that would run under 60 fps are
-marked "slow here" and those under 30 fps ask before loading. Settings → Advanced measures
-again.
-
-## How it works
-
-The whole step runs on the GPU, following the paper's Algorithm 1: a hashed-grid broadphase,
-an OBB SAT narrowphase with up to eight contacts per pair, contact persistence through a hash
-table (warm-started penalties and multipliers), a CSR adjacency, Jones-Plassmann graph
-colouring, and then per-colour primal solves (a 6×6 LDLᵀ per body, cone friction) with a
-dual update per iteration, all dispatched indirectly so the CPU never reads a count back.
-Rendering is zero-copy: Three.js draws the instances from the solver's body buffer.
-
-The GPU solvers are validated against faithful TypeScript ports of the authors' C++ demos,
-which are themselves checked bit for bit against the upstream code. A seeded single step on
-the GPU matches the 3D reference to 3e-6; behaviour suites cover stacking, friction, joints,
-fracture and scale. Steps are deterministic on a given device, so a scene replays the same
-bits every run.
-
-Measured on an M4 Max in Chrome, against the paper's numbers on an RTX 4090:
-
-| scene | ours | paper |
-|---|---|---|
-| Brick ring, 110k bricks, 4 iterations | 10.4 ms | 9.8 ms |
-| Jointed drop, 34k bodies + 71k joints, 10 iterations | 6.4 ms | 16 ms (incl. cloth) |
-| Brick gables, 506k bricks, 3 iterations | 25.5 ms | 17.6 ms |
-
-Every measured decision, with how it was measured, is in [docs/FINDINGS.md](docs/FINDINGS.md);
-the stages the project went through are in [docs/PLAN.md](docs/PLAN.md). The
-[results page](https://three-avbd.vercel.app/results.html) compares machines; add yours from
-[bench3d.html](https://three-avbd.vercel.app/bench3d.html) with "Download results".
-
-## Running it locally
-
-```bash
-pnpm install
-pnpm dev        # http://127.0.0.1:5317 (3D), /2d.html, /bench.html, /bench3d.html, /results.html
-pnpm check      # typecheck + CPU tests + GPU tests (headless Dawn) + production build
-```
-
-URL parameters: `?scene=Pyramid`, `&backend=gpu` or `cpu`, `&paused`.
-
-Benchmarks and studies, headless through Dawn (the `webgpu` package):
-
-```bash
-pnpm compare:rapier # experimental Rapier/AVBD batched-throughput comparison (Node + Dawn)
-pnpm bench3d:gpu # 3D suite: the paper's large scenes and small ones (args: tiers or case names)
-pnpm bench2d:gpu # 2D GPU benchmark with per-phase timing
-pnpm bench2d     # 2D CPU scaling baseline
-pnpm sweep2d     # iteration count: cost vs quality on the GPU
-pnpm scaling2d   # box rain 10k-250k, writes docs/data/scaling2d-<adapter>.json
-```
-
-`pnpm bench3d:gpu <tiers> --json <file> --machine <name>` writes a report for the results
-page (they live in `docs/data/bench3d/`). Keep a browser benchmark's tab visible while it runs.
-
-The experimental [Rapier comparison](docs/RAPIER_COMPARISON.md) also runs at `/compare.html`
-(`/compare-frame.html` for a rendered workflow, `/compare-side.html` for a live side-by-side view). Its completed-batch timing is not a rendered FPS
-comparison, and the numbers in that document are historical (see its header).
-
-## Layout
-
-| Path | What |
-|---|---|
-| `src/lib/` | The npm package's public API: `World`, `Body`, `Joint`, `BodyMesh` (`three-avbd`), and `three-avbd/advanced` |
-| `examples/` | Small runnable examples of the package |
-| `src/avbd3d/gpu/` | 3D WebGPU solver: WGSL broadphase, OBB narrowphase, 6-DOF solve; shares the 2D colouring kernels |
-| `src/avbd3d/ref/` | 3D CPU reference: faithful port of `avbd-demo3d` (quaternions, 6x6 LDLᵀ, OBB SAT, cone friction) |
-| `src/avbd3d/sim.ts` | `Sim3D` interface the 3D app drives (CPU reference or WebGPU); scene registry |
-| `src/avbd3d/bench-scenes.ts`, `shapes.ts` | Showcase and benchmark scenes; spheres, sails and convex hulls (GPU-only) |
-| `src/avbd3d/hull.ts`, `gpu/wgsl-hull.ts` | Convex hulls: CPU hull, faces and principal-frame mass properties; GPU SAT (Gauss-map edge pruning) and face clipping against hulls, boxes and spheres |
-| `src/avbd3d/painting.ts`, `tower.ts` | Starry Night and the Mona Lisa Tower |
-| `src/avbd3d/bench-cases.ts`, `src/bench3d`, `src/results` | 3D benchmark suite, its browser page and the results page |
-| `src/app3d/` | 3D demo app: z-up orbit camera, shadows, zero-copy instancing, drag, cannonballs |
-| `src/avbd2d/ref/` | 2D CPU reference: faithful port of `avbd-demo2d` (the oracle for the later solvers) |
-| `src/avbd2d/soa/` | GPU-shaped CPU solver: SoA buffers, grid broadphase, colouring, CSR (the GPU's template) |
-| `src/avbd2d/gpu/` | 2D WebGPU solver: WGSL kernels, host code, `Sim2D` adapter |
-| `src/app2d/`, `src/bench2d` | 2D demo app and benchmark page |
-| `src/ui/` | Shared UI: scene menu and panels, title card, device budget, build progress |
-| `tests/`, `tests-gpu/` | `node --test` suites; golden trajectories from the C++ demos in `tests/fixtures`; GPU tests on a real device through Dawn |
-| `tools/` | The C++ oracle build, the determinism checker, the trailer rig |
-
-## Credits and licences
-
-MIT-licensed ([LICENSE](LICENSE)).
-
-An implementation of *Augmented Vertex Block Descent* (Chris Giles, Elie Diaz, Cem Yuksel,
-SIGGRAPH 2025). The CPU reference solvers are TypeScript ports of the authors' demos
-([avbd-demo2d](https://github.com/savant117/avbd-demo2d),
-[avbd-demo3d](https://github.com/savant117/avbd-demo3d), MIT, © Chris Giles), whose 2D
-collision comes from [box2d-lite](https://github.com/erincatto/box2d-lite) (MIT, © Erin Catto).
-Their notices, and three.js's, are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); the
-build copies both files into the site. The paintings are public domain.
-
-`pnpm fetch-reference` clones the upstream demos into `reference/` (git-ignored);
-`tools/cpp-oracle/build.sh` and `gen2d.sh` / `gen3d.sh` rebuild the oracles and regenerate the
-fixtures.
+MIT ([LICENSE](LICENSE)). AVBD by Chris Giles, Elie Diaz and Cem Yuksel; reference ports derive
+from the authors' MIT demos. See [third-party notices](THIRD_PARTY_NOTICES.md).
