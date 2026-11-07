@@ -111,3 +111,14 @@ is asserted. Never overwrite a personal installation as part of an agent update.
 try a demo. Verify the actual hardware adapter before expensive GPU tests/benchmarks; no silent
 software-rendering performance claims. [Troubleshooting](USER_GUIDE.md#troubleshooting-and-updates)
 covers ports, module exports, device limits and unstable/slow scenes.
+
+
+### Local overnight overlay — 2026-11-07
+
+The standalone example now displays constructor/initialization failures including non-Error
+rejections, and disposes its own failed-start resources. `World.create` retains caller ownership
+and the original initialization rejection as `Error.cause`; use its WebGPU/localhost/HTTPS guidance
+without discarding authored source. The loop uses zero elapsed time on start/resume, a bounded
+nonnegative delta thereafter, and a current DPR capped at 2 on resize. No automatic reload/reset
+is used to recover. Device-free fixtures cover failure/time/handle-preservation behavior; the
+new overlay has not been browser/GPU tested. It is not part of the frozen review-20261106-1.
