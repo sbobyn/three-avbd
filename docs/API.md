@@ -73,6 +73,18 @@ flowchart TD
   sphere/capsule sweeps do not automatically query dynamic GPU bodies. [`BodyPool`](../src/lib/pool.ts)
   instead manages reusable body slots in a fixed-storage World.
 
+### Initialization diagnostics — local overlay, 2026-11-07
+
+`World.create({ renderer })` wraps renderer-init rejection with hardware WebGPU / secure-origin
+context and preserves the original rejection as `Error.cause`. It does not dispose the caller's
+renderer or reset/reload authored state. WebGL fallback still rejects before solver allocation.
+The standalone consumer owns its renderer, so a startup failure retires that renderer and any
+created World and displays the failure. Its continuous loop drops hidden-tab elapsed time,
+starts/resumes with a zero delta and bounds subsequent deltas to 0–0.1 seconds. Resize refreshes
+DPR with a cap of 2 (invalid DPR uses 1). These are source and device-free fixture contracts,
+not new device-loss recovery, runtime/visual qualification or performance claims. Existing GPU
+state/lifecycle contracts are unchanged; no solver or persistence format is added.
+
 ### Entries, persistence and assets
 
 [`package.json`](../package.json) and [`tsconfig.lib.json`](../tsconfig.lib.json) define

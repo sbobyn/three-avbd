@@ -1,11 +1,13 @@
 # three-avbd
 
+![three-avbd — GPU rigid-body physics for Three.js](public/brand-banner.svg)
+
 GPU rigid-body physics for Three.js, implemented in TypeScript and WebGPU using
 [Augmented Vertex Block Descent](https://graphics.cs.utah.edu/research/projects/avbd/).
 For developers building scenes with boxes, spheres, convex hulls, friction, joints and
 breakable structures; experimental non-convex SDF collisions are also available.
 
-![Historical Chrome showcase: brick ring, joints and box columns](docs/media/trailer.gif)
+![Basic example: box pyramid, falling spheres, convex rocks and a suspended chain, captured locally November 7](docs/media/basic-20261107.png)
 
 [Repository](https://github.com/sbobyn/three-avbd) ·
 [Hosted showcase](https://three-avbd.vercel.app) ·

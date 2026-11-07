@@ -743,7 +743,12 @@ export class World {
     const plan = (device: GPUDevice) => options.storage?.growth === 'fixed' ? resolveFixedStorage(options, options.storage, device.limits) : null;
     if (options.renderer) {
       const renderer = options.renderer;
-      await renderer.init();
+      try {
+        await renderer.init();
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        throw new Error(`World.create: renderer initialization failed: ${detail}. Check hardware WebGPU availability and use localhost or HTTPS. The caller retains renderer ownership.`, { cause });
+      }
       const backend = renderer.backend as unknown as {
         device?: GPUDevice;
         createStorageAttribute(attribute: THREE.BufferAttribute): void;

@@ -67,3 +67,30 @@ Documentation pass only: local links/anchors, source command/config/storage chec
 metadata/signature. Reused Nov 6 gate 255 CPU/260 GPU and fresh-consumer evidence; no full-suite repeat,
 new install, browser launch, GPU rendering or publication. Current media, save/reopen/restore/update,
 minimum runtime and non-M4 platforms remain unverified. Frozen artifacts were not rewritten.
+
+
+## November 7 baseline continuation
+
+STE-3003 is now explicitly reopened In Progress, still assigned Steven, and linked/read back under
+existing M9 release umbrella after registry metadata again reports0.3.0. Parent acceptance remains
+open; the code/docs merge alone did not complete it. Source initialization, consumer ownership,
+DPR/time and branding fixes are prepared together on the baseline topic branch. README now shows
+a source-matched basic-scene capture; the examples index uses the existing SVG mark. Browser Apple
+Metal-3/non-fallback initialized the basic scene with native hull support; no throughput/large-scene
+claim. Root/2D/SDF branding changes passed build/static checks, not a full interactive page tour.
+
+Delivery gate: main's existing Vercel integration automatically deploys. Prepare source PR and hold
+its merge at the assignment's explicit public-deployment boundary; do not change deployment settings.
+The sprint remains real user feedback → packed SDF/recovery/update acceptance → explicitly chosen
+publication/downstream qualification. No new task/project or user acceptance was invented.
+
+
+### Subsequent bounded acceptance and production authorization
+
+[November 7 evidence](REVIEW_20261107.md) closes the root/2D/SDF identity visual pass and bounded
+packed SDF/types/contact/raycast/lifecycle/source-recovery slice on qualified hardware. Network
+installation and registry release are not inferred from an extracted package with existing deps.
+Steven subsequently approved this existing PR73 production update after checks. The prior automatic-
+deployment merge hold is therefore released for PR73 only; source/preview checks and production
+status remain distinct. Larger quality/performance, cross-version/browser-store recovery and actual
+human acceptance stay open; existing preservation holds remain unchanged.
