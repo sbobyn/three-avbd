@@ -83,3 +83,14 @@ Delivery gate: main's existing Vercel integration automatically deploys. Prepare
 its merge at the assignment's explicit public-deployment boundary; do not change deployment settings.
 The sprint remains real user feedback → packed SDF/recovery/update acceptance → explicitly chosen
 publication/downstream qualification. No new task/project or user acceptance was invented.
+
+
+### Subsequent bounded acceptance and production authorization
+
+[November 7 evidence](REVIEW_20261107.md) closes the root/2D/SDF identity visual pass and bounded
+packed SDF/types/contact/raycast/lifecycle/source-recovery slice on qualified hardware. Network
+installation and registry release are not inferred from an extracted package with existing deps.
+Steven subsequently approved this existing PR73 production update after checks. The prior automatic-
+deployment merge hold is therefore released for PR73 only; source/preview checks and production
+status remain distinct. Larger quality/performance, cross-version/browser-store recovery and actual
+human acceptance stay open; existing preservation holds remain unchanged.

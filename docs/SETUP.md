@@ -71,7 +71,7 @@ Save `main.js`, `index.html`, package.json and package-lock.json in your consume
 local AVBD tarball accessible too: the lockfile can refer to that local path. Stop your server with
 Ctrl-C, reopen a terminal in the same consumer and run the documented `npx vite` command again.
 The scene is reconstructed from code; transient physics state and camera movement are not restored.
-The restart journey remains unverified for this candidate; the initial install/build/runtime was tested.
+The November 6 initial install/build/runtime was tested; [November 7 bounded source/input recovery](REVIEW_20261107.md) now passes in a separate copy. A browser-origin preference backup and cross-version update/rollback are still unverified.
 
 For a portable copy, copy those source/configuration files and the exact tarball together, avoiding
 node_modules/dist caches. Reinstall from that tarball in a **new** directory, update its local dependency
@@ -121,4 +121,4 @@ and the original initialization rejection as `Error.cause`; use its WebGPU/local
 without discarding authored source. The loop uses zero elapsed time on start/resume, a bounded
 nonnegative delta thereafter, and a current DPR capped at 2 on resize. No automatic reload/reset
 is used to recover. Device-free fixtures cover failure/time/handle-preservation behavior; the
-new overlay has not been browser/GPU tested. It is not part of the frozen review-20261106-1.
+new overlay subsequently passed bounded browser/basic and packed-SDF hardware checks; see [November 7 evidence](REVIEW_20261107.md). Real context-loss injection remains unverified. It is not part of the frozen review-20261106-1.
