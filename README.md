@@ -15,10 +15,10 @@ breakable structures; experimental non-convex SDF collisions are also available.
 
 ## Status and requirements
 
-Current source has **0.4.0 candidate APIs**; npm latest was **0.3.0** at the November 6 check.
+Current source has **0.4.0 candidate APIs**; npm latest was **0.3.0** at the November 9 check.
 Publication is pending. The prepared **review-20261106-1** has exact source/package hashes and
 [verification notes](docs/REVIEW_20261106.md). This branch includes the setup guides and
-standalone consumer example. The deployed showcase is not verified against this source.
+standalone consumer example. The hosted demo and your checkout may differ; record the exported build commit with feedback.
 Keep a frozen candidate's own README with it; do not substitute registry 0.3 for its new APIs.
 
 Use Node **22.18+**, pnpm **10.18.0**, and a browser with a **hardware WebGPU adapter**.
@@ -46,7 +46,8 @@ For the already supplied frozen review snapshot, extract it into your chosen fol
 a terminal there and run the same install/start commands. Its exact changes differ from main;
 see [candidate identity](docs/REVIEW_20261106.md).
 
-Open **http://127.0.0.1:5317/examples/** for focused examples, or **/sdf.html** for the paused
+Open **http://127.0.0.1:5317/examples/** for the searchable demo gallery: grouped scenes,
+Rapier comparisons, source links and runtime requirements. Open **/sdf.html** for the paused
 SDF playground. The root URL is the large-scene showcase. If 5317 is occupied, use a free port
 with `pnpm dev --port 5318` and follow Vite's printed URL. Ctrl-C stops your own server.
 Serve through localhost/HTTPS, not `file://`.
@@ -73,16 +74,13 @@ For the **Rapier-first interlocking study**, open `/examples/interlocking-rapier
 Then try `/examples/interlocking-avbd.html`: the same rings, peg, mass, push and rendering,
 using analytic SDF contacts. Follow the [20-minute task and comparison limits](docs/PAIRED_STUDIES.md).
 These are developer studies; no performance winner or new release qualification is established.
-The study is tracked in [PR74](https://github.com/sbobyn/three-avbd/pull/74). To select its review
-source explicitly in a fresh clone, run these **before** the install/run commands above:
+The paired study is included on `main` (original delivery: [PR74](https://github.com/sbobyn/three-avbd/pull/74)).
+Use the normal source checkout above; record `git rev-parse HEAD` with your feedback.
+For a frozen review, select the exact supplied commit before installing dependencies instead
+of following an old PR head. This selects source, not a published package update.
 
-```sh
-git fetch origin pull/74/head
-git switch --detach FETCH_HEAD
-git rev-parse HEAD
-```
-
-Record that commit with your feedback; this selects source, not a published package update.
+For future demo choices, see the [source-linked engine and research shortlist](docs/DEMO_REFERENCES.md).
+Those studies are proposals; the gallery lists implemented demos only.
 
 ## Learn and integrate
 
