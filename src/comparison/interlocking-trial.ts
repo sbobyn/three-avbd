@@ -1,7 +1,7 @@
 // Bounded, serialized interlocking-sculpture diagnostic trial (STE-3282). Engine- and clock-injectable.
 // One engine per invocation, one authored input sequence: N steps, impulse after step 120 and before
 // step 121, pose observations at snapshots only. The runner owns the model it acquires and always
-// disposes it; it never owns a GPU device. A diagnostic, not a benchmark: no speed ratio, winner,
+// attempts disposal; it never owns a GPU device. A diagnostic, not a benchmark: no speed ratio, winner,
 // FPS, physical qualification or save-state claim is produced. See docs/PAIRED_STUDIES.md.
 import { INTERLOCKING, ringMassProperties, type RingPieces } from './interlocking-scene.ts';
 import {
@@ -240,7 +240,8 @@ const poseRecord = (p: StudyPose): PoseRecord => ({ position: { x: p.position.x,
   rotation: { x: p.rotation.x, y: p.rotation.y, z: p.rotation.z, w: p.rotation.w } });
 
 /** Run one bounded trial. Throws TrialRefusal for invalid input before calling acquire; every other
- * failure becomes a `failed` report (partial snapshots preserved) after the engine was disposed. */
+ * engine-work failure becomes a `failed` report (partial snapshots preserved). A throwing custom
+ * clock can reject the call, but acquired-model disposal is still attempted in finally. */
 export async function runInterlockingTrial(rawConfig: unknown, acquire: TrialAcquire, options: TrialOptions = {}): Promise<TrialReport> {
   const config = validateTrialConfig(rawConfig);
   const clock = options.clock ?? (() => performance.now());
@@ -252,6 +253,9 @@ export async function runInterlockingTrial(rawConfig: unknown, acquire: TrialAcq
   let summaries: TrialReport['summaries'] = null;
   const snapshots: SnapshotRecord[] = [], stepMs: number[] = [];
   const t0 = clock();
+  const cleanup = { disposed: false, error: null as string | null };
+  let disposeMs: number | null = null;
+  const cleanupStamp = () => { try { return clock(); } catch { return null; } };
 
   async function snapshot(at: number) {
     const hanging = !pushApplied;
@@ -299,17 +303,16 @@ export async function runInterlockingTrial(rawConfig: unknown, acquire: TrialAcq
   } catch (e) {
     error = { phase, step, message: sanitizeMessage(e) };
     trialWallMs = clock() - t0;
-  }
-
-  // Re-read: an engine may only know some facts (e.g. derived mass) after it has run. Never fatal.
-  if (engine) try { description = engine.description; } catch { /* keep the description captured at setup */ }
-  const cleanup = { disposed: false, error: null as string | null };
-  let disposeMs: number | null = null;
-  if (engine) {
-    const td = clock();
-    try { await engine.dispose(); cleanup.disposed = true; } catch (e) { cleanup.error = sanitizeMessage(e); }
-    disposeMs = clock() - td;
-    if (cleanup.error && !error) error = { phase: 'dispose', step: completed, message: cleanup.error };
+  } finally {
+    // Re-read: an engine may only know some facts (e.g. derived mass) after it has run. Never fatal.
+    if (engine) try { description = engine.description; } catch { /* keep the description captured at setup */ }
+    if (engine) {
+      const td = cleanupStamp();
+      try { await engine.dispose(); cleanup.disposed = true; } catch (e) { cleanup.error = sanitizeMessage(e); }
+      const finished = cleanupStamp();
+      disposeMs = td !== null && finished !== null ? finished - td : null;
+      if (cleanup.error && !error) error = { phase: 'dispose', step: completed, message: cleanup.error };
+    }
   }
 
   const sum = (v: (number | null)[]) => v.length ? v.reduce<number>((a, b) => a + (b ?? 0), 0) : null;
