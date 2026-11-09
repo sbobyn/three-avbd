@@ -1,3 +1,4 @@
+import { caseLabel } from './labels.ts';
 import { CASES } from './scenes.ts';
 import { comparisonDevice, DEFAULTS, runComparison } from './run.ts';
 
@@ -6,7 +7,8 @@ const download = document.querySelector<HTMLButtonElement>('#download')!;
 const status = document.querySelector<HTMLElement>('#status')!;
 const output = document.querySelector<HTMLElement>('#output')!;
 const select = document.querySelector<HTMLSelectElement>('#case')!;
-for (const name of CASES) select.add(new Option(name, name));
+// The label is what a reader sees; the value stays the case ID that the run and its JSON report use.
+for (const name of CASES) select.add(new Option(caseLabel(name), name));
 let json = '';
 run.onclick = async () => {
   run.disabled = true;

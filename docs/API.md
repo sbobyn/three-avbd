@@ -111,6 +111,44 @@ queue drain/readback and snapshot observers. It owns its model; the CLI owns any
 JSON reports keep these wall spans separate and rendering unmeasured; they do not certify a
 performance comparison or alter the running demo/library API.
 
+### Demo gallery — 2026-11-09, STE-3288
+
+Source base `34a8f78a1da40a69ed839bec09e44c32e6194490` plus the gallery topic overlay.
+
+`/examples/` renders [`src/gallery/catalog.ts`](../src/gallery/catalog.ts), plain data with no imports,
+through DOM-free [`filter.ts`](../src/gallery/filter.ts) and [`main.ts`](../src/gallery/main.ts). It
+never loads the solver, Three.js, Rapier or a GPU device; thumbnails are static SVG illustrations.
+Scene links use only existing `?scene=` handling (3D `/`, `/2d.html`, `/compare-side.html`).
+[`tests/gallery.test.ts`](../tests/gallery.test.ts) reads the real registries, menu and Vite inputs,
+so a new listed scene, comparison case or page without a gallery entry fails CPU tests.
+
+```mermaid
+flowchart LR
+  Registries[Scene registries / menu / CASES / Vite inputs] -.checked by tests.-> Catalog[catalog.ts data]
+  Catalog --> Filter[filter.ts search + URL state] --> Page[examples/index.html]
+  Page -->|links only| Demos[Existing demo pages]
+```
+
+### Demo UI consistency overlay — 2026-11-09, STE-3288
+
+Based on gallery head `da7c6197189ae69f1970b2381219e594ea50d801`, the shared
+`src/ui/tokens.css` contains namespaced light/dark primitives only. Each owning page
+maps the intended set; it does not acquire a renderer or change solver settings.
+`src/ui/viewer-ui.ts` supplies tested shortcut/solver-availability policies;
+`src/comparison/labels.ts` names existing case IDs without changing report identity.
+`examples/startup.ts` handles example startup failures/owned reverse-order cleanup,
+`examples/interlocking-progress.ts` formats readback-based step status, and
+`src/sdf-released/framing.ts` preserves an orbited camera across same-scene rebuilds.
+These are UI contracts, not new public library APIs or physical qualification.
+
+```mermaid
+flowchart LR
+  Tokens[UI brand primitives] --> Pages[Gallery / viewers / examples / SDF / comparisons]
+  Policy[Viewer shortcut and backend policy] --> Viewers[2D / 3D controls]
+  Cases[Stable comparison case IDs] --> Labels[Descriptive labels] --> Pages
+  Study[Study pose readback] --> Progress[Quiet step status]
+```
+
 ### Initialization diagnostics — local overlay, 2026-11-07
 
 `World.create({ renderer })` wraps renderer-init rejection with hardware WebGPU / secure-origin
@@ -152,7 +190,8 @@ device, settings and provenance must accompany performance claims.
 | `src/app3d/`, `src/app2d/`, `src/ui/` | Interactive solver demos and shared controls/calibration |
 | `src/sdf-showcase/`, `src/sdf-released/`, `src/sdf-gears/` | Bounded SDF demos; reference metrics and playback queue policy |
 | `src/comparison/`, `src/results/`, `scripts/` | AVBD/Rapier adapters, quality metrics, benchmark and provenance tools |
-| `examples/` | Public API consumer journeys, including lifecycle/pool/SDF |
+| `examples/` | Public API consumer journeys, including lifecycle/pool/SDF; `examples/index.html` is the gallery |
+| `src/gallery/`, `public/gallery/` | Static demo gallery: dependency-free catalog, filters and SVG illustrations ([design](GALLERY_DESIGN.md)) |
 | `tests/`, `tests-gpu/`, `tools/cpp-oracle*/` | CPU/GPU checks and upstream-generated oracle fixtures; never regenerate fixtures to hide failures |
 | `docs/data/`, `docs/measurements/`, `research/` | Dated raw results and retained experiments; not automatically accepted runtime behavior |
 | `public/`, `tools/trailer/` | Demo assets and capture tooling; licenses/provenance remain attached |

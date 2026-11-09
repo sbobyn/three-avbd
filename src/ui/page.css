@@ -1,19 +1,21 @@
+@import './tokens.css';
+
 /* Page chrome shared by the demos (index.html, 2d.html): colour tokens, the full-window
    canvas, frosted panels, and the title card (title-card.ts). */
 
 :root {
-  --ink: #1f2328;
-  --muted: #5b6168;
+  --ink: var(--avbd-light-ink);
+  --muted: var(--avbd-light-muted);
   --card: rgb(255 253 249 / 0.86);
   --line: rgb(31 35 40 / 0.12);
-  --accent: #b8503f;
+  --accent: var(--avbd-light-accent);
 }
 html,
 body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: #f6f3ec;
+  background: var(--avbd-light-paper);
   color: var(--ink);
   font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -79,10 +81,44 @@ body {
   margin: 0;
 }
 #card .warning {
-  color: #8a3a12;
+  color: var(--avbd-warning-ink);
   background: rgb(240 162 90 / 0.18);
   border-radius: 6px;
   padding: 6px 8px;
+}
+/* A notice that has to stay (no WebGPU, a solver fallback): under the controls, not in the HUD
+   the frame loop rewrites, and shown at every width */
+.notice {
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+  max-width: min(420px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 6px 12px;
+  color: var(--avbd-warning-ink);
+  background: var(--avbd-warning-surface);
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 11;
+}
+.notice[hidden] {
+  display: none;
+}
+@media (max-width: 1100px) {
+  .notice {
+    left: auto;
+    right: 16px;
+    top: 64px;
+    transform: none;
+  }
+}
+@media (max-width: 760px) {
+  .notice {
+    left: 12px;
+    right: 12px;
+    top: 60px;
+    max-width: none;
+  }
 }
 #card-toggle {
   position: absolute;

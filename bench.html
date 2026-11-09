@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>AVBD 2D Benchmark</title>
+    <title>2D benchmark · three-avbd</title>
     <style>
       :root {
         color-scheme: light dark;
-        --bg: #f4f4f1;
-        --fg: #1d1d1f;
-        --muted: #6b6b70;
+        --bg: #f6f3ec;
+        --fg: #1f2328;
+        --muted: #5b6168;
         --line: #d8d8d4;
       }
       @media (prefers-color-scheme: dark) {
@@ -26,7 +26,8 @@
         padding: 24px 16px;
         background: var(--bg);
         color: var(--fg);
-        font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+        font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        font-variant-numeric: tabular-nums;
       }
       main {
         max-width: 1100px;
@@ -80,11 +81,28 @@
       td:first-child {
         text-align: left;
       }
+      nav.site {
+        margin: 0 0 20px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      nav.site a {
+        color: #b8503f;
+        text-decoration: none;
+        font-weight: 550;
+      }
+      nav.site a:hover {
+        text-decoration: underline;
+      }
     </style>
   </head>
   <body>
     <main>
-      <h1>AVBD 2D — GPU benchmark</h1>
+      <nav class="site">
+        <a href="examples/">Demo gallery</a> · <a href="/">3D demo</a> · <a href="2d.html">2D demo</a> ·
+        <a href="results.html">Results</a> · <a href="bench3d.html">3D benchmark</a>
+      </nav>
+      <h1><img src="/favicon.svg" width="28" height="28" alt="" style="vertical-align:middle;margin-right:8px">AVBD 2D — GPU benchmark</h1>
       <p>
         Runs the whole 2D step (collision, colouring, solve) on this machine's GPU for a fixed scene suite. Close
         other GPU-heavy tabs and keep this tab visible while it runs (hidden tabs are throttled). Takes a few

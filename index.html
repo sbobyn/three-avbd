@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>three-avbd · WebGPU</title>
+    <title>3D physics playground · three-avbd</title>
     <meta
       name="description"
       content="Augmented Vertex Block Descent (SIGGRAPH 2025) running entirely on the GPU in your browser: brick walls, ragdolls on cloth, chain mail and ropes, up to hundreds of thousands of bodies."
@@ -100,7 +100,7 @@
     <div id="card" class="panel">
       <div id="card-head">
         <h1><img src="/favicon.svg" width="28" height="28" alt="" style="vertical-align:middle;margin-right:8px">three-avbd · WebGPU</h1>
-        <button id="card-toggle" title="Hide">–</button>
+        <button id="card-toggle" type="button" title="Hide">–</button>
       </div>
       <div class="body">
         <p>
@@ -119,7 +119,7 @@
           <a href="bench3d.html">Benchmark your GPU</a>
           <a href="compare-side.html">Side by side with Rapier</a>
           <a href="2d.html">2D demo</a>
-          <a href="examples/index.html">Examples</a>
+          <a href="examples/index.html">Demo gallery</a>
         </div>
         <p class="credits">
           Scenes after the paper's figures. Reference solver ported from the authors'
@@ -130,6 +130,7 @@
     </div>
     <div id="timing" class="panel"></div>
     <div id="hud" class="panel"></div>
+    <div id="notice" class="panel notice" role="status" hidden></div>
     <div id="keys" class="panel"><kbd>Space</kbd> fire a cannonball &nbsp;·&nbsp; drag a block to pull it</div>
     <script type="module" src="/src/app3d/main.ts"></script>
   </body>

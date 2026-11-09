@@ -1,0 +1,49 @@
+/* Shared brand primitives for three-avbd pages: warm paper, ink, the brick accent and the brand mark's
+   block colours (public/favicon.svg). Constants only, in an explicit light and dark set.
+
+   Importing this file changes nothing by itself: it sets no colour-scheme, background or element style, and
+   nothing switches on prefers-color-scheme here. A page picks the set it wants and maps it to its own variables:
+
+     @import '../ui/tokens.css';
+     :root { --paper: var(--avbd-light-paper); }
+     @media (prefers-color-scheme: dark) { :root { --paper: var(--avbd-dark-paper); } }
+
+   Full-canvas viewers stay light and the example and headless pages stay dark until a page chooses otherwise. */
+
+:root {
+  /* Light: the viewers' page.css and the gallery. */
+  --avbd-light-paper: #f6f3ec;
+  --avbd-light-surface: #fffdf9;
+  --avbd-light-sunk: #ece7dc;
+  --avbd-light-ink: #1f2328;
+  --avbd-light-muted: #5b6168;
+  --avbd-light-accent: #b8503f;
+  --avbd-light-accent-ink: #fff;
+  --avbd-light-link: #2e5a78;
+  --avbd-light-focus: #2e5a78;
+  --avbd-warning-ink: #8a3a12;
+  --avbd-warning-surface: rgb(253 236 220 / 0.92);
+
+  /* Dark: the gallery in a dark colour scheme, and the example pages' links and focus. */
+  --avbd-dark-paper: #12161b;
+  --avbd-dark-surface: #1a1f26;
+  --avbd-dark-sunk: #232a33;
+  --avbd-dark-ink: #e8eaed;
+  --avbd-dark-muted: #a2aab3;
+  --avbd-dark-accent: #e1795b;
+  --avbd-dark-accent-ink: #1a0f0b;
+  --avbd-dark-link: #9cc9ea;
+  --avbd-dark-focus: #9cc9ea;
+
+  /* Badge hues from the brand mark's blocks; the same in both sets, always with dark ink. */
+  --avbd-badge-play: #b8d68e;
+  --avbd-badge-headless: #a3c1e8;
+  --avbd-badge-diag: #ece08c;
+  --avbd-badge-bench: #f2bf8c;
+  --avbd-badge-cmd: #c4a5df;
+  --avbd-badge-exp: #e79aa3;
+  --avbd-badge-ink: #1f2328;
+
+  --avbd-font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --avbd-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

@@ -4,66 +4,54 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>three-avbd examples</title>
-    <meta name="description" content="Small, copyable three-avbd examples: basics, body lifecycle, pools and experimental SDF collisions." />
-    <link rel="stylesheet" href="./headless.css" />
-    <style>
-      h2 { margin-top: 28px; font-size: 18px; }
-      ul { padding-left: 20px; }
-      li { margin: 6px 0; }
-      .tag { font-size: 12px; color: #b9c0c8; }
-    </style>
+    <title>Demo gallery · three-avbd</title>
+    <meta name="description" content="Every three-avbd demo, scene collection, Rapier comparison, example and benchmark in one place, with search and filters." />
   </head>
   <body>
-    <main>
-      <p><a href="../index.html">← three-avbd demo</a></p>
-      <h1><img src="/favicon.svg" width="36" height="36" alt="" style="vertical-align:middle;margin-right:10px">three-avbd examples</h1>
-      <p>Small programs you can copy. Each links to its source in
-      <a href="https://github.com/sbobyn/three-avbd/tree/main/examples"><code>examples/</code></a>; they use only
-      the package's public entries (<code>three-avbd</code>, <code>three-avbd/sdf</code>,
-      <code>three-avbd/pool</code>, <code>three-avbd/queries</code>). All need a WebGPU browser unless marked Node.</p>
+    <a class="skip" href="#results">Skip to the gallery</a>
+    <header class="masthead">
+      <div class="wrap">
+        <p class="crumbs"><a href="../index.html">← 3D demo</a> · <a href="../2d.html">2D demo</a></p>
+        <div class="brand">
+          <img src="/favicon.svg" width="44" height="44" alt="" />
+          <div>
+            <h1>Demo gallery</h1>
+            <p class="lede">three-avbd: GPU rigid-body physics for Three.js. Play, compare with Rapier, or build your own scene.</p>
+          </div>
+        </div>
+      </div>
+    </header>
 
-      <h2>Basics</h2>
-      <ul>
-        <li><a href="./basic.html">Basic world</a>: a box pyramid, raining spheres, convex-hull rocks and a breakable joint chain.
-          <a class="tag" href="https://github.com/sbobyn/three-avbd/blob/main/examples/basic.ts">source</a></li>
-        <li>Static projectile <span class="tag">Node, no GPU</span>: CPU sphere sweeps against static meshes with
-          <code>three-avbd/queries</code>. Run <code>node --experimental-transform-types examples/static-projectile.ts</code>.
-          <a class="tag" href="https://github.com/sbobyn/three-avbd/blob/main/examples/static-projectile.ts">source</a></li>
-      </ul>
+    <main class="wrap">
+      <div id="filters" class="toolbar" role="search" aria-label="Search the gallery" hidden>
+        <div class="search-row">
+          <label class="sr-only" for="search">Search demos and scenes</label>
+          <input id="search" type="search" placeholder="Search scenes, e.g. bridge, torus, 28k" autocomplete="off" spellcheck="false" maxlength="200" />
+          <kbd class="hint" aria-hidden="true">/</kbd>
+          <span id="count" class="count" role="status" aria-live="polite"></span>
+          <button id="clear" type="button" class="btn" hidden>Clear</button>
+        </div>
+      </div>
+      <div id="filter-rows" class="filter-rows" hidden></div>
 
-      <h2>Bodies and lifecycle</h2>
-      <ul>
-        <li><a href="./body-lifecycle.html">Body lifecycle</a> <span class="tag">headless</span>: enable/disable, reset, remove and slot reuse.
-          <a class="tag" href="https://github.com/sbobyn/three-avbd/blob/main/examples/body-lifecycle.ts">source</a></li>
-      </ul>
+      <div id="start"></div>
 
-      <h2>Pools</h2>
-      <ul>
-        <li><a href="./body-pool.html">Body pool</a> <span class="tag">headless</span>: a fixed-storage World and a <code>BodyPool</code> recycling spheres.
-          <a class="tag" href="https://github.com/sbobyn/three-avbd/blob/main/examples/body-pool.ts">source</a></li>
-      </ul>
+      <noscript>
+        <p>The gallery needs JavaScript. Direct links: <a href="../index.html">3D demo</a> · <a href="../2d.html">2D demo</a> ·
+          <a href="../sdf.html">SDF playground</a> · <a href="./interlocking-rapier.html">Interlocking study (Rapier)</a> ·
+          <a href="./interlocking-avbd.html">(AVBD)</a> · <a href="../compare-side.html">Side by side with Rapier</a> · <a href="./basic.html">Basic world</a>.</p>
+      </noscript>
 
-      <h2>SDF collisions <span class="tag">experimental</span></h2>
-      <ul>
-        <li><a href="./sdf-gear.html">SDF gears</a>: bake a gear mesh, mesh two gears, drive one kinematically.
-          <a class="tag" href="https://github.com/sbobyn/three-avbd/blob/main/examples/sdf-gear.ts">source</a></li>
-        <li><a href="./sdf-hollow.html">Balls in a torus</a>: an analytic torus field keeps its hole, and holds the balls dropped into it.
-          <a class="tag" href="https://github.com/sbobyn/three-avbd/blob/main/examples/sdf-hollow.ts">source</a></li>
-        <li><a href="./sdf-from-mesh.html">SDF from a mesh</a>: worker bake, mass properties, principal frames, and the API's limits.
-          <a class="tag" href="https://github.com/sbobyn/three-avbd/blob/main/examples/sdf-from-mesh.ts">source</a></li>
-        <li>Larger demos: <a href="../sdf.html">SDF playground</a>, <a href="../sdf-gears.html">gear train</a>,
-          <a href="../sdf-released.html">released reference scenes</a>.</li>
-      </ul>
+      <div id="results" tabindex="-1"></div>
 
-      <h2>Rapier-first paired study</h2>
-      <p><a href="./interlocking-rapier.html">Interlocking sculpture</a>: two pre-linked rings, compound convex colliders, push/reset and observation export. Try Rapier first, then the <a href="./interlocking-avbd.html">matched AVBD SDF counterpart</a>. Quality and performance qualification remain separate.</p>
-
-      <h2>Comparison</h2>
-      <ul>
-        <li><a href="../compare.html">three-avbd vs Rapier</a>: the same scenes run in both engines.</li>
-        <li><a href="../results.html">Results vs the paper</a>.</li>
-      </ul>
+      <footer class="foot-notes">
+        <p>Thumbnails are illustrations of each scene, not screenshots or measured results. Comparisons are observations of
+          the same physical intent in each engine, not certification that either engine is faster or more correct. Planned
+          studies are not listed until they exist.</p>
+        <p><a href="https://github.com/sbobyn/three-avbd">Source on GitHub</a> · <a href="https://github.com/sbobyn/three-avbd/blob/main/docs/USER_GUIDE.md">User guide</a> ·
+          <a href="https://github.com/sbobyn/three-avbd/blob/main/docs/COMPARISON.md">Rapier comparison notes</a> · <a href="../THIRD_PARTY_NOTICES.md">Notices</a></p>
+      </footer>
     </main>
+    <script type="module" src="/src/gallery/main.ts"></script>
   </body>
 </html>

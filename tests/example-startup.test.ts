@@ -1,0 +1,174 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
+import { test } from 'node:test';
+import vm from 'node:vm';
+import { releaseRenderer, requireWebGpu, startExample } from '../examples/startup.ts';
+
+// Runs the real source of each Three.js example with fake modules, DOM and renderer: no graphics context, no GPU,
+// no navigator or security change. What is asserted is what the page shows and what it releases when startup fails.
+
+type Failure = 'none' | 'no-webgpu' | 'renderer-init' | 'world' | 'late' | 'bake' | 'release' | 'loop';
+const EXAMPLES = ['basic', 'sdf-gear', 'sdf-hollow', 'sdf-from-mesh'] as const;
+
+/** A value that absorbs property reads, writes, calls and `new` (not awaitable), standing in for Three.js objects. */
+const anything = (): any => new Proxy(function () {}, {
+  get: (_, key) => key === 'then' || typeof key === 'symbol' ? undefined : anything(),
+  set: () => true, apply: () => anything(), construct: () => anything(),
+});
+
+function sourceOf(example: string) {
+  return stripTypeScriptTypes(readFileSync(new URL(`../examples/${example}.ts`, import.meta.url), 'utf8'))
+    .replace(/^import .*;\n/gm, '')
+    .replace(/import\.meta\.url/g, "'file:///examples/page.ts'");
+}
+
+async function run(example: typeof EXAMPLES[number], failure: Failure) {
+  const log: string[] = [], errors: string[] = [];
+  const status = { textContent: 'Starting…', attrs: {} as Record<string, string>, setAttribute(k: string, v: string) { this.attrs[k] = v; } };
+  let loop = false;
+  class Renderer {
+    initialized = false;
+    domElement = { remove() { log.push('canvas removed'); } };
+    shadowMap = {};
+    async init() {
+      if (failure === 'renderer-init') throw new Error('device initialization refused');
+      this.initialized = true;
+    }
+    async dispose() { log.push('renderer disposed'); if (failure === 'release') throw new Error('renderer dispose failed'); }
+    setPixelRatio() {}
+    setSize() {}
+    async setAnimationLoop() { if (failure === 'loop') throw new Error('animation loop initialization refused'); loop = true; }
+  }
+  const world = new Proxy({
+    destroy() { log.push('world destroyed'); if (failure === 'release') throw new Error('world destroy failed'); },
+    addBox() { if (failure === 'late' || failure === 'release') throw new Error('late failure'); return anything(); },
+    enableSdfCollisions: async () => {},
+    read: async () => {},
+  } as Record<string, unknown>, { get: (target, key) => key in target ? target[key as string] : typeof key === 'symbol' || key === 'then' ? undefined : anything() });
+  const element = () => anything();
+  const context = vm.createContext({
+    THREE: new Proxy({ WebGPURenderer: Renderer }, { get: (t, k) => k in t ? (t as any)[k] : anything() }),
+    OrbitControls: anything(), BodyMesh: anything(), mergeVertices: () => anything(), convexHull: () => anything(), AnalyticField: class { seeds = []; },
+    recommendedLimits: async () => ({}), curvatureSeeds: () => [],
+    World: { async create({ renderer }: { renderer: Renderer }) {
+      await renderer.init();
+      if (failure === 'world') throw new Error('World.create refused');
+      return world;
+    } },
+    bakeVoxelSdfAsync: async () => { if (failure === 'bake') throw new Error('bake refused'); return { watertight: true, warnings: [], field: {} }; },
+    bakeVoxelSdfInWorker: async () => { if (failure === 'bake') throw new Error('bake refused'); return { watertight: true, warnings: [], field: {} }; },
+    finalizeSdf: () => ({ volume: 1, centerOfMass: [0, 0, 0], inertia: [1, 0, 0, 0, 1, 0, 0, 0, 1] }),
+    principalInertia: () => ({ moments: [1, 1, 1], rotation: [0, 0, 0, 1] }),
+    releaseRenderer, requireWebGpu, startExample,
+    Worker: class { terminate() {} },
+    navigator: failure === 'no-webgpu' ? {} : { gpu: {} },
+    document: { body: { append() {} }, getElementById: (id: string) => id === 'status' ? status : element() },
+    window: {}, URL, devicePixelRatio: 1, innerWidth: 800, innerHeight: 600, addEventListener() {}, performance, setTimeout, Error,
+  });
+  // startExample logs through the host console; keep the expected failures out of the test output
+  // and requireWebGpu reads the host's navigator: give this process a fake one for the duration of the run
+  const original = console.error, navigatorKey = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  console.error = (...a: unknown[]) => { errors.push(a.map(String).join(' ')); };
+  Object.defineProperty(globalThis, 'navigator', { value: context.navigator, configurable: true, writable: true });
+  try { await vm.runInContext(`(async () => { ${sourceOf(example)}\n })()`, context); } finally {
+    console.error = original;
+    if (navigatorKey) Object.defineProperty(globalThis, 'navigator', navigatorKey); else delete (globalThis as { navigator?: unknown }).navigator;
+  }
+  return { log, errors, status, loop };
+}
+
+for (const example of EXAMPLES) {
+  test(`${example}: a successful start releases nothing and leaves the status to the page`, async () => {
+    const r = await run(example, 'none');
+    assert.deepEqual(r.log, []);
+    assert.deepEqual(r.errors, []);
+    assert.equal(r.loop, true, 'the animation loop started');
+    assert.doesNotMatch(r.status.textContent, /Could not start/);
+    assert.equal(r.status.attrs.role, undefined);
+  });
+
+  test(`${example}: without WebGPU it says so and creates nothing`, async () => {
+    const r = await run(example, 'no-webgpu');
+    assert.match(r.status.textContent, /^Could not start: WebGPU is unavailable\. Use a hardware WebGPU browser on localhost or HTTPS\.$/);
+    assert.equal(r.status.attrs.role, 'alert');
+    assert.deepEqual(r.log, []);
+    assert.equal(r.loop, false);
+  });
+
+  test(`${example}: a renderer that fails to initialize keeps its error, is not disposed, and only its canvas is removed`, async () => {
+    const r = await run(example, 'renderer-init');
+    assert.match(r.status.textContent, /Could not start: .*device initialization refused/);
+    assert.deepEqual(r.log, ['canvas removed']);
+    assert.equal(r.loop, false);
+  });
+
+  test(`${example}: a World that fails to create leaves the initialized renderer disposed, and no world to destroy`, async () => {
+    const r = await run(example, 'world');
+    assert.equal(r.status.textContent, 'Could not start: World.create refused');
+    assert.deepEqual(r.log, ['canvas removed', 'renderer disposed']);
+  });
+
+  test(`${example}: a failure after the World exists destroys it before the renderer`, async () => {
+    const r = await run(example, 'late');
+    assert.equal(r.status.textContent, 'Could not start: late failure');
+    assert.deepEqual(r.log, ['world destroyed', 'canvas removed', 'renderer disposed']);
+    assert.equal(r.loop, false);
+  });
+
+  test(`${example}: async animation-loop setup rejection is visible and releases the owned world and renderer`, async () => {
+    const r = await run(example, 'loop');
+    assert.equal(r.status.textContent, 'Could not start: animation loop initialization refused');
+    assert.deepEqual(r.log, ['world destroyed', 'canvas removed', 'renderer disposed']);
+    assert.equal(r.loop, false);
+  });
+
+  test(`${example}: a cleanup that throws is logged, later steps still run, and the original error stays visible`, async () => {
+    const r = await run(example, 'release');
+    assert.equal(r.status.textContent, 'Could not start: late failure');
+    assert.deepEqual(r.log, ['world destroyed', 'canvas removed', 'renderer disposed']);
+    assert.ok(r.errors.some(e => /Cleanup after failed startup:.*world destroy failed/.test(e)), r.errors.join('\n'));
+    assert.ok(r.errors.some(e => /Cleanup after failed startup:.*renderer dispose failed/.test(e)), r.errors.join('\n'));
+  });
+}
+
+for (const example of ['sdf-gear', 'sdf-from-mesh'] as const) {
+  test(`${example}: a failed bake is reported before any World exists`, async () => {
+    const r = await run(example, 'bake');
+    assert.equal(r.status.textContent, 'Could not start: bake refused');
+    assert.equal(r.status.attrs.role, 'alert');
+    assert.ok(!r.log.includes('world destroyed'));
+    assert.ok(!r.log.includes('renderer disposed'), 'a renderer that never initialized is not disposed');
+    assert.equal(r.loop, false);
+  });
+}
+
+test('startup cleanup runs every step in reverse order and logs, but does not show, a failing release', async () => {
+  const order: string[] = [], errors: unknown[][] = [];
+  const status = { textContent: '', setAttribute() {} } as unknown as HTMLElement;
+  const original = console.error;
+  console.error = (...a: unknown[]) => { errors.push(a); };
+  try {
+    const startup = startExample(status);
+    startup.own('first', v => order.push(v));
+    startup.own('second', () => { order.push('second'); throw new Error('release second failed'); });
+    startup.own('third', async v => { await Promise.resolve(); order.push(v); });
+    await startup.fail('plain string failure');
+    assert.equal(status.textContent, 'Could not start: plain string failure');
+    assert.deepEqual(order, ['third', 'second', 'first']);
+    assert.ok(errors.some(e => e.some(x => x instanceof Error && x.message === 'release second failed')));
+    // A resource acquired while cleanup is running is still released afterwards
+    startup.own('late', v => order.push(v));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(order.at(-1), 'late');
+  } finally { console.error = original; }
+});
+
+test('releaseRenderer disposes only a renderer that finished init()', async () => {
+  const log: string[] = [];
+  const make = (initialized: boolean) => ({ initialized, domElement: { remove() { log.push('removed'); } }, dispose() { log.push('disposed'); } });
+  assert.equal(await releaseRenderer(make(false)), undefined);
+  assert.deepEqual(log, ['removed']);
+  await releaseRenderer(make(true));
+  assert.deepEqual(log, ['removed', 'removed', 'disposed']);
+});

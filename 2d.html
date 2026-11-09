@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>three-avbd · 2D</title>
+    <title>2D physics playground · three-avbd</title>
     <meta name="description" content="The 2D scenes of Augmented Vertex Block Descent (SIGGRAPH 2025): the authors' demo ported to TypeScript, on the CPU or entirely on the GPU in your browser." />
     <link rel="stylesheet" href="/src/ui/page.css" />
     <style>
@@ -33,7 +33,7 @@
     <div id="card" class="panel">
       <div id="card-head">
         <h1><img src="/favicon.svg" width="28" height="28" alt="" style="vertical-align:middle;margin-right:8px">three-avbd · 2D</h1>
-        <button id="card-toggle" title="Hide">–</button>
+        <button id="card-toggle" type="button" title="Hide">–</button>
       </div>
       <div class="body">
         <p>
@@ -42,10 +42,15 @@
         </p>
         <p class="pointer-only">Drag bodies to pull them · right-click drops a box · wheel zooms, space or shift + drag pans</p>
         <p class="touch-only">Drag bodies to pull them · pinch to zoom</p>
+        <p id="no-webgpu" class="warning" hidden>
+          This browser doesn't support WebGPU, so the scenes run on the CPU solvers and the GPU-only scenes don't
+          run. For those use a recent Chrome or Edge, or Safari 26 or later.
+        </p>
         <div class="links">
           <a href="/">3D demo</a>
           <a href="https://doi.org/10.1145/3731195" target="_blank" rel="noopener">Paper</a>
-          <a href="results.html">Results vs the paper</a>
+          <a href="results.html">3D results vs the paper</a>
+          <a href="examples/index.html">Demo gallery</a>
         </div>
         <p class="credits">
           Ported from the authors'
@@ -55,6 +60,7 @@
       </div>
     </div>
     <div id="hud" class="panel"></div>
+    <div id="notice" class="panel notice" role="status" hidden></div>
     <script type="module" src="/src/app2d/main.ts"></script>
   </body>
 </html>

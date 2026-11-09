@@ -1,13 +1,15 @@
+@import './tokens.css';
+
 /* The demos' controls (controls.ts): a dock of buttons with a scene picker and a settings
    popover, in the look of the 3D page's title card. Pages can override the tokens. */
 
 .avbd-ui {
   --ui-bg: rgb(255 253 249 / 0.9);
-  --ui-fg: #1f2328;
-  --ui-muted: #5b6168;
+  --ui-fg: var(--avbd-light-ink);
+  --ui-muted: var(--avbd-light-muted);
   --ui-line: rgb(31 35 40 / 0.12);
   --ui-hover: rgb(31 35 40 / 0.06);
-  --ui-accent: #b8503f;
+  --ui-accent: var(--avbd-light-accent);
   --ui-track: rgb(31 35 40 / 0.14);
   position: fixed;
   top: 16px;
@@ -49,6 +51,11 @@
 }
 .avbd-ui button:hover {
   background: var(--ui-hover);
+}
+.avbd-ui button:disabled {
+  opacity: 0.4;
+  cursor: default;
+  background: transparent;
 }
 .avbd-ui button:focus-visible {
   outline: 2px solid var(--ui-accent);
@@ -114,6 +121,14 @@
 }
 .avbd-ui .popover[hidden] {
   display: none;
+}
+/* Focused itself on opening (controls.ts): a ring only for the keyboard */
+.avbd-ui .popover:focus {
+  outline: none;
+}
+.avbd-ui .popover:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 1px;
 }
 
 /* Collapsible sections (scene groups, settings' Advanced) */
@@ -298,10 +313,10 @@
 .avbd-wind,
 .avbd-panel {
   --ui-bg: rgb(255 253 249 / 0.9);
-  --ui-fg: #1f2328;
-  --ui-muted: #5b6168;
+  --ui-fg: var(--avbd-light-ink);
+  --ui-muted: var(--avbd-light-muted);
   --ui-line: rgb(31 35 40 / 0.12);
-  --ui-accent: #b8503f;
+  --ui-accent: var(--avbd-light-accent);
   position: fixed;
   right: 16px;
   bottom: 68px;

@@ -43,6 +43,13 @@ export interface ExtrasContext {
   };
 }
 
+/** The cannonball's setting ranges, for the scene panels and Settings › Advanced alike. */
+export const CANNONBALL = {
+  radius: { min: 0.2, max: 3 },
+  mass: { min: 1, max: 10_000 },
+  speed: { min: 5, max: 100 },
+} as const;
+
 export const kilograms = (kg: number): string => (kg < 10 ? `${kg.toFixed(1)} kg` : kg < 1000 ? `${kg.toFixed(0)} kg` : `${(kg / 1000).toFixed(kg < 10_000 ? 1 : 0)} t`);
 
 const speed = (ctx: ExtrasContext): PanelItem => ({
@@ -68,9 +75,9 @@ const option = (ctx: ExtrasContext, key: string, label: string, options: [string
 });
 
 const cannonball = (ctx: ExtrasContext): PanelItem[] => [
-  { kind: 'range', label: 'Radius', min: 0.2, max: 3, get: ctx.ball.radius, set: ctx.ball.setRadius, format: (v) => `${v.toFixed(2)} m` },
-  { kind: 'range', label: 'Mass', min: 1, max: 10_000, log: true, get: ctx.ball.mass, set: ctx.ball.setMass, format: kilograms },
-  { kind: 'range', label: 'Launch speed', min: 5, max: 100, get: ctx.ball.speed, set: ctx.ball.setSpeed, format: (v) => `${v.toFixed(0)} m/s` },
+  { kind: 'range', label: 'Radius', ...CANNONBALL.radius, get: ctx.ball.radius, set: ctx.ball.setRadius, format: (v) => `${v.toFixed(2)} m` },
+  { kind: 'range', label: 'Mass', ...CANNONBALL.mass, log: true, get: ctx.ball.mass, set: ctx.ball.setMass, format: kilograms },
+  { kind: 'range', label: 'Launch speed', ...CANNONBALL.speed, get: ctx.ball.speed, set: ctx.ball.setSpeed, format: (v) => `${v.toFixed(0)} m/s` },
   { kind: 'action', label: matchMedia('(hover: none)').matches ? 'Fire' : 'Fire (Space)', icon: ICONS.ball, secondary: true, run: ctx.ball.fire },
 ];
 /** A scene's panel with the cannonball's settings under it. */

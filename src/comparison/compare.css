@@ -1,0 +1,32 @@
+/* Shell of the two dark comparison pages that need their own controls: compare-side.html and compare-frame.html.
+   Brand roles (ink, muted, link, focus, font) come from the shared tokens; the page background and the canvas
+   colours stay as they were. The pages say they are dark so native buttons, selects and inputs follow. */
+@import '../ui/tokens.css';
+
+:root { color-scheme: dark; }
+body { font: 14px/1.45 var(--avbd-font-ui); margin: 16px 20px; background: #181b20; color: var(--avbd-dark-ink); }
+a { color: var(--avbd-dark-link); }
+:focus-visible { outline: 2px solid var(--avbd-dark-focus); outline-offset: 2px; }
+h1 { font-size: 20px; margin: 4px 0 8px; } h1 img { vertical-align: middle; margin-right: 8px; }
+h2 { font-size: 15px; margin: 0 0 4px; }
+nav { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+label { display: inline-block; margin: 4px 10px 4px 0; }
+button, select, input { font: inherit; }
+/* The smallest usable target; the checkboxes are reached through their labels */
+button, select, input[type=number] { min-height: 28px; }
+button { cursor: pointer; }
+input[type=number] { width: 56px; }
+input[type=checkbox] { accent-color: var(--avbd-dark-accent); }
+canvas { display: block; width: 100%; aspect-ratio: 16 / 10; background: #222831; touch-action: none; border-radius: 4px; }
+.muted { color: var(--avbd-dark-muted); } .bad { color: #ff8a80; }
+
+/* compare-side.html */
+#views { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+.panel { margin-top: 6px; font-variant-numeric: tabular-nums; min-height: 7.5em; }
+#validity.valid { color: #9be39b; } #validity.invalid { color: #ffb36b; } #validity.unclassified { color: var(--avbd-dark-muted); }
+footer { margin-top: 14px; color: #b8c0c8; max-width: 1100px; } footer li { margin: 3px 0; }
+@media (max-width: 800px) { #views { grid-template-columns: 1fr; } }
+
+/* compare-frame.html */
+#view { width: 960px; max-width: 100%; height: auto; aspect-ratio: auto; }
+pre { white-space: pre-wrap; }

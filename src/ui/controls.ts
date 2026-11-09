@@ -1,7 +1,8 @@
 // The demos' controls: a dock of icon buttons with a scene picker and a settings popover (styles
 // in controls.css). The scene picker lists the scenes in collapsible sections by kind, the
 // current one's open; settings are declarative rows, with the rest under a closed "Advanced".
-// One popover is open at a time; Esc or a click elsewhere closes it.
+// One popover is open at a time (not modal: focus moves into it, and back to its button when
+// it closes from the keyboard or a choice); Esc or a click elsewhere closes it.
 
 import './controls.css';
 import type { SceneMenu } from './scene-menu.ts';
@@ -9,16 +10,22 @@ import type { SceneMenu } from './scene-menu.ts';
 export type Setting =
   | { kind: 'range'; label: string; min: number; max: number; step?: number; log?: boolean; get(): number; set(v: number): void; format?(v: number): string }
   | { kind: 'toggle'; label: string; get(): boolean; set(v: boolean): void }
-  | { kind: 'select'; label: string; options: { label: string; value: string }[]; get(): string; set(v: string): void }
+  /** `unavailable` gives why an option can't be chosen now (shown beside it, disabled), or null. */
+  | { kind: 'select'; label: string; options: { label: string; value: string }[]; get(): string; set(v: string): void; unavailable?(value: string): string | null }
   | { kind: 'action'; label: string; run(): void }
   | { kind: 'section'; label: string; items: Setting[] };
 
 export interface DockButton {
+  /** The accessible name (stays the same as `pressed` changes, as a toggle's should). */
   label: string;
+  /** The tooltip when it differs from the label, such as "Play" for a pressed "Pause". */
+  title?(): string;
   /** SVG markup inside a 24 × 24 viewBox (strokes). */
   icon: string | (() => string);
   onClick(): void;
+  /** A toggle: its state, as aria-pressed. */
   pressed?(): boolean;
+  disabled?(): boolean;
 }
 
 export interface ControlsOptions {
@@ -78,8 +85,8 @@ function section(label: string, count: string, open: boolean): { root: HTMLEleme
 export class Controls {
   readonly root = el('div', { class: 'avbd-ui' });
   private readonly sceneLabel = el('span');
-  private readonly scenePopover = el('div', { class: 'popover', role: 'dialog' });
-  private readonly settingsPopover = el('div', { class: 'popover', role: 'dialog' });
+  private readonly scenePopover = el('div', { class: 'popover', role: 'dialog', ariaLabel: 'Scenes', tabIndex: -1 });
+  private readonly settingsPopover = el('div', { class: 'popover', role: 'dialog', ariaLabel: 'Settings', tabIndex: -1 });
   private readonly sceneButton: HTMLButtonElement;
   private readonly settingsButton: HTMLButtonElement;
   private readonly dockButtons: { spec: DockButton; button: HTMLButtonElement }[] = [];
@@ -91,6 +98,7 @@ export class Controls {
     this.sceneButton = el('button', { class: 'scene-button', type: 'button', title: 'Choose a scene' });
     this.sceneButton.append(this.sceneLabel);
     this.sceneButton.insertAdjacentHTML('beforeend', svg(CHEVRON_DOWN));
+    this.sceneButton.setAttribute('aria-haspopup', 'dialog');
     this.sceneButton.addEventListener('click', () => this.toggle(this.scenePopover, this.sceneButton));
 
     const dock = el('div', { class: 'dock' }, this.sceneButton, el('div', { class: 'separator' }));
@@ -107,12 +115,13 @@ export class Controls {
     this.settingsButton = el('button', { class: 'icon', type: 'button', title: 'Settings' });
     this.settingsButton.setAttribute('aria-label', 'Settings');
     this.settingsButton.innerHTML = svg(ICONS.settings);
+    this.settingsButton.setAttribute('aria-haspopup', 'dialog');
     this.settingsButton.addEventListener('click', () => this.toggle(this.settingsPopover, this.settingsButton));
     dock.append(this.settingsButton);
 
     this.buildScenes(options.scenes, options.onScene);
     for (const s of options.settings) this.settingsPopover.append(this.buildSetting(s));
-    this.scenePopover.hidden = this.settingsPopover.hidden = true;
+    this.close();
     this.root.append(dock, this.scenePopover, this.settingsPopover);
     document.body.append(this.root);
 
@@ -120,19 +129,22 @@ export class Controls {
       if (!this.root.contains(e.target as Node)) this.close();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') this.close();
+      if (e.key === 'Escape') this.close(true);
     });
     this.refresh();
   }
 
   /** Show `value` as the current scene (and its section as the open one next time). */
   setScene(value: string): void {
-    this.sceneItems.get(this.current)?.item.classList.remove('current');
+    const previous = this.sceneItems.get(this.current)?.item;
+    previous?.classList.remove('current');
+    previous?.removeAttribute('aria-current');
     this.current = value;
     const entry = this.sceneItems.get(value);
     this.sceneLabel.textContent = entry?.label ?? value;
     if (!entry) return;
     entry.item.classList.add('current');
+    entry.item.setAttribute('aria-current', 'true');
     entry.open();
   }
 
@@ -145,15 +157,19 @@ export class Controls {
         button.dataset.icon = icon;
       }
       if (spec.pressed) button.setAttribute('aria-pressed', String(spec.pressed()));
+      if (spec.title) button.title = spec.title();
+      if (spec.disabled) button.disabled = spec.disabled();
     }
     if (!this.settingsPopover.hidden) for (const r of this.refreshers) r();
   }
 
-  close(): void {
+  /** Close the popovers; `restoreFocus` returns the focus from an open one to its button. */
+  close(restoreFocus = false): void {
     for (const [popover, button] of [
       [this.scenePopover, this.sceneButton],
       [this.settingsPopover, this.settingsButton],
     ] as const) {
+      if (restoreFocus && !popover.hidden && popover.contains(document.activeElement)) button.focus();
       popover.hidden = true;
       button.setAttribute('aria-expanded', 'false');
     }
@@ -166,6 +182,10 @@ export class Controls {
     popover.hidden = false;
     button.setAttribute('aria-expanded', 'true');
     if (popover === this.settingsPopover) for (const r of this.refreshers) r();
+    // Focus into the popover: on the current scene, or on the popover itself (Tab goes on to
+    // its first control), not in a field, where the shortcuts and arrow keys would go
+    const current = popover === this.scenePopover ? this.sceneItems.get(this.current)?.item : undefined;
+    (current?.offsetParent ? current : popover).focus({ preventScroll: true });
   }
 
   private buildScenes(menu: SceneMenu, onScene: (value: string) => void): void {
@@ -192,7 +212,7 @@ export class Controls {
       const item = el('button', { class: 'item', type: 'button' }, label);
       if (note) item.append(el('span', { class: note.includes('heavy') ? 'note heavy' : 'note' }, note));
       item.addEventListener('click', () => {
-        this.close();
+        this.close(true);
         onScene(value);
       });
       body.append(item);
@@ -242,12 +262,20 @@ export class Controls {
       case 'select': {
         const select = el('select');
         select.setAttribute('aria-label', s.label);
-        for (const o of s.options) select.append(el('option', { value: o.value }, o.label));
+        const options = s.options.map((o) => el('option', { value: o.value }, o.label));
+        select.append(...options);
         select.addEventListener('change', () => {
           s.set(select.value);
           for (const r of this.refreshers) r();
         });
-        this.refreshers.push(() => (select.value = s.get()));
+        this.refreshers.push(() => {
+          s.options.forEach((o, i) => {
+            const reason = s.unavailable?.(o.value) ?? null;
+            options[i].disabled = reason !== null;
+            options[i].textContent = reason === null ? o.label : `${o.label} (${reason})`;
+          });
+          select.value = s.get();
+        });
         return el('div', { class: 'row' }, el('label', {}, s.label), select);
       }
       case 'range': {

@@ -78,7 +78,7 @@ async function main() {
     if ($('announcement').textContent !== message) $('announcement').textContent = message;
   }
   function release() { drag = null; orbit.enabled = true; }
-  function setPaused(value: boolean) { paused = value; status.textContent = value ? 'PAUSED' : 'Running…'; release(); lastTime = 0; dirty = readNeeded = true; syncControls(); }
+  function setPaused(value: boolean) { paused = value; status.textContent = value ? 'Paused' : 'Running…'; release(); lastTime = 0; dirty = readNeeded = true; syncControls(); }
   async function reset() {
     if (busy || disposed) return;
     busy = true; release(); controlsUI.forEach(e => e.disabled = true); syncControls();
@@ -196,7 +196,7 @@ async function main() {
           dot.scale.setScalar(.65 + load * 1.1);
         });
       }
-      status.textContent = `${paused ? 'PAUSED' : automatic ? 'AUTO' : 'MANUAL'} · ${coupling.checked ? 'SDF contacts on' : 'Contacts off — followers free'}${contacts.checked ? ` · ${count} points` : ''}${frameRate ? ` · ${frameRate.toFixed(0)} fps · ${simulationRate.toFixed(2)}× sim` : ''}`;
+      status.textContent = `${paused ? 'Paused' : automatic ? 'Auto drive' : 'Manual drive'} · ${coupling.checked ? 'SDF contacts on' : 'Contacts off — followers free'}${contacts.checked ? ` · ${count} points` : ''}${frameRate ? ` · ${frameRate.toFixed(0)} fps · ${simulationRate.toFixed(2)}× sim` : ''}`;
       dirty = true;
     } catch (error) { fail(error); }
     finally { inspecting = false; readNeeded = false; }

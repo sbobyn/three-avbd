@@ -12,25 +12,29 @@ import { otherDemoUrl, sceneMenu } from '../ui/scene-menu.ts';
 import { titleCard } from '../ui/title-card.ts';
 import { customPanel } from '../ui/custom-panel.ts';
 import { ScenePanel } from '../ui/scene-panel.ts';
+import { shortcut, solverUnavailable } from '../ui/viewer-ui.ts';
 import { CUSTOM_2D, CUSTOM_MAX_2D, custom2D } from '../avbd2d/custom.ts';
 import { allScenes2D, type Backend2D, BACKENDS, createSim, type Sim2D, sceneByName } from '../avbd2d/sim.ts';
 import { type Camera2D, Renderer2D } from './renderer2d.ts';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const hud = document.querySelector<HTMLDivElement>('#hud')!;
+/** Lasting messages (no WebGPU, a solver fallback): the HUD is rewritten twice a second. */
+const notice = document.querySelector<HTMLDivElement>('#notice')!;
+const showNotice = (text: string) => ((notice.textContent = text), (notice.hidden = false));
 titleCard('avbd2d-card-collapsed');
 
-if (!('gpu' in navigator)) {
-  hud.textContent = 'WebGPU is not available in this browser; rendering falls back to WebGL2.';
-}
-
 // Ask for the adapter's full storage-binding size: the large GPU scenes exceed the 128 MB default
-const adapter = 'gpu' in navigator ? await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }) : null;
+const adapter = 'gpu' in navigator ? await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null) : null;
 const renderer = new Renderer2D(
   canvas,
   adapter ? { maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize, maxBufferSize: adapter.limits.maxBufferSize } : undefined,
 );
 await renderer.init();
+if (!renderer.device) {
+  document.querySelector<HTMLElement>('#no-webgpu')!.hidden = false;
+  showNotice('No WebGPU here: rendering falls back to WebGL2, and the scenes run on the CPU solvers.');
+}
 
 /** ms per step of a Custom joint lattice of about `bodies` bodies, off screen (no readbacks). */
 async function probe(bodies: number): Promise<number> {
@@ -105,8 +109,10 @@ async function buildSim(stillWanted: () => boolean): Promise<Sim2D | null> {
   if (state.backend !== 'gpu' && sceneByName(state.scene).gpuOnly) state.backend = 'gpu';
   const device = state.backend === 'gpu' ? renderer.device : null;
   if (state.backend === 'gpu' && !device) {
-    hud.textContent = 'The WebGPU solver needs a WebGPU device; falling back to the CPU solver.';
     state.backend = 'soa-colored';
+    const gpuOnly = sceneByName(state.scene).gpuOnly;
+    if (gpuOnly) state.scene = DEFAULT_SCENE;
+    showNotice(`The WebGPU solver needs a WebGPU device: running on the ${BACKENDS['soa-colored']} solver${gpuOnly ? `, with ${DEFAULT_SCENE} (that scene is GPU-only)` : ''}.`);
   }
   const expected = sizeOf(state.scene) || 2000;
   await progress.stage('build', `Building ${expected.toLocaleString('en')} bodies…`, device ? 0.3 : 0.85, expected);
@@ -150,6 +156,12 @@ const showPanel = () =>
       : null,
   );
 
+/** Frame the current scene as it starts (the camera alone: the scene keeps running). */
+function fitCamera(): void {
+  const custom = state.scene === 'Custom' ? CUSTOM_2D[custom2D.kind].camera(custom2D.bodies, canvas.clientWidth) : undefined;
+  Object.assign(camera, custom ?? sceneCameras[state.scene] ?? { x: 0, y: 5, zoom: 25 });
+}
+
 /** (Re)build the current scene, with a progress bar; the old scene runs until replaced. */
 async function loadScene(resetCamera = true): Promise<void> {
   const token = ++pendingLoad;
@@ -161,8 +173,7 @@ async function loadScene(resetCamera = true): Promise<void> {
   ui.setScene(state.scene);
   ui.refresh();
   showPanel();
-  const custom = state.scene === 'Custom' ? CUSTOM_2D[custom2D.kind].camera(custom2D.bodies, canvas.clientWidth) : undefined;
-  if (resetCamera) Object.assign(camera, custom ?? sceneCameras[state.scene] ?? { x: 0, y: 5, zoom: 25 });
+  if (resetCamera) fitCamera();
   url.searchParams.set('scene', state.scene);
   url.searchParams.set('backend', state.backend);
   history.replaceState(null, '', url);
@@ -191,14 +202,19 @@ const ui = new Controls({
     loadScene();
   },
   buttons: [
-    { label: 'Play / pause (P)', icon: () => (state.paused ? ICONS.play : ICONS.pause), onClick: () => (state.paused = !state.paused) },
+    // A toggle named for what pressing it does when not pressed; the tooltip says what a click does
+    { label: 'Pause (P)', title: () => (state.paused ? 'Play (P)' : 'Pause (P)'), pressed: () => state.paused, icon: () => (state.paused ? ICONS.play : ICONS.pause), onClick: () => (state.paused = !state.paused) },
+    { label: 'Step once (.)', icon: ICONS.step, disabled: () => !state.paused, onClick: () => stepOnce() },
     { label: 'Restart the scene (R)', icon: ICONS.restart, onClick: () => loadScene(false) },
+    { label: 'Reset the camera', icon: ICONS.focus, onClick: () => fitCamera() },
     { label: 'Source on GitHub', icon: ICONS.github, onClick: openRepo },
   ],
   settings: [
     {
       kind: 'select',
-      label: 'Solver',
+      // The backends' defaults differ on purpose (the demo's, or measured parallel ones): a switch
+      // takes the new backend's, and says so
+      label: 'Solver · resets settings',
       options: Object.entries(BACKENDS).map(([value, label]) => ({ label, value })),
       get: () => state.backend,
       set: (v) => {
@@ -206,6 +222,7 @@ const ui = new Controls({
         resetParams();
         loadScene(false);
       },
+      unavailable: (v) => solverUnavailable(v, sceneByName(state.scene), renderer.device !== null),
     },
     { kind: 'range', label: 'Iterations', min: 1, max: 50, step: 1, get: () => params.iterations, set: (v) => (params.iterations = Math.round(v)), format: (v) => String(Math.round(v)) },
     { kind: 'range', label: 'Gravity', min: -20, max: 0, step: 0.5, get: () => params.gravity, set: (v) => (params.gravity = v), format: (v) => `${v.toFixed(1)} m/s²` },
@@ -232,7 +249,7 @@ const ui = new Controls({
         { kind: 'range', label: 'Right-click box velocity y', min: -20, max: 20, step: 0.5, get: () => state.boxVelocityY, set: (v) => (state.boxVelocityY = v) },
       ],
     },
-    { kind: 'action', label: 'Reset settings to defaults', run: resetParams },
+    { kind: 'action', label: 'Reset solver settings', run: resetParams },
     { kind: 'action', label: 'Measure this GPU again (reloads)', run: () => (forgetBudget('2d'), location.reload()) },
   ],
 });
@@ -338,15 +355,17 @@ canvas.addEventListener(
   { passive: false },
 );
 window.addEventListener('keydown', (e) => {
-  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
-  keys.add(e.code);
-  if (e.code === 'Space') {
+  // Not with a modifier held, in a field, or on a control focused from the keyboard (viewer-ui.ts)
+  const key = shortcut(e);
+  if (key === null) return;
+  keys.add(key);
+  if (key === 'Space') {
     spaceDown = true;
     e.preventDefault();
   }
-  if (e.code === 'KeyP') state.paused = !state.paused;
-  if (e.code === 'KeyR') loadScene(false);
-  if (e.code === 'Period' && state.paused) stepOnce();
+  if (key === 'KeyP') state.paused = !state.paused;
+  if (key === 'KeyR') loadScene(false);
+  if (key === 'Period' && state.paused) stepOnce();
   ui.refresh();
 });
 window.addEventListener('keyup', (e) => {
@@ -437,14 +456,16 @@ function updateHud(): void {
   const profile = sim instanceof GpuSim ? sim.profile : null;
   const coloring = st.colors === undefined ? '' : ` · colours ${st.colors} (rounds ${st.colorRounds}, clashes ${st.colorConflicts})`;
   const hint = 'drag: left · box: right-click · pan: space/shift + drag · zoom: wheel · P pause · R restart';
+  const paused = state.paused ? ' · paused' : '';
   if (!state.details) {
     const ms = st.gpuStepMs ?? stepMs;
-    hud.textContent = `${sim.bodyCount.toLocaleString('en')} bodies · ${fps.toFixed(0)} fps · ${ms.toFixed(2)} ms/step · ${sim.label}\n${hint}`;
+    hud.textContent = `${sim.bodyCount.toLocaleString('en')} bodies · ${fps.toFixed(0)} fps · ${ms.toFixed(2)} ms/step · ${sim.label}${paused}\n${hint}`;
     return;
   }
   hud.textContent = [
     `${sim.label} · ${renderer.isWebGPU ? 'WebGPU' : 'WebGL2'} render · ${fps.toFixed(0)} fps · ` +
-      (st.gpuStepMs === undefined ? `step ${stepMs.toFixed(2)} ms` : `GPU step ~${st.gpuStepMs.toFixed(2)} ms (encode ${stepMs.toFixed(2)} ms)`),
+      (st.gpuStepMs === undefined ? `step ${stepMs.toFixed(2)} ms` : `GPU step ~${st.gpuStepMs.toFixed(2)} ms (encode ${stepMs.toFixed(2)} ms)`) +
+      paused,
     `bodies ${sim.bodyCount} · joints ${st.joints} · contacts ${st.contacts}${coloring}`,
     `KE ${st.kineticEnergy.toFixed(3)} · max joint error ${st.maxJointError.toExponential(2)}`,
     ...(profile ? [`GPU phases: ${PHASES.map((ph) => `${ph} ${profile[ph].toFixed(2)}`).join(' · ')} ms`] : []),

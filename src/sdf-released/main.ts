@@ -7,6 +7,7 @@ import { instantiateReleased, loadReleasedScene, type ReleasedProfile, type Rele
 import { readBrowserAsset } from './assets.ts';
 import { measuredFrame } from './metrics.ts';
 import { FrameQueue } from './frame-queue.ts';
+import { FramingPolicy } from './framing.ts';
 import '../sdf-showcase/style.css';
 import './style.css';
 
@@ -34,6 +35,7 @@ async function main() {
   sun.shadow.mapSize.set(1024, 1024); sun.shadow.normalBias = .015;
   Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, far: 45 }); scene.add(sun);
   const frameQueue = new FrameQueue();
+  const framing = new FramingPolicy();
   let prepared: ReleasedScene | null = null, simulation: Awaited<ReturnType<typeof instantiateReleased>> | null = null;
   const group = new THREE.Group(); scene.add(group);
   let paused = true, loading = false, inFlight = false, dirty = true, frame = 0, last = 0, lastMeasured = 0;
@@ -104,7 +106,8 @@ async function main() {
     try {
       if (simulation) await simulation.world.device.queue.onSubmittedWorkDone();
       simulation?.world.destroy(); simulation = null; disposeMeshes(); prepared?.dispose(); prepared = null; table.replaceChildren();
-      prepared = await loadReleasedScene(Number(select.value), readBrowserAsset);
+      const id = Number(select.value);
+      prepared = await loadReleasedScene(id, readBrowserAsset);
       simulation = await instantiateReleased(prepared, { renderer }, profile.value as ReleasedProfile);
       const batches = new Map<THREE.BufferGeometry, number[]>();
       prepared.bodies.forEach((body, i) => { const list = batches.get(body.geometry) ?? []; list.push(i); batches.set(body.geometry, list); });
@@ -116,7 +119,10 @@ async function main() {
           material: new THREE.MeshStandardNodeMaterial({ color, roughness: .4, metalness: .12 }) });
         mesh.castShadow = !fixed; mesh.receiveShadow = true; group.add(mesh);
       }
-      frame = 0; last = performance.now(); lastMeasured = 0; frameView(); summary(); dirty = true;
+      frame = 0; last = performance.now(); lastMeasured = 0;
+      // Reset and a change of settings rebuild the same scene: keep the camera the viewer set (the Frame button re-fits it)
+      if (framing.needsFraming(id)) { frameView(); framing.markFramed(id); }
+      summary(); dirty = true;
       document.querySelector<HTMLElement>('#reference-note')!.textContent = comparison.checked
         ? 'Diagnostic playback · readbacks enabled · 30 reference frames/s maximum'
         : 'Smooth playback · reference readbacks off';
