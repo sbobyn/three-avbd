@@ -69,6 +69,10 @@ storage. Physics state is transient: the demos do not save editable worlds.
 Your durable result is the consumer's source and pinned dependency files. Reopening reconstructs
 the scene; it does not restore its last simulation frame. [Save/reopen and recovery](docs/SETUP.md#keep-and-reopen-your-first-result).
 
+For the **Rapier-first interlocking study**, open `/examples/interlocking-rapier.html`.
+Its [protocol](docs/PAIRED_STUDIES.md) records collider preparation and review criteria before
+an AVBD counterpart or performance claim. This is a developer prototype, not new AVBD functionality.
+
 ## Learn and integrate
 
 - [Core concepts, APIs, demos and configuration](docs/USER_GUIDE.md): units, fixed stepping,

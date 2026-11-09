@@ -73,6 +73,16 @@ flowchart TD
   sphere/capsule sweeps do not automatically query dynamic GPU bodies. [`BodyPool`](../src/lib/pool.ts)
   instead manages reusable body slots in a fixed-storage World.
 
+### Paired study consumer boundary — 2026-11-08
+
+The Rapier-first interlocking study is an application/consumer experiment, not an AVBD public API
+extension. [`interlocking-scene.ts`](../src/comparison/interlocking-scene.ts) holds shared authored
+inputs and explicit convex-sector preparation; [`interlocking-rapier.ts`](../src/comparison/interlocking-rapier.ts)
+owns Rapier bodies/colliders/world; the [example](../examples/interlocking-rapier.ts) owns the Three.js
+device/renderer/loop/UI and observation export. No AVBD solver runs in that baseline; the later
+SDF counterpart and comparison must satisfy [the paired-study protocol](PAIRED_STUDIES.md).
+The existing architecture diagram's consumer boundary and solver data flow are unchanged.
+
 ### Initialization diagnostics — local overlay, 2026-11-07
 
 `World.create({ renderer })` wraps renderer-init rejection with hardware WebGPU / secure-origin
