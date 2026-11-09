@@ -292,6 +292,10 @@ Activation/reset (new in 0.4.0) and its GPU/lifetime semantics are described in
 - **Contact margin** (`world.solver.params.contactMargin`, default 0.01 m): a resting contact
   sits about this deep. 0.001 rests about 1.9 mm deep instead of 10.4 mm (one box on a floor,
   M4 Max); its effect on tall-wall stability is not yet re-measured, so the default is unchanged.
+- **Experimental box witness** (`world.solver.params.deepestBoxWitness`, default `false`):
+  protects the deepest fresh box-face contact from retained sticking-anchor replacement.
+  Built-in contact shaders only; does not add contacts or change the reference solver.
+  See [bounded reproduction and limitations](BOX_DEPTH_WITNESS_2026-11-03.md).
 - **`maxBodies`**: the body buffer's fixed size (160 bytes a body). Adds past it return `null`;
   disabled bodies still hold slots, and every step traverses up to the highest slot used, so size
   it near the real peak rather than far above it.

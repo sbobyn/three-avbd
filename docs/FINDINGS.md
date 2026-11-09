@@ -2,6 +2,17 @@
 
 Measured results that drive design decisions. Newest first. Each entry says how it was measured.
 
+## 2026-11-03 — Retained sticking anchors can hide a fresh box contact's depth
+
+A two-box, zero-iteration GPU regression isolates warm-start anchor replacement:
+fresh geometry reaches an independent SAT overlap of 0.133905897 m, but retained
+sticking anchors expose only 0.042266987 m. The depth assertion fails before the
+opt-in protection. Protecting one deepest existing fresh face contact passes the
+repro without adding a manifold slot. Default-off behavior and 300-pair reference
+narrowphase parity remain covered. This is not evidence that clipping loses a
+corner, nor a fix qualification for the historical pile outlier. See
+`BOX_DEPTH_WITNESS_2026-11-03.md`; large-scene qualification remains pending.
+
 ## 2026-10-24 — R3: isolate #37/#38 after the contact-filter regression
 
 The full fresh matched ensemble rejects the narrowed #36 rule: chair failures increase

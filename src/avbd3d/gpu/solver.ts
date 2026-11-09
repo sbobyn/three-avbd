@@ -21,7 +21,7 @@ import { Manifold } from '../ref/manifold.ts';
 import { defaultParams, type Solver, type SolverParams } from '../ref/solver.ts';
 import {
   BODY_DIRTY, BODY_DISABLED, BODY_COLD, ARGS_ITEMS_3D, B_ANGVEL, B_INERTIAL_POS, B_INERTIAL_ROT, B_INITIAL_POS, B_INITIAL_ROT, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS,
-  C_CLASHING_COLORS, C_MANIFOLDS, C_TAIL_BODIES, CONTACT_WORDS, FLAG_FACE_BIAS, FLAG_SPARSE_COLORS, FLAG_MASS_PENALTY, FLAG_MATCH_NEAREST, FLAG_REUSE_CONTACTS, FLAG_REUSE_MANIFOLDS, FLAG_START_AT_REST, J_C0_ANG, J_C0_LIN, J_LAM_ANG, K_LAM, K_PEN, K_RA, K_RB, M_GEO, MANIFOLD_WORDS, SDF_ROLLING_BIT, SPARSE_COLOR_START, STICK_BIT,
+  C_CLASHING_COLORS, C_MANIFOLDS, C_TAIL_BODIES, CONTACT_WORDS, FLAG_DEEPEST_BOX_WITNESS, FLAG_FACE_BIAS, FLAG_SPARSE_COLORS, FLAG_MASS_PENALTY, FLAG_MATCH_NEAREST, FLAG_REUSE_CONTACTS, FLAG_REUSE_MANIFOLDS, FLAG_START_AT_REST, J_C0_ANG, J_C0_LIN, J_LAM_ANG, K_LAM, K_PEN, K_RA, K_RB, M_GEO, MANIFOLD_WORDS, SDF_ROLLING_BIT, SPARSE_COLOR_START, STICK_BIT,
   J_BREAK_BEND, J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, J_REST, J_REST_START, J_YIELD, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_HULL, SHAPE_SAIL, SHAPE_SPHERE, T_JOINT, T_SPRING,
   TOPOLOGY_ACCESSORS_3D,
 } from './layout.ts';
@@ -173,6 +173,7 @@ export interface GpuParams3D extends SolverParams {
   matchNearest: boolean;
   /** Box2D-style face-over-edge preference in the narrowphase (see wgsl-collision.ts). */
   faceBias: boolean;
+  deepestBoxWitness: boolean;
   /** Keep contact points of pairs whose bodies have not moved (skips their narrowphase). */
   reuseContacts: boolean;
   /**
@@ -215,6 +216,7 @@ export const gpuParams3D = (): GpuParams3D => ({
   ...defaultParams(),
   matchNearest: true,
   faceBias: true,
+  deepestBoxWitness: false,
   reuseContacts: true,
   startAtRest: true,
   massPenalty: true,
@@ -618,6 +620,7 @@ export class GpuSolver3D {
   /** Steps taken (the reuse bookkeeping's clock; starts at 1). */
   private stepCount = 0;
   private manifoldsValid = false;
+  private previousDeepestBoxWitness = false;
   private passBuffer: GPUBuffer | null = null;
   private passEntries = 0;
   private passAlpha = NaN;
@@ -1686,8 +1689,9 @@ export class GpuSolver3D {
     if (this.timing && !this.timingBusy) this.timingCallback = callback;
   }
 
-  private writeParams(reuseManifolds = false): void {
+  private writeParams(reuseManifolds = false, witnessChanged = false): void {
     const p = this.params;
+    if (p.deepestBoxWitness && this.contactShaders.custom) throw new Error('deepestBoxWitness requires built-in contact shaders');
     if (!Number.isFinite(Math.fround(p.contactMargin)) || p.contactMargin < 0) throw new Error('Invalid contactMargin');
     const cap = this.bodyCapacity;
     const f = this.paramF32;
@@ -1698,7 +1702,7 @@ export class GpuSolver3D {
     f[3] = p.betaAng;
     f[4] = p.gamma;
     f[5] = p.alpha;
-    u[6] = (p.matchNearest ? FLAG_MATCH_NEAREST : 0) | (p.faceBias ? FLAG_FACE_BIAS : 0) | (p.reuseContacts ? FLAG_REUSE_CONTACTS : 0) | (p.startAtRest ? FLAG_START_AT_REST : 0) | (p.massPenalty ? FLAG_MASS_PENALTY : 0) | (reuseManifolds ? FLAG_REUSE_MANIFOLDS : 0) | (this.useSparseColors ? FLAG_SPARSE_COLORS : 0);
+    u[6] = (p.matchNearest ? FLAG_MATCH_NEAREST : 0) | (p.faceBias ? FLAG_FACE_BIAS : 0) | (p.reuseContacts && !witnessChanged ? FLAG_REUSE_CONTACTS : 0) | (p.startAtRest ? FLAG_START_AT_REST : 0) | (p.massPenalty ? FLAG_MASS_PENALTY : 0) | (reuseManifolds ? FLAG_REUSE_MANIFOLDS : 0) | (this.useSparseColors ? FLAG_SPARSE_COLORS : 0) | (p.deepestBoxWitness ? FLAG_DEEPEST_BOX_WITNESS : 0);
     u[7] = this.bodyCount;
     u[8] = this.jointCount;
     u[9] = this.colorCap;
@@ -1841,8 +1845,9 @@ export class GpuSolver3D {
 
   step(options: GpuStepOptions = {}): void {
     this.collisionBackend?.prepare(this);
+    const witnessChanged = this.params.deepestBoxWitness !== this.previousDeepestBoxWitness;
     // An SDF backend writes its own contacts each step; manifold reuse applies to the built-in narrowphase.
-    const reuseManifolds = !this.collisionBackend && !!options.reuseManifolds && this.manifoldsValid && !!this.pipes.reuseManifolds;
+    const reuseManifolds = !witnessChanged && !this.collisionBackend && !!options.reuseManifolds && this.manifoldsValid && !!this.pipes.reuseManifolds;
     if (this.radiiDirty || this.noCollideTable.dirty) this.uploadStatics();
     const p = this.params;
     if (this.fixedColors) {
@@ -1866,7 +1871,7 @@ export class GpuSolver3D {
       this.useSparseColors = active <= 128 || (active <= 1024 && tail <= 128);
     }
     this.stepCount++;
-    this.writeParams(reuseManifolds);
+    this.writeParams(reuseManifolds, witnessChanged);
     this.writePassConstants(p.alpha);
 
     const cur = this.parity;
@@ -1982,6 +1987,7 @@ export class GpuSolver3D {
     this.device.queue.submit([encoder.finish()]);
     this.parity = 1 - cur;
     this.manifoldsValid = true;
+    this.previousDeepestBoxWitness = p.deepestBoxWitness;
 
     if (timed) {
       const callback = this.timingCallback!;
