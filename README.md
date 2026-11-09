@@ -69,6 +69,21 @@ storage. Physics state is transient: the demos do not save editable worlds.
 Your durable result is the consumer's source and pinned dependency files. Reopening reconstructs
 the scene; it does not restore its last simulation frame. [Save/reopen and recovery](docs/SETUP.md#keep-and-reopen-your-first-result).
 
+For the **Rapier-first interlocking study**, open `/examples/interlocking-rapier.html`.
+Then try `/examples/interlocking-avbd.html`: the same rings, peg, mass, push and rendering,
+using analytic SDF contacts. Follow the [20-minute task and comparison limits](docs/PAIRED_STUDIES.md).
+These are developer studies; no performance winner or new release qualification is established.
+The study is tracked in [PR74](https://github.com/sbobyn/three-avbd/pull/74). To select its review
+source explicitly in a fresh clone, run these **before** the install/run commands above:
+
+```sh
+git fetch origin pull/74/head
+git switch --detach FETCH_HEAD
+git rev-parse HEAD
+```
+
+Record that commit with your feedback; this selects source, not a published package update.
+
 ## Learn and integrate
 
 - [Core concepts, APIs, demos and configuration](docs/USER_GUIDE.md): units, fixed stepping,

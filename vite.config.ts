@@ -35,6 +35,8 @@ export default defineConfig({
         results: 'results.html',
         examples: 'examples/index.html',
         exampleBasic: 'examples/basic.html',
+        interlockingRapier: 'examples/interlocking-rapier.html',
+        interlockingAvbd: 'examples/interlocking-avbd.html',
         exampleBodyLifecycle: 'examples/body-lifecycle.html',
         exampleBodyPool: 'examples/body-pool.html',
         exampleSdfGear: 'examples/sdf-gear.html',

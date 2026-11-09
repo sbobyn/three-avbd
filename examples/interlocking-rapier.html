@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <title>Interlocking study · Rapier first · three-avbd</title>
+  <link rel="stylesheet" href="./headless.css">
+  <style>
+    main { max-width:1000px } h1 img { vertical-align:middle; margin-right:10px }
+    #view { height: min(55vh, 540px); min-height:280px; border:1px solid #667788; border-radius:8px; overflow:hidden }
+    #view canvas { display:block } button,select { font:inherit; padding:6px; margin:4px }
+    #status { white-space:pre-wrap } label { white-space:nowrap }
+  </style>
+</head>
+<body><main>
+  <p><a href="./">← Examples</a></p>
+  <h1><img src="/favicon.svg" width="36" height="36" alt="">Interlocking sculpture: Rapier baseline</h1>
+  <p>Two pre-linked rings hang from a peg. Orbit to inspect the openings, press Play, then push the lower ring.
+    No joint connects the rings: support comes from contact. Try this baseline first, then the
+    <a href="./interlocking-avbd.html">matched AVBD SDF counterpart</a>. No performance winner is established.</p>
+  <div>
+    <button id="play" disabled>Play</button><button id="push" disabled>Push lower ring</button>
+    <button id="reset" disabled>Reset</button>
+    <label>Convex pieces per ring <select id="pieces"><option>16</option><option selected>32</option><option>64</option></select></label>
+    <button id="export" disabled>Save observation JSON</button>
+  </div>
+  <div id="view" aria-label="Interactive three-dimensional interlocking ring scene"></div>
+  <p id="status" role="status">Initializing…</p>
+  <p>Fixed timestep 1/120 s; 10 Rapier solver iterations; sleeping and CCD off for this baseline.
+    Changing piece count resets the scene, while mass, inertia and visible mesh stay fixed.
+    Convex tube sectors approximate the surface: more pieces is a representation choice, not automatically better physics.</p>
+  <p>Observation export contains inputs, poses, settings and device/build context—not an editable scene or a benchmark.
+    <a href="../docs/PAIRED_STUDIES.md">Study protocol</a>.</p>
+  <script type="module" src="./interlocking-rapier.ts"></script>
+</main></body></html>

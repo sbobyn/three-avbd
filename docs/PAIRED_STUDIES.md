@@ -1,0 +1,136 @@
+# Rapier-first paired studies — STE-3282
+
+Steven's direction, 2026-11-08: build each selected demo in Rapier first, then three-avbd.
+Use the result to discover strengths, extra application work and adoption/correctness/performance
+weaknesses. No preset winner. Related release/adoption work remains in STE-3003; this study is
+[STE-3282](https://linear.app/sbobyn/issue/STE-3282), existing M9 release umbrella.
+
+## First study: interlocking sculpture
+
+Run the repository's normal `pnpm dev`, then `/examples/interlocking-rapier.html`.
+Rapier0.21.0, Three0.187.0; existing dependencies, hardware WebGPU rendering required.
+The scene starts paused. Two already-linked, orthogonal rings hang from a fixed peg;
+Play, push the lower ring, orbit, reset, and vary16/32/64convex pieces per ring.
+Reset reconstructs only this owned physics world, retaining the camera and selected detail.
+It is not possible to pass closed solid rings through each other without an intersection;
+the authored linked starting arrangement is intentional, not a linking trick.
+
+The model uses genuine convex-sector compound colliders that preserve the opening, not a
+single hull that fills it. Visible meshes remain the same96segment tori at every collider detail.
+The tube cross-section approximation uses8sample points; this is disclosed rather than called
+exact geometry. Mass and analytic torus principal inertia are specified independently of
+collider count; zero-density colliders prevent duplicate mass. Default timestep1/120s,
+10Rapier solver iterations, gravity−9.81m/s², friction0.5, restitution0, sleeping/CCDoff.
+Rendered geometry has smooth node materials; no graphics/performance result is implied.
+
+Shared authored inputs: `src/comparison/interlocking-scene.ts`. Rapier-specific setup/compound
+creation/lifecycle: `src/comparison/interlocking-rapier.ts`. Three.js controls/rendering/report
+export: `examples/interlocking-view.ts` (shared between both pages). This separation exposes
+engine-specific construction in the two model files rather than counting common UI as physics glue.
+The AVBD counterpart is `src/comparison/interlocking-avbd.ts`, using the public World/SDF APIs.
+Only the selected engine runs; open Rapier first, then `/examples/interlocking-avbd.html`.
+
+Observation JSON includes exact build/dirty provenance, authored inputs, settings, poses,
+steps/push count, dropped simulation time, device/browser/viewport and limitations. It is not a
+benchmark or editable-project save. Reset returns to authored initial state; it does not restore
+an exported observation. Hidden tabs pause; the loop bounds catch-up to4steps/frame and reports
+dropped time. Renderer, controls/listeners, materials/geometry, Rapier world and the owned device
+have explicit teardown. No user data, unrelated scene or shared session is reset/disposed.
+The page checks the actual initialized Three backend and refuses a WebGL2 fallback rather than
+misattributing it to the probed WebGPU adapter. A physics-step/read failure pauses and leaves Reset
+available; a renderer failure releases owned resources and asks for an explicit reload. Initial
+startup failure also releases resources. A cached Rapier WASM initialization rejection requires
+reload; reset retries cannot repair it. Real device-loss/bfcache recovery remains unqualified.
+
+## Evaluate before porting
+
+1. Does contact alone support the linked rings on the peg? No ring-to-ring joints or scripted poses.
+2. Can the user clearly see the openings and push/reset without hidden setup?
+3. Does changing collider detail alter contacts or visible motion? Preserve awkward/failing cases.
+4. Does reinitialization preserve chosen inputs/camera and release old resources?
+5. Record actual confusion, documentation/API lookup and extra glue while implementing/reviewing.
+   Agent elapsed effort is not a measured human onboarding time.
+
+Device-free CPU tests cover openings at all3detail settings, mass invariance, supported hanging
+before a push, finite bounded240step trajectory, reset reconstruction and idempotent world disposal.
+They do not certify browser rendering, leak-free repeated browser mounting, arbitrary forces,
+long-duration topological preservation or physical correctness. No GPU benchmark was run.
+
+## Matched AVBD counterpart and comparison
+
+The implemented AVBD counterpart reuses authored inputs, visible geometry, actions, initial camera,
+render resolution policy and task through public World/SDF entry points. It uses exact analytic torus
+fields rotated into the visible/principal body frame, 500 curvature-seed candidates (85 generated
+seeds in the current scene), and the same analytic mass/inertia. The peg uses an analytic cylinder;
+the floor gets the automatic box field. Reset disposes/recreates this World because body reset with
+SDF enabled is unsupported. Setup phases and default collision settings are exported. Memory is
+not measured. AVBD native sleeping/CCD are unavailable and restitution is not modelled. Default
+SDF alpha 0.01 can introduce drag; do not treat visible damping differences as a solver win.
+Both pages currently render ordinary meshes synchronized from poses; AVBD requires async GPU
+readback and serializes frame work. This does not exercise its GPU-resident BodyMesh advantage.
+No renderer, World or device belongs to an existing user session.
+
+Use true SDFs and matching mass/inertia; log baking/setup memory/time. A smooth SDF and a convex compound are
+not identical approximations: expose geometric error and representation budget rather than
+pretending piece count equals voxel resolution. Do not count precomputation as free.
+
+Run separate views:
+- **Feature/DX:** best supported implementation of the intended behavior in each engine. Record
+  missing native features, extra glue, docs/type/dependency friction and lifecycle responsibilities.
+  Count engine-specific code separately from common scene/render/UI/test/generated code; LOC is
+  a supporting observation, not a quality score. Record actual time/help only when observed.
+- **Controlled physics:** identical body mass/inertia, starting poses, timestep, interactions and
+  physical intent. Disclose solver settings; equal iteration numbers do not imply equal work or accuracy.
+  Controlled sleeping/CCD settings are distinct from a best-supported product configuration.
+- **Performance:** only after both meet predeclared behavior/quality criteria. Pin commit/patch,
+  package/device/browser/resolution/DPR, seed/input sequence and settings. Separate setup/bake,
+  solver CPU encode/step and completed GPU work, CPU pose transfer, queries/events and rendering.
+  Alternate serialized runs, warmup/repeats, preserve raw intervals and simulation/wall speed.
+  The existing compare-frame/side/physics harnesses provide reusable evidence conventions; a live
+  side-by-side view itself is not a benchmark. Don't sum unlike overlapping timers into false totals.
+
+Physical acceptance must include finite state, absence of capacity overflow, no geometry escape,
+contact/penetration tolerance and supported hanging/rest behavior—not FPS alone. Define the
+geometric tolerance and observation window from both approximations before measurements; numbers
+are pending rather than invented here. Never report speed ratios for cases that miss acceptance.
+
+## Fix-and-retest loop
+
+Keep raw observations with engine/source/settings and distinguish application mistake, docs/API
+friction, missing feature, correctness bug and performance issue. Small known-cause fixes get
+focused regression/consumer verification; rerun both on the same case after a material fix and
+preserve original baselines. Larger solver/API changes remain explicit proposals with acceptance
+and dependencies. Don't tune only AVBD until it wins, weaken a quality threshold or use the
+Rapier implementation's accidental mistakes as a selling point. Existing Rapier0.21 soft-body
+plasticity/tearing also rules out a blanket “Rapier cannot bend or break” claim.
+
+Next sequence: Rapier interlocking review → matched AVBD implementation → paired evidence →
+prioritized fixes/showcase claims. Then consider bend/hold/snap, gear workshop and kinetic/art
+studies through the same process; no second large demo is a prerequisite to learning from this one.
+Source PR delivery does not authorize a new production deploy or package publication.
+
+## First hands-on task (20–25 minutes)
+
+From your own source checkout, follow the README prerequisites/install and `pnpm dev`;
+open `/examples/interlocking-rapier.html`, then `/examples/interlocking-avbd.html`.
+Do not run simultaneous views for a timing comparison. If port 5317 is occupied, choose your own
+free port explicitly: `pnpm exec vite --host 127.0.0.1 --port 5318 --strictPort`.
+
+1. **5 minutes — contact geometry:** orbit the paused Rapier rings; identify the open holes,
+   peg and pre-linked initial arrangement. Play, pause and push. No joint or scripted support.
+2. **5 minutes — representation:** reset and try 16/32/64 convex pieces. Visible mesh and mass
+   stay fixed. Describe motion/contact differences rather than assuming more pieces wins.
+3. **5–8 minutes — AVBD counterpart:** repeat the same actions. Its torus is one analytic field
+   per ring, not a compound; note apparent drag, support, jitter and any escape/intersection.
+   A fixed 1/120 s is the physics step, not a request to render 120 FPS; at most 4 steps/frame
+   drops excess debt and records it. Equal 10 iterations are not equal work or equal quality.
+4. **5 minutes — developer experience:** inspect both model files, then reset and save an
+   observation JSON. Saving pauses playback. Reset retains camera/detail but restores authored
+   inputs; disposal frees this model, and does not destroy the caller-owned device. Report API/
+   docs friction and any failure with the exact observation/source/settings. Do not change your
+   existing consumer project just for this task.
+
+This task reviews geometry/contact workflow, not a competition score. Next qualification must
+predeclare penetration/topology tolerances, record capacity/overflow and longer supported behavior,
+then measure serialized matched workloads. Background preview throttling, dropped simulation time
+and readback/render cost must remain visible; no FPS ratio is inferred from a review session.
