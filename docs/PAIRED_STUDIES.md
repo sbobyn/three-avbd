@@ -94,6 +94,46 @@ contact/penetration tolerance and supported hanging/rest behavior—not FPS alon
 geometric tolerance and observation window from both approximations before measurements; numbers
 are pending rather than invented here. Never report speed ratios for cases that miss acceptance.
 
+### Quality contract (pose observables, declared before runtime trials)
+
+`src/comparison/interlocking-quality.ts` is device-free and engine-neutral. Input: one simultaneous
+`[upper, lower]` pose snapshot in the shape both models already return, plus the representation
+(`analytic-sdf` or `rapier-compound` 16/32/64). Pose-only: no velocity, energy, force or contact
+data is read or inferred. Criteria (`INTERLOCKING_QUALITY_CRITERIA`) were fixed from the authored
+geometry before any trial: penetration limit 0.1·r = 0.016 m, quaternion norm tolerance 1e-4
+(as `contact-quality.ts`), the existing endpoint guards upper y > 2.5 and lower y > 1, and a
+384×96 ring-surface grid. Do not change them after observing either engine.
+
+- **Fields:** exact analytic torus in the ring body frame (axis z), checked against AVBD's
+  axis-y field through `FIELD_Y_TO_BODY_Z`; exact cylinder peg with the shared x-quarter-turn
+  peg rotation; floor as its top plane with an exact torus support formula.
+- **Pair depth** (ring/ring, ring/peg) samples one ring surface against the other field. Fields
+  are 1-Lipschitz, so the true minimum lies within the grid covering radius (≈0.0101 m) of the
+  sampled minimum. `separated` and `penetrating` concern the analytic surface only; `within-limit` bounds the deepest
+  surface point, not a minimum translation distance; contact inside the bands is `unknown`.
+- **Representation band:** the compound is compared with the analytic torus (sector 0 hull vs
+  analytic surface, sampled and derived). Measured band 0.0173/0.0135/0.0125 m for 16/32/64 pieces;
+  the 8-sample tube cross-section (≈0.0122 m) dominates, so more sectors do not remove it. Every
+  compound interval estimate is widened by this band (twice for ring/ring). This is not a proven
+  conservative whole-hull bound: `boundCertified:false`, all compound pair/floor/thread verdicts
+  remain `unknown` (apart from gross floor escape/off-floor guards). No definite actual-compound
+  separation or penetration is inferred. It is representation error, not
+  exact SDF error, and evaluates the analytic proxy rather than Rapier's own contact geometry.
+- **Topology:** exact plane-crossing linking of the two core circles plus a sampled lower bound
+  on core distance. `analyticCoreLinkResolved` means only that the analytic centre-circle link is definite and the
+  core-distance lower bound is positive. It does NOT certify solid/compound-body topology. A
+  definite link change between observations is a violation; equal links at sparse snapshots do
+  not prove no transient pass-through. Peg threading is axis-segment-through-opening per pose.
+- **Floor:** exact support height; `off-floor`, `escaped-below`, and `unknown` for edge overhang.
+- **Verdicts:** each criterion is `violation`, `no-violation-observed` or `unknown`; invalid
+  (non-finite, non-unit, miscounted) poses make every other criterion `unknown`. Qualification
+  stays `gated`: these are necessary checks. Height, threading, linking and floor clearance never
+  certify contact support, global non-penetration or physical correctness, and bounding-box overlap
+  is never a contact result. `summarizeTrial` treats hanging-only guards as observations after a push.
+
+Next: a bounded trial collects both engines' poses through the same input sequence and reports
+these observations raw, including `unknown`, before any performance comparison.
+
 ## Fix-and-retest loop
 
 Keep raw observations with engine/source/settings and distinguish application mistake, docs/API
