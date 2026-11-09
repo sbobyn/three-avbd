@@ -7,7 +7,7 @@ import { createAdapter, type Adapter, type Engine } from './adapters.ts';
 import { contactQuality } from './contact-quality.ts';
 import { REST_SPEED, restFraction } from './final-window.ts';
 import { quality } from './quality.ts';
-import { caseLabel, caseSummary, familyLabel } from './labels.ts';
+import { caseLabel, caseSummary, familyLabel, isHeavyCase } from './labels.ts';
 import { DEFAULTS } from './run.ts';
 import { makeScene, SCENE_VALIDITY, type CaseName, type Scene } from './scenes.ts';
 import { familyOf, familyValidity, formatSettings, MARGINS, parseSettings, RollingStats, sceneFamilies, validity,
@@ -62,16 +62,10 @@ for (const kind of ['valid', 'unclassified', 'invalid'] as const) {
   }
   sceneSelect.append(group);
 }
-const heavy = (name: CaseName) => nominalBodies(name) > 20_000;
-/** The count in a scaled case's name (ring-110k → 110000); 0 for impact ratios and unscaled cases. */
-function nominalBodies(name: CaseName): number {
-  const m = /-(\d+)(k?)(-settled)?$/.exec(name);
-  return m && !name.startsWith('impact-') ? Number(m[1]) * (m[2] ? 1000 : 1) : 0;
-}
 function fillScale(f: Family): void {
   scaleSelect.replaceChildren(...f.members.map(m => {
     const v = validity(m.name);
-    const text = `${m.scale || '—'}${v.kind === 'invalid' ? ` ✗ ${v.note}` : ''}${heavy(m.name) ? ' (heavy)' : ''}`;
+    const text = `${m.scale || '—'}${v.kind === 'invalid' ? ` ✗ ${v.note}` : ''}${isHeavyCase(m.name) ? ' (heavy)' : ''}`;
     return new Option(text, m.name);
   }));
   scaleSelect.disabled = f.members.length < 2;

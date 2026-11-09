@@ -58,7 +58,7 @@ try {
   scene.background = new THREE.Color(0x101216);
   const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, .1, 100);
   camera.position.set(4, 4, 6);
-  const controls = new OrbitControls(camera, renderer.domElement);
+  const controls = startup.own(new OrbitControls(camera, renderer.domElement), c => c.dispose());
   controls.target.set(0, 1, 0);
   scene.add(new THREE.HemisphereLight(0xdde8ff, 0x302820, 1.8));
   const sun = new THREE.DirectionalLight(0xffffff, 2.5);
@@ -92,16 +92,19 @@ try {
   floorMesh.receiveShadow = knotMesh.receiveShadow = true;
   scene.add(knotMesh, floorMesh);
 
-  await renderer.setAnimationLoop(() => {
+  await startup.animate(renderer, () => {
     world.update(1 / 60);
     controls.update();
     renderer.render(scene, camera);
   });
-  addEventListener('resize', () => {
+  const resize = () => {
+    if (startup.stopped) return;
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
-  });
+  };
+  addEventListener('resize', resize);
+  startup.own(resize, callback => removeEventListener('resize', callback));
   Object.assign(window, { world });
 } catch (error) {
   await startup.fail(error);
