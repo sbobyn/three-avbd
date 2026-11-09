@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { ENTRIES } from '../src/gallery/catalog.ts';
-import { CASE_INFO, caseLabel, caseSummary, FAMILY_LABELS, familyLabel } from '../src/comparison/labels.ts';
+import { ENTRIES, isHeavyCase as galleryHeavy } from '../src/gallery/catalog.ts';
+import { CASE_INFO, caseLabel, caseSummary, FAMILY_LABELS, familyLabel, HEAVY_BODIES, isHeavyCase } from '../src/comparison/labels.ts';
 import { CASES, makeScene } from '../src/comparison/scenes.ts';
 import { parseSettings, sceneFamilies } from '../src/comparison/side-model.ts';
 
@@ -88,4 +88,19 @@ test('the demo gallery names each comparison chip the way the comparison pages d
   const chips = ENTRIES.find(e => e.id === 'side-by-side')!.items!;
   assert.equal(chips.length, CASES.length);
   for (const chip of chips) assert.equal(chip.label, caseLabel(chip.covers![0]), chip.href);
+});
+
+test('the comparison page marks as heavy exactly the cases the gallery marks, from the same body counts', () => {
+  const heavy = CASES.filter(isHeavyCase);
+  assert.deepEqual(heavy, CASES.filter(galleryHeavy));
+  assert.deepEqual(heavy, ['rest-grid-10k', 'pile-10k', 'pile-10k-settled', 'ring-9k', 'ring-110k']);
+  // The chips the gallery marks are the ones it opens paused
+  const chips = ENTRIES.find(e => e.id === 'side-by-side')!.items!;
+  assert.deepEqual(chips.filter(c => c.heavy).map(c => c.covers![0]), heavy);
+  for (const name of CASES) assert.equal(isHeavyCase(name), CASE_INFO[name].bodies >= HEAVY_BODIES, name);
+  assert.equal(isHeavyCase('no-such-case'), false);
+  assert.equal(isHeavyCase('toString'), false);
+  // The page shows the shared rule instead of its own, and sizes below the limit stay unmarked in its menu
+  assert.match(read('src/comparison/side.ts'), /isHeavyCase\(m\.name\)/);
+  assert.ok(!isHeavyCase('pile-1k-settled') && !isHeavyCase('rest-grid-1k'));
 });

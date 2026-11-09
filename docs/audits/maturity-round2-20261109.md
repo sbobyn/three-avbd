@@ -450,3 +450,32 @@ receipt; the initial two integration failures are retained there, not erased. No
 or full-suite replay, fresh npm publication, human acceptance, target-device or pixel-level
 acceptance is implied. M-04 and M-08/M-10/M-11 remain proposals/evidence gates; the later
 example slice and provisional baking workflow have not been delivered by this patch.
+
+
+### Lead integration — example/runtime slice (2026-11-09)
+
+M-05/M-06/M-07 and missing M-09 guidance are implemented in the pending example patch over
+main `a36358d`. Sonnet supplied the bounded example/labels/docs changes; lead review added
+six regressions that reproduced queued resize calls into disposed renderers and successful
+readbacks overwriting the original stopped-state error. Both are fixed; resize listeners and
+owned orbit controls are released, and late readback UI updates are ignored after stopping.
+
+Final focused example/startup, comparison-label, gallery, comparison-side and fresh-project
+checks pass 89/89, with typecheck and site build passing. Unchanged World behavior reuses
+the preceding 77 hardware GPU tests; no new full suite or broad benchmark was run.
+
+Actual browser probe before the scene: ANGLE Apple M4 Max Metal, WebGPU apple/metal-3,
+fallback false. The new QA tab's basic example had 165 live bodies and reached step 543;
+its actual World device reported apple/metal-3, fallback false, and its canvas used WebGPU.
+Destroying only this newly created QA World produced one error, a persistent alert beginning
+`Stopped: World destroyed: update after destroy()`, no canvas and no later stepping; resize
+after stop left it stopped. This is an isolated application-failure observation, not device-loss
+or performance acceptance. Source/fake checks show no deprecated Clock construction; startup
+console output was not captured, so no blanket no-warning claim is made. The paused
+`rest-grid-100` comparison showed 100 dynamic/101 total bodies at step 0, two WebGPU canvases
+and `10k (heavy)` in the size menu; no heavy case was loaded. Own QA tab was closed.
+
+The API already documented brute-force ray cost, so that text was retained. New force/drop-time
+notes describe actual current behavior, not new features. The remaining Clock sketch in
+COMPARISON was aligned by the lead. Pixel appearance, real device loss, touch, replay, baked
+workflow and target-device performance remain separate gates/proposals.

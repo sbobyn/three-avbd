@@ -22,7 +22,7 @@ try {
   scene.background = new THREE.Color(0x101216);
   const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, .1, 100);
   camera.position.set(3.5, 4.5, 5);
-  const controls = new OrbitControls(camera, renderer.domElement);
+  const controls = startup.own(new OrbitControls(camera, renderer.domElement), c => c.dispose());
   controls.target.set(0, .5, 0);
   scene.add(new THREE.HemisphereLight(0xdde8ff, 0x302820, 1.8));
   const sun = new THREE.DirectionalLight(0xffffff, 2.5);
@@ -68,26 +68,30 @@ try {
   });
 
   let reading = false;
-  await renderer.setAnimationLoop(() => {
+  await startup.animate(renderer, () => {
     world.update(1 / 60);
     if (!reading) {
       reading = true;
-      void world.read(balls).then(() => {
+      startup.guard(world.read(balls).then(() => {
+        if (startup.stopped) return;
         // "Inside" means the ball's centre is within the hole, below the top of the ring.
         const inside = balls.filter(b => Math.hypot(b.position[0], b.position[2]) < HOLE && b.position[1] < 2 * MINOR).length;
         const above = balls.filter(b => b.position[1] >= 2 * MINOR).length;
         status.textContent = `${inside} inside the ring · ${above} above the rim · ${COUNT - inside - above} escaped`;
         setTimeout(() => { reading = false; }, 250);
-      });
+      }));
     }
     controls.update();
     renderer.render(scene, camera);
   });
-  addEventListener('resize', () => {
+  const resize = () => {
+    if (startup.stopped) return;
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
-  });
+  };
+  addEventListener('resize', resize);
+  startup.own(resize, callback => removeEventListener('resize', callback));
   Object.assign(window, { world });
 } catch (error) {
   await startup.fail(error);

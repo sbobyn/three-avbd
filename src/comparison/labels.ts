@@ -58,3 +58,8 @@ export const caseLabel = (name: string): string => known(name) ? CASE_INFO[name]
 export const caseSummary = (name: string): string => known(name) ? CASE_INFO[name].summary : '';
 /** The label for a scene family (a `Family.id`) or, for a single-case family, its case. */
 export const familyLabel = (id: string): string => FAMILY_LABELS[id] ?? caseLabel(id);
+
+/** Body count from which the demo gallery marks a comparison case heavy and opens it paused (`isHeavyCase` in src/gallery/catalog.ts). */
+export const HEAVY_BODIES = 9000;
+/** True for a case of `HEAVY_BODIES` dynamic bodies or more; an unknown ID is not heavy. The gallery decides from the ID so it needs no import: a test holds the two equal. */
+export const isHeavyCase = (name: string): boolean => known(name) && CASE_INFO[name].bodies >= HEAVY_BODIES;

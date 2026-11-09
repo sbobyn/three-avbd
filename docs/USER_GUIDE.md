@@ -86,7 +86,7 @@ These queries are independent of solver collisions and GPU bodies.
 
 For a complete standalone consumer, follow [the setup guide](SETUP.md#fresh-threejs-consumer).
 
-The shorter API sketch below assumes you have already created `scene`, `camera`, and `clock`
+The shorter API sketch below assumes you have already created `scene` and `camera`
 as in a normal Three.js application. For a runnable starting point, use the complete example above.
 
 ```ts
@@ -105,8 +105,10 @@ world.addJoint(crate, ball, { anchorA: [0, 0.5, 0], anchorB: [0, -0.5, 0], break
 scene.add(new BodyMesh(world, { bodies: 'box', material: new THREE.MeshStandardNodeMaterial() }));
 scene.add(new BodyMesh(world, { bodies: 'sphere' }));
 
-renderer.setAnimationLoop(() => {
- world.update(clock.getDelta()); // fixed steps
+let previous = performance.now(); // THREE.Clock is deprecated: use the loop's timestamp (ms)
+renderer.setAnimationLoop((now) => {
+ world.update(Math.min((now - previous) / 1000, 0.1)); // fixed steps; the gap is capped at 0.1 s
+ previous = now;
  renderer.render(scene, camera);
 });
 
@@ -119,7 +121,7 @@ await world.read();
  use `World.create({ ..., requireHulls: true })` to reject unsupported devices and
  `world.capabilities` to inspect the installed collision backend), with position, rotation,
  velocity, density, friction, `fixed`;
- `body.applyImpulse(J, point)`, `applyForce(F, point)` (every step until `clearForces()`),
+ `body.applyImpulse(J, point)`, `applyForce(F, point)` (every step until `clearForces()`; calls add up, and the world-space `point` stays put while the body moves),
  `applyTorque`, collision groups (`group`, `collidesWith`), `body.moveTo(position, rotation)` (a
  fixed body as a moving platform or door, carrying what it touches), `body.set({ position, velocity, ... })`,
  `body.setFixed()`, `body.remove()` (its slot is

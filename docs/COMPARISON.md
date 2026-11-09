@@ -440,7 +440,11 @@ instead of 67 cm. Do not use `reuseManifolds` for fast projectiles.
 ```ts
 const world = await World.create({ renderer, maxBodies: 10_000, dt: 1 / 240 });
 world.maxSubsteps = 8;                         // 4 steps per 60 Hz frame, room to catch up
-renderer.setAnimationLoop(() => world.update(clock.getDelta()));
+let previous = performance.now();
+renderer.setAnimationLoop((now) => {
+  world.update(Math.min((now - previous) / 1000, 0.1));
+  previous = now;
+});
 
 import { StaticQueryScene, boxMesh } from 'three-avbd/queries';
 const level = new StaticQueryScene();

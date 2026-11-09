@@ -275,8 +275,10 @@ const ball = world.addSphere({ radius: 0.5, position: [0, 8, 0], velocity: [0, 0
 const weld = world.addJoint(crate, ball, { anchorA: [0, 0.5, 0], anchorB: [0, -0.5, 0], breakForce: 500 });
 
 scene.add(new BodyMesh(world, { material: new THREE.MeshStandardNodeMaterial() }));
-renderer.setAnimationLoop(() => {
-  world.update(clock.getDelta()); // fixed steps from an accumulator
+let previous = performance.now(); // THREE.Clock is deprecated: use the loop's timestamp (ms)
+renderer.setAnimationLoop((now) => {
+  world.update(Math.min((now - previous) / 1000, 0.1)); // fixed steps from an accumulator; the gap is capped at 0.1 s
+  previous = now;
   renderer.render(scene, camera);
 });
 ```
@@ -293,7 +295,10 @@ Activation/reset (new in 0.4.0) and its GPU/lifetime semantics are described in
   pairs, joints and colours grow on their own, through the existing `adapt()` readbacks.
 - `step()` advances one fixed step. `update(seconds)` runs the steps that time is owed, at
   most `maxSubsteps` (default 4). A non-finite `seconds` (`NaN`, `undefined`, ±Infinity) throws
-  before the time owed changes; a negative one still counts as no time.
+  before the time owed changes; a negative one still counts as no time. Time owed beyond
+  `maxSubsteps` steps is dropped (at most one step's worth carries over), with no dropped-time
+  counter. The return value counts completed steps; track discarded time in the host clock
+  if the application needs that accounting.
 - `dt` must be positive and finite as f32, `iterations` a nonnegative safe integer (0 integrates
   without solving), and `gravity` three numbers with finite f32 components and magnitude, in
   `World.create` and their setters alike. Set `world.maxSubsteps` to a positive safe integer
@@ -410,7 +415,11 @@ surfaces, with at most 256 rays per call. Field rotation maps into the body prin
   buffer of their own (`GpuSolver3D.setFilters`), not the body record, which has no spare word.
   Raycasts take `collidesWith` too.
 - Pushing (0.2): `body.applyImpulse(J, point?)` and `applyAngularImpulse(L)` act at the next
-  step; `applyForce(F, point?)` and `applyTorque(T)` act every step until `clearForces()`. A
+  step; `applyForce(F, point?)` and `applyTorque(T)` act every step until `clearForces()`.
+  Repeated calls add to the stored force instead of replacing it, and it persists across steps
+  (an engine that applies a force for one step needs `clearForces()` each frame here). The
+  `point` is a fixed world-space position that does not follow the body as it moves, so a
+  thruster attached to the body needs a fresh point from a readback. A
   small compute pass over the body buffer (`src/lib/push.ts`) turns each body's pushes, summed on
   the CPU, into Δv = J/m and Δω = I⁻¹ r × J with the mass, moments and pose the GPU holds, so a
   point is exact even though the CPU's poses are a readback old. (The solver's implicit step

@@ -21,7 +21,7 @@ try {
   scene.background = new THREE.Color(0x101216);
   const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 500);
   camera.position.set(18, 12, 22);
-  const controls = new OrbitControls(camera, renderer.domElement);
+  const controls = startup.own(new OrbitControls(camera, renderer.domElement), c => c.dispose());
   controls.target.set(0, 3, 0);
   scene.add(new THREE.HemisphereLight(0xdde8ff, 0x302820, 1.5));
   const sun = new THREE.DirectionalLight(0xffffff, 2.5);
@@ -68,9 +68,10 @@ try {
   world.readbackEvery = 30;
   world.onBreak((joint) => boxes.setColor(joint.b, 0xffb020));
 
-  const clock = new THREE.Clock();
-  await renderer.setAnimationLoop(() => {
-    const dt = clock.getDelta();
+  let previous: number | null = null; // seconds between frames, capped, from the timestamp the loop passes (THREE.Clock is deprecated)
+  await startup.animate(renderer, (now) => {
+    const dt = previous === null || !Number.isFinite(now) ? 0 : Math.min((now - previous) / 1000, 0.1);
+    previous = Number.isFinite(now) ? now : null;
     wait -= dt;
     if (wait <= 0) {
       wait = 0.15;
@@ -82,11 +83,14 @@ try {
     renderer.render(scene, camera);
   });
 
-  addEventListener('resize', () => {
+  const resize = () => {
+    if (startup.stopped) return;
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
-  });
+  };
+  addEventListener('resize', resize);
+  startup.own(resize, callback => removeEventListener('resize', callback));
   Object.assign(window, { world });
 } catch (error) {
   await startup.fail(error);

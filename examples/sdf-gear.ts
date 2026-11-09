@@ -61,7 +61,7 @@ try {
   scene.background = new THREE.Color(0x101216);
   const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, .1, 100);
   camera.position.set(0, -2, 7);
-  const controls = new OrbitControls(camera, renderer.domElement);
+  const controls = startup.own(new OrbitControls(camera, renderer.domElement), c => c.dispose());
   scene.add(new THREE.HemisphereLight(0xdde8ff, 0x302820, 2));
   const sun = new THREE.DirectionalLight(0xffffff, 2.5);
   sun.position.set(-3, 5, 8);
@@ -95,7 +95,7 @@ try {
 
   const SPEED = 2 * Math.PI / 10; // input: one turn every ten seconds
   let angle = 0, owed = 0, reading = false, last = performance.now();
-  await renderer.setAnimationLoop((time: number) => {
+  await startup.animate(renderer, (time) => {
     owed = Math.min(owed + (time - last) / 1000, 4 * world.dt);
     last = time;
     while (owed >= world.dt) {
@@ -107,20 +107,24 @@ try {
     if (!reading) {
       reading = true;
       // Read back only the follower, a few times a second, for the ratio readout.
-      void world.read([output]).then(() => {
+      startup.guard(world.read([output]).then(() => {
+        if (startup.stopped) return;
         const ratio = output.angularVelocity[2] / SPEED;
         status.textContent = `input ${(SPEED * 60 / (2 * Math.PI)).toFixed(1)} rpm · output ${(output.angularVelocity[2] * 60 / (2 * Math.PI)).toFixed(1)} rpm · ratio ${ratio.toFixed(2)}`;
         setTimeout(() => { reading = false; }, 250);
-      });
+      }));
     }
     controls.update();
     renderer.render(scene, camera);
   });
-  addEventListener('resize', () => {
+  const resize = () => {
+    if (startup.stopped) return;
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
-  });
+  };
+  addEventListener('resize', resize);
+  startup.own(resize, callback => removeEventListener('resize', callback));
   Object.assign(window, { world });
 } catch (error) {
   await startup.fail(error);
