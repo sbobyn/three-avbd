@@ -12,7 +12,7 @@ import { gitProvenance, type GitProvenance } from './git-provenance.ts';
 
 // Unknown provenance (a source archive) is null, never a guessed revision
 const provenanceFields = (git: GitProvenance) =>
-  ({ gitHead: git.head, dirty: git.dirty, gitProvenance: git.source === 'git' ? 'git' : `unknown: ${git.reason}` });
+  ({ gitHead: git.head, dirty: git.dirty, gitChanges: git.source === 'git' ? git.changes : null, gitProvenance: git.source === 'git' ? 'git' : `unknown: ${git.reason}` });
 
 const finalSummary = (f: FinalWindow | undefined) => !f ? 'final window —' :
   `final ${f.steps} steps: floor max/p95 ${f.maxFloorPenetration.toFixed(5)}/${f.p95FloorPenetration.toFixed(5)} m, ` +
