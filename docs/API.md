@@ -105,6 +105,11 @@ observes shared poses against analytic geometry and predeclared guards. It does 
 engine, read device state or change the library API. Unproven compound error bands yield `unknown`;
 resolved analytic centre-circle linking is not solid-body topology certification. Qualification
 remains gated; see the protocol quality contract (2026-11-08, STE-3282).
+The optional [bounded runner](../src/comparison/interlocking-trial.ts), invoked by
+[`scripts/interlocking-trial.ts`](../scripts/interlocking-trial.ts), serializes model steps,
+queue drain/readback and snapshot observers. It owns its model; the CLI owns any Dawn device.
+JSON reports keep these wall spans separate and rendering unmeasured; they do not certify a
+performance comparison or alter the running demo/library API.
 
 ### Initialization diagnostics — local overlay, 2026-11-07
 
