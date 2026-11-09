@@ -9,7 +9,7 @@ export function copyBodyPatch(input: BodyPatch): BodyPatch {
     const value = input[field];
     if (value === undefined) continue;
     const length = field === 'rotation' ? 4 : 3;
-    if (value.length !== length || !Array.from(value).every(v => Number.isFinite(v) && Number.isFinite(Math.fround(v)))) throw new Error(`Invalid body ${field}`);
+    if (value === null || value.length !== length || !Array.from(value).every(v => Number.isFinite(v) && Number.isFinite(Math.fround(v)))) throw new Error(`Invalid body ${field}`);
     const copy = Array.from(value);
     if (field === 'rotation') {
       const norm = Math.hypot(...copy);

@@ -9,6 +9,7 @@ import type { SdfCollisionBridge } from '../avbd3d/gpu/sdf-bridge.ts';
 import * as THREE from 'three/webgpu';
 import { releaseStorageAttribute } from './storage.ts';
 import { bodyFields, copyBodyPatch, observedField, assignBodyPatch, type BodyField, type BodyPatch } from './body-commands.ts';
+import { checkBodyMaterial, checkBodySize, checkDelta, checkDt, checkGravity, checkIterations, checkMaxSubsteps, checkRadius } from './world-validation.ts';
 import { deviceCapabilities, worldCapabilities, checkRequiredHulls, type WorldCapabilities } from './capabilities.ts';
 import { BodyReset } from '../avbd3d/gpu/body-reset.ts';
 import { BodyDisabledError, BodyLifecycleError, UnsupportedLifecycleError, checkEnabled, resetBodyPatch } from './lifecycle.ts';
@@ -256,6 +257,8 @@ function rotate(q: ArrayLike<number>, v: ArrayLike<number>): Vec3 {
 }
 
 export interface ReadResult { step: number }
+/** A readback that landed: its step, and the first listener error its callbacks threw (if any). */
+interface ReadOutcome { step: number; listenerError?: { error: unknown } }
 
 /**
  * @internal A reservation of body slots (a BodyPool's): the indices it owns, which of them are
@@ -605,8 +608,14 @@ export class World {
   /** The bodies' buffer as a Three.js attribute (with a renderer): what BodyMesh draws from. */
   readonly bodyAttribute: THREE.StorageInstancedBufferAttribute | null;
   readonly maxBodies: number;
-  /** The most fixed steps `update` runs in one call (time owed past them is dropped: no spiral). */
-  maxSubsteps = 4;
+  private substeps = 4;
+  /** The most fixed steps `update` runs in one call (time owed past them is dropped: no spiral). A positive integer. */
+  get maxSubsteps(): number {
+    return this.substeps;
+  }
+  set maxSubsteps(n: number) {
+    this.substeps = checkMaxSubsteps(n);
+  }
   /** Keep a readback going every this many steps (0: only on request, World.read). */
   readbackEvery = 0;
 
@@ -675,7 +684,9 @@ export class World {
   private writes = 0;
   private steps = 0;
   private owed = 0;
-  private reading: Promise<ReadResult> | null = null;
+  private reading: Promise<ReadOutcome> | null = null;
+  /** What read() callers of the read in flight are given: its outcome, a listener error rejecting. */
+  private readingResult: Promise<ReadResult> | null = null;
   /** What the read in flight holds: every body (null) or these slots, as of this write count. */
   private readingSlots: Set<number> | null = null;
   private readingWrites = 0;
@@ -737,6 +748,10 @@ export class World {
 
   static async create(options: WorldOptions): Promise<World> {
     if (!Number.isSafeInteger(options.maxBodies) || options.maxBodies <= 0) throw new Error('World.create: maxBodies must be a positive safe integer');
+    // Checked before the renderer, the device or any allocation is touched
+    if (options.dt !== undefined) checkDt(options.dt, 'World.create: dt');
+    if (options.iterations !== undefined) checkIterations(options.iterations, 'World.create: iterations');
+    if (options.gravity !== undefined) checkGravity(options.gravity, 'World.create: gravity');
     const growth = options.storage?.growth ?? 'adaptive';
     if (growth !== 'adaptive' && growth !== 'fixed') throw new Error(`World.create: storage.growth must be 'adaptive' or 'fixed', not ${String(growth)}`);
     // Checked against the device's negotiated limits before any attribute or buffer is made
@@ -797,7 +812,8 @@ export class World {
     const { up, gravity } = this.solver.params;
     return [up[0] * gravity, up[1] * gravity, up[2] * gravity];
   }
-  set gravity(g: Vec3) {
+  set gravity(value: Vec3) {
+    const g = checkGravity(value);
     const size = Math.hypot(g[0], g[1], g[2]);
     const p = this.solver.params;
     p.gravity = -size;
@@ -807,13 +823,13 @@ export class World {
     return this.solver.params.dt;
   }
   set dt(dt: number) {
-    this.solver.params.dt = dt;
+    this.solver.params.dt = checkDt(dt);
   }
   get iterations(): number {
     return this.solver.params.iterations;
   }
   set iterations(n: number) {
-    this.solver.params.iterations = n;
+    this.solver.params.iterations = checkIterations(n);
   }
 
   /** Experimental spatial SDF collisions. Unassigned boxes/spheres
@@ -949,7 +965,7 @@ export class World {
 
   /** Add a sphere; null when the world is full (maxBodies). */
   addSphere(options: SphereOptions): Body | null {
-    const d = 2 * options.radius;
+    const d = checkRadius(options.radius, 'addSphere');
     return this.add('sphere', [d, d, d], options);
   }
 
@@ -961,9 +977,10 @@ export class World {
     this.assertLive('addHull');
     const shape = options.shape ?? (options.points ? convexHull(options.points) : null);
     if (!shape) throw new Error('addHull: no hull (pass a shape, or points that aren\'t flat or all in one place)');
-    // The points' frame placed as asked; the body at the centre of mass, on the principal axes
-    const q = options.rotation ?? [0, 0, 0, 1];
-    const p = options.position ?? [0, 0, 0];
+    // The points' frame placed as asked (checked first); the body at the centre of mass, on the principal axes
+    const pose = copyBodyPatch({ position: options.position, rotation: options.rotation });
+    const q = pose.rotation ?? [0, 0, 0, 1];
+    const p = pose.position ?? [0, 0, 0];
     const c = rotate(q, shape.center);
     const position: Vec3 = [p[0] + c[0], p[1] + c[1], p[2] + c[2]];
     const rotation = multiply(q, shape.rotation);
@@ -984,9 +1001,11 @@ export class World {
     this.assertMutableTopology();
     if (options.enabled !== undefined) checkEnabled(options.enabled);
     if (options.enabled === false) this.assertLifecycle();
-    const initial: BodyPatch = {};
-    for (const field of bodyFields) if (options[field]) initial[field] = [...options[field]!];
-    options = { ...options, ...initial } as BodyOptions;
+    // Everything checked (and copied) before a slot, an ID or a hull pin is taken
+    const what = shape === 'box' ? 'addBox' : shape === 'sphere' ? 'addSphere' : 'addHull';
+    size = checkBodySize(size, what);
+    checkBodyMaterial(options, what);
+    options = { ...options, ...copyBodyPatch(options) } as BodyOptions;
     // A removed body's slot first, else the next one past the end (past any reserved tail)
     const index = this.free.length ? this.free[this.free.length - 1] : this.solver.bodyCount + this.appends.length;
     if (index >= this.maxBodies) return null;
@@ -995,7 +1014,7 @@ export class World {
     if (pin) this.solver.pinHull(pin);
     let body: Body;
     try {
-      body = new Body(this, index, shape, [size[0], size[1], size[2]], options, hullShape);
+      body = new Body(this, index, shape, size, options, hullShape);
     } catch (error) {
       if (pin) this.solver.unpinHull(pin);
       throw error;
@@ -1384,7 +1403,8 @@ export class World {
   /** Run the fixed steps `seconds` of time owes (at most maxSubsteps). Returns how many ran. */
   update(seconds: number): number {
     this.assertLive('update');
-    this.owed += Math.max(0, seconds);
+    // Non-finite time throws before it reaches the accumulator (NaN would stop time for good)
+    this.owed += checkDelta(seconds);
     // How many steps this call runs: fixed bodies moved with moveTo slide over all of them
     this.stepsThisUpdate = Math.max(1, Math.min(this.maxSubsteps, Math.floor(this.owed / this.dt)));
     let n = 0;
@@ -1445,7 +1465,10 @@ export class World {
       void settled.finally(()=>{this.adapting=false;});
     }
     if (this.readbackEvery > 0 && this.steps % this.readbackEvery === 0 && !this.reading) {
-      void this.read(this.tracked ?? undefined).catch((error) => {
+      // A listener's error is the application's, not the GPU's: reported, and the world goes on
+      void this.beginRead(this.tracked ?? undefined).then((outcome) => {
+        if (outcome.listenerError) console.error('three-avbd: an onContact/onBreak listener threw during an automatic readback (the readback completed):', outcome.listenerError.error);
+      }, (error) => {
         if (!this.destroyed) this.gpuError ??= error instanceof Error ? error : new Error(String(error));
       });
     }
@@ -1742,6 +1765,23 @@ export class World {
    * Rejects once the world is destroyed, also for a read in flight when it is.
    */
   read(bodies?: Body[]): Promise<ReadResult> {
+    const outcome = this.beginRead(bodies);
+    // Callers sharing the read in flight share one promise (as they always have)
+    if (outcome === this.reading && this.readingResult) return this.readingResult;
+    const result = outcome.then((landed) => {
+      if (landed.listenerError) throw landed.listenerError.error;
+      return { step: landed.step };
+    });
+    if (outcome === this.reading) this.readingResult = result;
+    return result;
+  }
+
+  /**
+   * The readback behind read and readbackEvery. GPU and destroy failures reject; a listener that
+   * throws doesn't: every listener still gets every event, the bookkeeping finishes, and the first
+   * listener error is returned (later ones in the same batch go to console.error).
+   */
+  private beginRead(bodies?: Body[]): Promise<ReadOutcome> {
     for (const body of bodies ?? []) assertOwner(this, body);
     bodies = bodies?.slice();
     if (this.destroyed) return Promise.reject(new Error('World destroyed: read after destroy()'));
@@ -1749,7 +1789,7 @@ export class World {
     if (this.reading) {
       if (this.readCovers(bodies)) return this.reading;
       // The read in flight does not hold these bodies (or holds them as they were before a write)
-      return this.reading.catch(() => undefined).then(() => this.read(bodies));
+      return this.reading.catch(() => undefined).then(() => this.beginRead(bodies));
     }
     this.flush();
     const writes = this.writes;
@@ -1778,6 +1818,17 @@ export class World {
       }
       // Destroyed meanwhile: nothing more is applied (the joints' buffers are gone)
       if (this.destroyed) throw new Error('World destroyed: read in flight at destroy()');
+      // Listeners as subscribed when the callbacks begin; a callback (un)subscribing changes the next batch
+      const breakListeners = [...this.breakListeners], contactListeners = [...this.contactListeners];
+      let listenerError: { error: unknown } | undefined;
+      const call = <T>(listener: (value: T) => void, value: T) => {
+        try {
+          listener(value);
+        } catch (error) {
+          if (listenerError) console.error('three-avbd: another onContact/onBreak listener threw in the same readback:', error);
+          else listenerError = { error };
+        }
+      };
       const contacts = before && now ? { events: [...before.events, ...now.events], dropped: before.dropped + now.dropped, full: before.full || now.full } : (now ?? before);
       if (contacts?.full) {
         this.contactOverflows++;
@@ -1801,7 +1852,7 @@ export class World {
             j.markBroken();
           }
           this.solver.releaseJoints(broken.map((j) => j.slot));
-          for (const j of broken) for (const listener of this.breakListeners) listener(j);
+          for (const j of broken) for (const listener of breakListeners) call(listener, j);
         }
       }
       if (contacts) {
@@ -1812,14 +1863,14 @@ export class World {
           if (!a || !b) { this.droppedEvents++; continue; }
           events.push({ type: e.kind === BEGIN ? 'begin' : 'end', a, b, point: e.point, normal: e.normal, impulse: e.impulse, step: e.step });
         }
-        // Capture both identities and listeners before callbacks can mutate the world.
-        const listeners = [...this.contactListeners];
-        for (const event of events) for (const listener of listeners) listener(event);
+        // Identities (and listeners, above) were captured before callbacks can mutate the world.
+        for (const event of events) for (const listener of contactListeners) call(listener, event);
       }
       this.retiredBodies.drain(step);
-      return { step };
+      return listenerError ? { step, listenerError } : { step };
     })().finally(() => {
       this.reading = null;
+      this.readingResult = null;
       this.readingSlots = null;
     });
     return this.reading;

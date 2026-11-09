@@ -510,9 +510,13 @@ gpuTest('three-avbd: addJoint refuses a rest that is not a rotation at the call,
   const anchors: { anchorA: Vec3; anchorB: Vec3 } = { anchorA: [0, -0.5, 0], anchorB: [0, 0.5, 0] };
   const bad: unknown[] = [[0, 0, 0, 0], [0, 0, 0], [0, 0, 0, 1, 0], [NaN, 0, 0, 1], [0, 0, Infinity, 1], [0, 0, 0, NaN], 'identity'];
   for (const rest of bad) assert.throws(() => world.addJoint(hook, box, { ...anchors, rest: rest as Quat }), /rotation is four finite numbers/, `rest ${String(rest)}`);
-  // 'current' from poses that are not rotations
-  const wild = world.addBox({ size: [1, 1, 1], position: [4, 4, 0], rotation: [NaN, 0, 0, 1] })!;
+  // Creation now rejects bad poses before they can reach the GPU. Fault-inject an invalid
+  // CPU observation separately to retain the joint's defensive 'current' check too.
+  assert.throws(() => world.addBox({ size: [1, 1, 1], rotation: [NaN, 0, 0, 1] }), /Invalid body rotation/);
+  const wild = world.addBox({ size: [1, 1, 1], position: [4, 4, 0] })!;
+  wild.state.rotation = [NaN, 0, 0, 1];
   assert.throws(() => world.addJoint(hook, wild, { rest: 'current' }), /rest 'current'.*four finite numbers/);
+  wild.set({ rotation: [0, 0, 0, 1] });
   // Nothing refused was queued: the world steps, and a good joint added after holds
   world.step();
   assert.equal(world.stepCount, 1);

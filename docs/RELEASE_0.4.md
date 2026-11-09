@@ -138,6 +138,26 @@ copy was issued. It is not the completion time, and not an immutable snapshot.
 `maxBodies` must be a positive safe integer. Fractional, zero, negative or non-finite values
 throw `World.create: maxBodies must be a positive safe integer`.
 
+### World inputs are validated
+
+Values that 0.3 accepted silently and passed to the GPU now throw before anything changes:
+
+- `addBox`, `addSphere`, `addHull`: a non-finite or wrong-length `position`, `rotation`,
+  `velocity` or `angularVelocity` (also `null`: omit the field), a zero rotation, a nonpositive
+  or non-finite `size`/`radius`, a negative or non-finite `density`/`friction`, and a `group`/
+  `collidesWith` that is not a 32-bit mask (signed JavaScript results such as `~2` remain valid).
+  A refused body takes no slot or ID. Initial rotations
+  are normalised, as `body.set` does. A fixed body of density 0 stays valid.
+- `world.update(seconds)` with a non-finite `seconds` (a first frame's `undefined` delta, say)
+  throws, where 0.3 stopped time for good. Negative deltas still count as 0.
+- `dt` (positive), `iterations` (safe integer ≥ 0) and `gravity` (finite components and magnitude)
+  in `World.create` and their setters; `world.maxSubsteps` (safe integer ≥ 1) after creation.
+  A rejected setter keeps the previous value.
+
+An `onContact`/`onBreak` listener that throws no longer becomes `world.error` under
+`readbackEvery`: the rest of the batch is delivered and the error goes to `console.error`. An
+explicit `read()` still rejects with it, after delivering the batch.
+
 ### `BodyMesh.setColor` rejects removed and foreign handles
 
 `setColor(body, color)` throws `BodyLifecycleError` for a removed body, where 0.3 painted

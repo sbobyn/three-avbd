@@ -48,7 +48,8 @@ flowchart TD
 - **Public state and commands:** [`World`](../src/lib/world.ts) owns body/joint handles,
   queues changes through `flush`, and advances via `step`/`update`. `read` returns
   asynchronous, step-stamped observations; CPU handle poses are not continuously synced
-  GPU state. [`body-commands.ts`](../src/lib/body-commands.ts),
+  GPU state. [`world-validation.ts`](../src/lib/world-validation.ts) holds the pure checks
+  for body creation and step parameters (2026-11-09). [`body-commands.ts`](../src/lib/body-commands.ts),
   [`identity.ts`](../src/lib/identity.ts) and [lifecycle contracts](BODY_LIFECYCLE.md)
   define masked writes, slot reuse and lifetime identity.
 - **Compute:** [`GpuSolver3D.step`](../src/avbd3d/gpu/solver.ts) encodes collision,
@@ -291,7 +292,12 @@ Activation/reset (new in 0.4.0) and its GPU/lifetime semantics are described in
 - `maxBodies` fixes the body buffer's size; adds past it fail and return `null`. Contacts,
   pairs, joints and colours grow on their own, through the existing `adapt()` readbacks.
 - `step()` advances one fixed step. `update(seconds)` runs the steps that time is owed, at
-  most `maxSubsteps` (default 4).
+  most `maxSubsteps` (default 4). A non-finite `seconds` (`NaN`, `undefined`, ±Infinity) throws
+  before the time owed changes; a negative one still counts as no time.
+- `dt` must be positive and finite as f32, `iterations` a nonnegative safe integer (0 integrates
+  without solving), and `gravity` three numbers with finite f32 components and magnitude, in
+  `World.create` and their setters alike. Set `world.maxSubsteps` to a positive safe integer
+  after creation. Invalid values throw before changing the previous value.
 - For explicitly managed substeps, `step({ reuseManifolds: true })` skips new collision
   detection and refreshes the preceding contact set's separation and warm-start data.
   Call ordinary `step()` at the start of **every frame**, e.g. with `dt = 1/120`,
@@ -313,6 +319,11 @@ Activation/reset (new in 0.4.0) and its GPU/lifetime semantics are described in
   destruction may still resolve with their captured inputs and body identity.
 - `error` is null until device loss or an automatic counter/body read fails. Automatic reads
   retain the failure instead of rejecting without a caller; later GPU work throws or rejects.
+  An `onContact` or `onBreak` listener that throws is not a GPU failure: the readback still
+  gives every listener (as subscribed when its callbacks begin) every event and finishes its
+  bookkeeping. An explicit `read()` (and any read sharing it) then rejects with the first
+  listener error; an automatic readback reports it with `console.error` and leaves `error` null.
+  Further listener errors in the same readback go to `console.error`.
   Applications should check `world.error` even while paused, show the error, destroy the old
   world and recreate the device/renderer and world. There is no automatic device recovery.
 - Renderer-backed body storage is owned by World. `destroy()` also releases BodyMesh ID and
@@ -363,7 +374,11 @@ surfaces, with at most 256 rays per call. Field rotation maps into the body prin
 ### Bodies
 
 - `addBox({ size, position, rotation?, velocity?, angularVelocity?, density?, friction?, fixed? })`
-  and `addSphere({ radius, ... })` return a `Body` handle.
+  and `addSphere({ radius, ... })` return a `Body` handle. Inputs are checked before a slot, an
+  ID or a hull pin is taken: the initial state as `body.set` checks it (finite as f32, rotation
+  nonzero and normalised; `null` is refused, omit the field instead), `size` and `radius`
+  positive and finite as f32, `density` and `friction` finite and at least 0, `group` and
+  `collidesWith` 32-bit masks. A hull's `position` and `rotation` are checked before they place it.
 - `addHull({ points | shape, ... })` (0.2): a convex hull of points (a mesh's vertices), or a
   `shape` from `convexHull(points)` shared by many bodies (one GPU record per shape). `position`
   and `rotation` place the points' own frame; the body sits at the centre of mass on its
