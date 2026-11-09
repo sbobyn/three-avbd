@@ -134,6 +134,50 @@ geometry before any trial: penetration limit 0.1·r = 0.016 m, quaternion norm t
 Next: a bounded trial collects both engines' poses through the same input sequence and reports
 these observations raw, including `unknown`, before any performance comparison.
 
+### Bounded trial runner (diagnostic, not a benchmark)
+
+`src/comparison/interlocking-trial.ts` (engine/clock/observer-injectable, device-free core) and
+`scripts/interlocking-trial.ts` (CLI). One engine per invocation, the same authored inputs: 240 steps
+(default; hard maximum 720, minimum 121 so the push happens), pose snapshots at steps
+0/60/120/180/240 (final step added when `--steps` is not a multiple of 60), and the impulse applied
+after the step-120 snapshot and before step 121. The observer (`observeInterlocking`,
+`evaluateHanging`, `summarizeTrial`) runs at snapshots only, never per step or frame. Inputs are
+validated before any engine, WASM or device is acquired; the runner owns the fresh model it
+acquires and attempts disposal after a step, push, GPU-wait, read, observer, summary or
+dispose failure (a failed run still emits a report with partial snapshots).
+
+```
+node --experimental-transform-types --no-warnings scripts/interlocking-trial.ts --engine rapier --pieces 32 --steps 240 --json rapier-trial.json
+node --experimental-transform-types --no-warnings scripts/interlocking-trial.ts --engine avbd --steps 240 --json avbd-trial.json
+```
+
+Without `--json` the report goes to stdout. `--json` refuses an existing file. Exit codes: 0
+completed, 1 trial failed (report emitted), 2 usage/input refusal, 3 GPU refusal/unavailable.
+Rapier needs no GPU. AVBD runs headless through the installed Node Dawn binding, owns the device in
+the script (the model destroys only its World), and inspects the actual adapter before any
+workload: fallback, software (SwiftShader/llvmpipe/softpipe class) and unidentified adapters are
+refused with no override flag, and the adapter metadata is preserved in the report. A binding that
+does not report `isFallbackAdapter` is recorded as `null`, accepted only when the hardware identity
+is known and not software-like.
+
+**Report** (`three-avbd/interlocking-trial/v1`, JSON): package version and Git head/dirty
+provenance (`git-provenance.ts`), authored inputs/mass/criteria, engine settings and version,
+representation (analytic SDF, or Rapier compound pieces with `boundCertified:false`), per-snapshot
+step/phase/poses/observation/verdict, hanging and after-push summaries, step count, errors with
+phase and completed-step count, adapter, limits and cleanup status. Observation keys follow the quality
+contract unchanged: `analyticCoreLinkResolved` (centre circles only), `boundsCertified`, unknown
+compound geometry, qualification always `gated`. There is no save/restore of simulation state and
+no speed ratio, winner, FPS or physical-quality claim.
+
+**Timing** keeps different things apart and never sums them: setup (`acquire()` wall, with the
+engine-reported setup phases included in it); CPU step (time inside `step()`: Rapier completes
+physics, AVBD only encodes/submits); GPU queue-completion *wait* wall at snapshots (AVBD only;
+`null`, not zero, for Rapier; not active GPU time); pose readback wall (AVBD async GPU readback,
+Rapier synchronous); observer CPU; whole-trial wall (includes all of those and loop overhead,
+excludes dispose); dispose. Raw per-step intervals are kept. A not-run or unavailable timer is
+`null`. Rendering is `measured:false`/`null`: no renderer and no GPU-resident `BodyMesh`
+comparison. These are single-run wall readings, not warmed, repeated or alternated measurements.
+
 ## Fix-and-retest loop
 
 Keep raw observations with engine/source/settings and distinguish application mistake, docs/API
