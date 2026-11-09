@@ -143,8 +143,10 @@ these observations raw, including `unknown`, before any performance comparison.
 after the step-120 snapshot and before step 121. The observer (`observeInterlocking`,
 `evaluateHanging`, `summarizeTrial`) runs at snapshots only, never per step or frame. Inputs are
 validated before any engine, WASM or device is acquired; the runner owns the fresh model it
-acquires and attempts disposal after a step, push, GPU-wait, read, observer, summary or
-dispose failure (a failed run still emits a report with partial snapshots).
+acquires and attempts disposal in `finally` after a step, push, GPU-wait, read, observer, summary or
+dispose failure (a failed run still emits a report with partial snapshots). A throwing custom clock
+can reject the runner, but cannot bypass acquired-model cleanup; unavailable disposal timing is
+`null`, never a fabricated zero.
 
 ```
 node --experimental-transform-types --no-warnings scripts/interlocking-trial.ts --engine rapier --pieces 32 --steps 240 --json rapier-trial.json

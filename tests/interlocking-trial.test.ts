@@ -337,3 +337,25 @@ test('device error discovered during readback fails before recording a successfu
   assert.equal(report.snapshots.length, 0);
   assert.equal(fake.disposed(), 1);
 });
+
+
+test('persistent custom-clock failure after acquisition cannot skip owned-model disposal', async () => {
+  const fake = fakeEngine(() => {});
+  const failure = new Error('clock source failed'); let calls = 0;
+  await assert.rejects(runInterlockingTrial({ engine: 'rapier' }, async () => fake.engine, {
+    clock: () => { if (++calls >= 3) throw failure; return calls; },
+  }), failure);
+  assert.equal(fake.disposed(), 1);
+  assert.equal(fake.log.at(-1), 'dispose');
+});
+
+test('failed disposal timing remains unknown without masking successful resource release', async () => {
+  const fake = fakeEngine(() => {});
+  const report = await runInterlockingTrial({ engine: 'rapier' }, async () => fake.engine, {
+    clock: () => { if (fake.disposed()) throw new Error('timer retired'); return 0; },
+  });
+  assert.equal(report.status, 'completed');
+  assert.deepEqual(report.cleanup, { disposed: true, error: null });
+  assert.equal(report.timing.disposeMs, null);
+  assert.equal(fake.disposed(), 1);
+});
