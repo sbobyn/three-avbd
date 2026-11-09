@@ -65,7 +65,7 @@ seeds in the current scene), and the same analytic mass/inertia. The peg uses an
 the floor gets the automatic box field. Reset disposes/recreates this World because body reset with
 SDF enabled is unsupported. Setup phases and default collision settings are exported. Memory is
 not measured. AVBD native sleeping/CCD are unavailable and restitution is not modelled. Default
-SDF alpha0.01 can introduce drag; do not treat visible damping differences as a solver win.
+SDF alpha 0.01 can introduce drag; do not treat visible damping differences as a solver win.
 Both pages currently render ordinary meshes synchronized from poses; AVBD requires async GPU
 readback and serializes frame work. This does not exercise its GPU-resident BodyMesh advantage.
 No renderer, World or device belongs to an existing user session.
@@ -113,17 +113,17 @@ Source PR delivery does not authorize a new production deploy or package publica
 
 From your own source checkout, follow the README prerequisites/install and `pnpm dev`;
 open `/examples/interlocking-rapier.html`, then `/examples/interlocking-avbd.html`.
-Do not run simultaneous views for a timing comparison. If5317 is occupied, choose your own
+Do not run simultaneous views for a timing comparison. If port 5317 is occupied, choose your own
 free port explicitly: `pnpm exec vite --host 127.0.0.1 --port 5318 --strictPort`.
 
 1. **5 minutes — contact geometry:** orbit the paused Rapier rings; identify the open holes,
    peg and pre-linked initial arrangement. Play, pause and push. No joint or scripted support.
-2. **5 minutes — representation:** reset and try16/32/64convex pieces. Visible mesh and mass
+2. **5 minutes — representation:** reset and try 16/32/64 convex pieces. Visible mesh and mass
    stay fixed. Describe motion/contact differences rather than assuming more pieces wins.
 3. **5–8 minutes — AVBD counterpart:** repeat the same actions. Its torus is one analytic field
    per ring, not a compound; note apparent drag, support, jitter and any escape/intersection.
-   Fixed1/120s is the physics step, not a request to render120FPS; max4steps/frame drops excess
-   debt and records it. Equal10iterations are not equal work or equal quality.
+   A fixed 1/120 s is the physics step, not a request to render 120 FPS; at most 4 steps/frame
+   drops excess debt and records it. Equal 10 iterations are not equal work or equal quality.
 4. **5 minutes — developer experience:** inspect both model files, then reset and save an
    observation JSON. Saving pauses playback. Reset retains camera/detail but restores authored
    inputs; disposal frees this model, and does not destroy the caller-owned device. Report API/

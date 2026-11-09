@@ -73,6 +73,16 @@ For the **Rapier-first interlocking study**, open `/examples/interlocking-rapier
 Then try `/examples/interlocking-avbd.html`: the same rings, peg, mass, push and rendering,
 using analytic SDF contacts. Follow the [20-minute task and comparison limits](docs/PAIRED_STUDIES.md).
 These are developer studies; no performance winner or new release qualification is established.
+The study is currently in [PR74](https://github.com/sbobyn/three-avbd/pull/74), pending production
+merge. In a fresh review clone, select its source **before** the install/run commands above:
+
+```sh
+git fetch origin pull/74/head
+git switch --detach FETCH_HEAD
+git rev-parse HEAD
+```
+
+Record that commit with your feedback; this selects source, not a published package update.
 
 ## Learn and integrate
 
