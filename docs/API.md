@@ -78,10 +78,27 @@ flowchart TD
 The Rapier-first interlocking study is an application/consumer experiment, not an AVBD public API
 extension. [`interlocking-scene.ts`](../src/comparison/interlocking-scene.ts) holds shared authored
 inputs and explicit convex-sector preparation; [`interlocking-rapier.ts`](../src/comparison/interlocking-rapier.ts)
-owns Rapier bodies/colliders/world; the [example](../examples/interlocking-rapier.ts) owns the Three.js
-device/renderer/loop/UI and observation export. No AVBD solver runs in that baseline; the later
-SDF counterpart and comparison must satisfy [the paired-study protocol](PAIRED_STUDIES.md).
-The existing architecture diagram's consumer boundary and solver data flow are unchanged.
+owns Rapier bodies/colliders/world. [`interlocking-avbd.ts`](../src/comparison/interlocking-avbd.ts)
+owns a separate public-API World with analytic SDF bindings and explicit torus mass/inertia.
+The [shared view](../examples/interlocking-view.ts) owns the device/renderer/loop/UI and observation
+export; only the selected engine runs. Both use ordinary meshes and CPU pose synchronization
+(AVBD readback is async), so this view does not measure GPU-resident BodyMesh rendering.
+The [lifecycle helper](../examples/interlocking-rapier-lifecycle.ts) bounds stepping and owns
+transactional model recreation / reverse-order asynchronous teardown. Reset preserves camera/detail
+and reconstructs authored inputs; observation JSON is not a restorable World. Source: PR74 base
+`ec1e8c6`, branch `study/rapier-interlocking`, authored 2026-11-08; Git history identifies the
+delivered revision. No solver/public interface changes.
+
+```mermaid
+flowchart LR
+  Spec[Shared authored geometry / mass / timing] --> Rapier[Rapier compound model]
+  Spec --> SDF[AVBD analytic SDF model]
+  Rapier -->|sync poses| View[Common Three.js view / controls]
+  SDF -->|async GPU pose readback| View
+  View --> JSON[Observation JSON: source / settings / device / poses]
+```
+
+Physical and performance acceptance remain governed by [the paired-study protocol](PAIRED_STUDIES.md).
 
 ### Initialization diagnostics — local overlay, 2026-11-07
 

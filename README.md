@@ -70,8 +70,9 @@ Your durable result is the consumer's source and pinned dependency files. Reopen
 the scene; it does not restore its last simulation frame. [Save/reopen and recovery](docs/SETUP.md#keep-and-reopen-your-first-result).
 
 For the **Rapier-first interlocking study**, open `/examples/interlocking-rapier.html`.
-Its [protocol](docs/PAIRED_STUDIES.md) records collider preparation and review criteria before
-an AVBD counterpart or performance claim. This is a developer prototype, not new AVBD functionality.
+Then try `/examples/interlocking-avbd.html`: the same rings, peg, mass, push and rendering,
+using analytic SDF contacts. Follow the [20-minute task and comparison limits](docs/PAIRED_STUDIES.md).
+These are developer studies; no performance winner or new release qualification is established.
 
 ## Learn and integrate
 

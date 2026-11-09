@@ -25,9 +25,10 @@ Rendered geometry has smooth node materials; no graphics/performance result is i
 
 Shared authored inputs: `src/comparison/interlocking-scene.ts`. Rapier-specific setup/compound
 creation/lifecycle: `src/comparison/interlocking-rapier.ts`. Three.js controls/rendering/report
-export: `examples/interlocking-rapier.ts`. This separation exposes engine-specific work; it
-is not a generic adapter that hides adoption friction. The AVBD counterpart is deliberately
-not implemented before this first Rapier baseline is reviewed.
+export: `examples/interlocking-view.ts` (shared between both pages). This separation exposes
+engine-specific construction in the two model files rather than counting common UI as physics glue.
+The AVBD counterpart is `src/comparison/interlocking-avbd.ts`, using the public World/SDF APIs.
+Only the selected engine runs; open Rapier first, then `/examples/interlocking-avbd.html`.
 
 Observation JSON includes exact build/dirty provenance, authored inputs, settings, poses,
 steps/push count, dropped simulation time, device/browser/viewport and limitations. It is not a
@@ -35,6 +36,11 @@ benchmark or editable-project save. Reset returns to authored initial state; it 
 an exported observation. Hidden tabs pause; the loop bounds catch-up to4steps/frame and reports
 dropped time. Renderer, controls/listeners, materials/geometry, Rapier world and the owned device
 have explicit teardown. No user data, unrelated scene or shared session is reset/disposed.
+The page checks the actual initialized Three backend and refuses a WebGL2 fallback rather than
+misattributing it to the probed WebGPU adapter. A physics-step/read failure pauses and leaves Reset
+available; a renderer failure releases owned resources and asks for an explicit reload. Initial
+startup failure also releases resources. A cached Rapier WASM initialization rejection requires
+reload; reset retries cannot repair it. Real device-loss/bfcache recovery remains unqualified.
 
 ## Evaluate before porting
 
@@ -52,9 +58,19 @@ long-duration topological preservation or physical correctness. No GPU benchmark
 
 ## Matched AVBD counterpart and comparison
 
-After useful Rapier review, reproduce the same authored inputs, visible geometry, actions, camera,
-render resolution and task in AVBD using public World/BodyMesh/SDF entry points. Use true SDFs
-and matching mass/inertia; log baking/setup memory/time. A smooth SDF and a convex compound are
+The implemented AVBD counterpart reuses authored inputs, visible geometry, actions, initial camera,
+render resolution policy and task through public World/SDF entry points. It uses exact analytic torus
+fields rotated into the visible/principal body frame, 500 curvature-seed candidates (85 generated
+seeds in the current scene), and the same analytic mass/inertia. The peg uses an analytic cylinder;
+the floor gets the automatic box field. Reset disposes/recreates this World because body reset with
+SDF enabled is unsupported. Setup phases and default collision settings are exported. Memory is
+not measured. AVBD native sleeping/CCD are unavailable and restitution is not modelled. Default
+SDF alpha0.01 can introduce drag; do not treat visible damping differences as a solver win.
+Both pages currently render ordinary meshes synchronized from poses; AVBD requires async GPU
+readback and serializes frame work. This does not exercise its GPU-resident BodyMesh advantage.
+No renderer, World or device belongs to an existing user session.
+
+Use true SDFs and matching mass/inertia; log baking/setup memory/time. A smooth SDF and a convex compound are
 not identical approximations: expose geometric error and representation budget rather than
 pretending piece count equals voxel resolution. Do not count precomputation as free.
 
@@ -92,3 +108,29 @@ Next sequence: Rapier interlocking review → matched AVBD implementation → pa
 prioritized fixes/showcase claims. Then consider bend/hold/snap, gear workshop and kinetic/art
 studies through the same process; no second large demo is a prerequisite to learning from this one.
 Source PR delivery does not authorize a new production deploy or package publication.
+
+## First hands-on task (20–25 minutes)
+
+From your own source checkout, follow the README prerequisites/install and `pnpm dev`;
+open `/examples/interlocking-rapier.html`, then `/examples/interlocking-avbd.html`.
+Do not run simultaneous views for a timing comparison. If5317 is occupied, choose your own
+free port explicitly: `pnpm exec vite --host 127.0.0.1 --port 5318 --strictPort`.
+
+1. **5 minutes — contact geometry:** orbit the paused Rapier rings; identify the open holes,
+   peg and pre-linked initial arrangement. Play, pause and push. No joint or scripted support.
+2. **5 minutes — representation:** reset and try16/32/64convex pieces. Visible mesh and mass
+   stay fixed. Describe motion/contact differences rather than assuming more pieces wins.
+3. **5–8 minutes — AVBD counterpart:** repeat the same actions. Its torus is one analytic field
+   per ring, not a compound; note apparent drag, support, jitter and any escape/intersection.
+   Fixed1/120s is the physics step, not a request to render120FPS; max4steps/frame drops excess
+   debt and records it. Equal10iterations are not equal work or equal quality.
+4. **5 minutes — developer experience:** inspect both model files, then reset and save an
+   observation JSON. Saving pauses playback. Reset retains camera/detail but restores authored
+   inputs; disposal frees this model, and does not destroy the caller-owned device. Report API/
+   docs friction and any failure with the exact observation/source/settings. Do not change your
+   existing consumer project just for this task.
+
+This task reviews geometry/contact workflow, not a competition score. Next qualification must
+predeclare penetration/topology tolerances, record capacity/overflow and longer supported behavior,
+then measure serialized matched workloads. Background preview throttling, dropped simulation time
+and readback/render cost must remain visible; no FPS ratio is inferred from a review session.
