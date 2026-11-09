@@ -100,6 +100,12 @@ flowchart LR
 
 Physical and performance acceptance remain governed by [the paired-study protocol](PAIRED_STUDIES.md).
 
+The optional device-free [`interlocking-quality.ts`](../src/comparison/interlocking-quality.ts)
+observes shared poses against analytic geometry and predeclared guards. It does not step either
+engine, read device state or change the library API. Unproven compound error bands yield `unknown`;
+resolved analytic centre-circle linking is not solid-body topology certification. Qualification
+remains gated; see the protocol quality contract (2026-11-08, STE-3282).
+
 ### Initialization diagnostics — local overlay, 2026-11-07
 
 `World.create({ renderer })` wraps renderer-init rejection with hardware WebGPU / secure-origin
