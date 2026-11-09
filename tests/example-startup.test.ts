@@ -23,6 +23,11 @@ function sourceOf(example: string) {
     .replace(/import\.meta\.url/g, "'file:///examples/page.ts'");
 }
 
+// Parse the real sources before intercepting console.error. Node's one-time parser warning
+// belongs to the harness; flush it here rather than filtering any example errors later.
+const sources = Object.fromEntries(EXAMPLES.map(example => [example, sourceOf(example)]));
+await new Promise(resolve => setImmediate(resolve));
+
 /** What a test can do with a started example: run the animation-loop callback it registered, or let queued work settle. */
 interface Drive { frame(time?: number): void; resize(): void; flush(): Promise<void>; breakWorld(): void; rejectRead(error: Error): void; resolveRead(): void; readonly resizes: number; readonly updates: number; readonly deltas: unknown[]; readonly clocks: number }
 
@@ -88,14 +93,11 @@ async function run(example: typeof EXAMPLES[number], failure: Failure, drive?: (
   // startExample logs through the host console; keep the expected failures out of the test output
   // and requireWebGpu reads the host's navigator: give this process a fake one for the duration of the run
   const original = console.error, navigatorKey = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
-  console.error = (...a: unknown[]) => {
-    const text = a.map(String).join(' ');
-    if (!/ExperimentalWarning/.test(text)) errors.push(text); // Node's one-time notice about stripTypeScriptTypes can land during any run
-  };
+  console.error = (...a: unknown[]) => { errors.push(a.map(String).join(' ')); };
   Object.defineProperty(globalThis, 'navigator', { value: context.navigator, configurable: true, writable: true });
   const flush = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); };
   try {
-    await vm.runInContext(`(async () => { ${sourceOf(example)}\n })()`, context);
+    await vm.runInContext(`(async () => { ${sources[example]}\n })()`, context);
     await drive?.({
       frame: (time = performance.now() + 1000) => frame!(time), flush, breakWorld: () => { broken = true; }, rejectRead: error => rejectRead(error),
       resize: () => resizeHandlers.forEach(handler => handler()), resolveRead: () => resolveRead(), get resizes() { return resizes; },
