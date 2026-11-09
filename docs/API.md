@@ -611,3 +611,14 @@ A separate collider handle/view is deferred: hull poses already use principal
 mass frames, and SDF bindings have independent field frames and transactional
 refresh ownership. A useful view needs explicit resource/lifetime and geometry
 semantics across those paths. C1 leaves existing body layouts and shape codes intact.
+
+
+### Build/report provenance — 2026-11-09, STE-3003
+
+[`git-provenance.ts`](../scripts/git-provenance.ts) feeds the Vite build constant and diagnostic
+CLIs. It checks the physical checkout root, reports the Git head/dirty flag, and adds counts of
+tracked/untracked/index/worktree/rename/conflict status entries without file names. The older
+comparison CLI forwards these as `gitChanges`; interlocking JSON embeds the object directly.
+Unavailable metadata stays unknown/null with a controlled reason. An untracked directory is one
+entry, ignored files are not included, and counts do not identify the cause of hosted changes or
+certify a pristine artifact. No build/CI settings, source-cleanliness exemptions or ignore rules change.

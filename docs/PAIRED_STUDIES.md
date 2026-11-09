@@ -169,6 +169,20 @@ contract unchanged: `analyticCoreLinkResolved` (centre circles only), `boundsCer
 compound geometry, qualification always `gated`. There is no save/restore of simulation state and
 no speed ratio, winner, FPS or physical-quality claim.
 
+**Source provenance** (`git-provenance.ts`, also in the browser build and `compare:rapier` head/dirty):
+`head` and `dirty` keep their meaning: the checkout's own Git top level must be the project root
+(an archive unpacked inside another repository reports `unknown`, not that repository's head), and
+unknown provenance is `null`, never clean. For a Git checkout, `changes` adds integer counts from
+Git's NUL-separated status — `entries` (`dirty` is exactly `entries > 0`), `tracked`, `untracked`,
+`staged`, `unstaged`, `renamed` (one entry per rename pair) and `conflicted` — so tracked
+modifications can be told from untracked additions. No path, filename or content is recorded.
+Ignored files are not listed by Git's default status and are not counted; an untracked directory is
+one entry. Unavailable Git gives a fixed `reason` (`git not found`, `not a Git checkout`,
+`not the root of a Git checkout`, `git metadata unreadable`, `git status output too large`), never
+Git's raw message. The counts say *what kind* of change makes a build dirty, not *why*: they cannot
+identify which files a hosting platform added, and they do not make a dirty build pristine.
+`compare:rapier` forwards the same count object as `gitChanges` (null for unavailable metadata).
+
 **Timing** keeps different things apart and never sums them: setup (`acquire()` wall, with the
 engine-reported setup phases included in it); CPU step (time inside `step()`: Rapier completes
 physics, AVBD only encodes/submits); GPU queue-completion *wait* wall at snapshots (AVBD only;
