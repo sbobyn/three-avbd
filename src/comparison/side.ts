@@ -7,6 +7,7 @@ import { createAdapter, type Adapter, type Engine } from './adapters.ts';
 import { contactQuality } from './contact-quality.ts';
 import { REST_SPEED, restFraction } from './final-window.ts';
 import { quality } from './quality.ts';
+import { caseLabel, caseSummary, familyLabel } from './labels.ts';
 import { DEFAULTS } from './run.ts';
 import { makeScene, SCENE_VALIDITY, type CaseName, type Scene } from './scenes.ts';
 import { familyOf, familyValidity, formatSettings, MARGINS, parseSettings, RollingStats, sceneFamilies, validity,
@@ -55,7 +56,8 @@ for (const kind of ['valid', 'unclassified', 'invalid'] as const) {
   const group = document.createElement('optgroup');
   group.label = groups[kind];
   for (const f of families.filter(f => familyValidity(f) === kind)) {
-    const option = new Option(kind === 'invalid' ? `✗ ${f.label} (${validity(f.members[0].name).note})` : f.label, f.id);
+    const name = familyLabel(f.id);
+    const option = new Option(kind === 'invalid' ? `✗ ${name} (${validity(f.members[0].name).note})` : name, f.id);
     group.append(option);
   }
   sceneSelect.append(group);
@@ -87,8 +89,10 @@ function syncControls(): void {
   $<HTMLInputElement>('link').checked = settings.linkCameras;
   pauseButton.textContent = settings.paused ? 'Play' : 'Pause';
   const v = validity(settings.scene), entry = SCENE_VALIDITY[settings.scene];
-  $('validity').textContent = `${settings.scene}: ${v.kind === 'unclassified' ? v.note : `${v.note} (${entry!.kind} scene)`}` +
-    (entry?.lead ? `. The harness measures it after ${entry.lead} lead-in steps; this view starts at step 0.` : '.');
+  // The ID stays visible: it is what the URL (?scene=) and the harness reports use.
+  $('validity').textContent = `${caseLabel(settings.scene)} (${settings.scene}): ${v.kind === 'unclassified' ? v.note : `${v.note} (${entry!.kind} scene)`}` +
+    (entry?.lead ? `. The harness measures it after ${entry.lead} lead-in steps; this view starts at step 0.` : '.') +
+    ` ${caseSummary(settings.scene)}`;
   $('validity').className = v.kind;
 }
 for (const m of MARGINS) $<HTMLSelectElement>('margin').append(new Option(`${m} m${m === DEFAULTS.avbdMargin ? ' (default)' : ''}`, String(m)));
@@ -185,7 +189,7 @@ const config = () => ({ ...DEFAULTS, dt: settings.dt, avbdIterations: settings.a
 async function build(): Promise<void> {
   for (const s of sides) { s.sim?.destroy(); s.view?.dispose(); s.sim = s.view = undefined; }
   manifest = makeScene(settings.scene);
-  status.textContent = `Building ${settings.scene} (${manifest.bodies.length} bodies)…`;
+  status.textContent = `Building ${caseLabel(settings.scene)} (${manifest.bodies.length} bodies)…`;
   for (const s of sides) {
     s.submit.clear(); s.completed.clear(); s.errors.length = 0; s.quality = '—'; s.awake = '';
     s.view = new BodyView(s.renderer, manifest);
@@ -197,7 +201,7 @@ async function build(): Promise<void> {
   if (fittedScene !== settings.scene) { fit(manifest); fittedScene = settings.scene; }
   steps = 0; lastQuality = 0;
   await measureQuality();
-  status.textContent = `${settings.scene}: ${manifest.bodies.length - 1} bodies + ground, dt ${(settings.dt * 1000).toFixed(2)} ms`;
+  status.textContent = `${caseLabel(settings.scene)}: ${manifest.bodies.filter(b => b.mass > 0).length} dynamic bodies (${manifest.bodies.length} total), dt ${(settings.dt * 1000).toFixed(2)} ms`;
 }
 async function stepBoth(): Promise<void> {
   for (const s of sides) {

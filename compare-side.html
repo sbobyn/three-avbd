@@ -4,24 +4,12 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Rapier and AVBD side by side</title>
-    <style>
-      body { font: 14px/1.45 system-ui, sans-serif; margin: 16px 20px; background: #181b20; color: #eee; }
-      a { color: #9cf; } h1 { font-size: 20px; margin: 4px 0 8px; } h2 { font-size: 15px; margin: 0 0 4px; }
-      label { display: inline-block; margin: 4px 10px 4px 0; } button, select, input { font: inherit; }
-      input[type=number] { width: 56px; }
-      #views { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
-      canvas { display: block; width: 100%; aspect-ratio: 16 / 10; background: #222831; touch-action: none; border-radius: 4px; }
-      .panel { margin-top: 6px; font-variant-numeric: tabular-nums; min-height: 7.5em; }
-      .muted { color: #9aa3ad; } .bad { color: #ff8a80; }
-      #validity.valid { color: #9be39b; } #validity.invalid { color: #ffb36b; } #validity.unclassified { color: #9aa3ad; }
-      footer { margin-top: 14px; color: #b8c0c8; max-width: 1100px; } footer li { margin: 3px 0; }
-      @media (max-width: 800px) { #views { grid-template-columns: 1fr; } }
-    </style>
+    <title>Rapier and AVBD side by side · three-avbd</title>
+    <link rel="stylesheet" href="/src/comparison/compare.css" />
   </head>
   <body>
-    <a href="/examples/">Demo gallery</a> · <a href="/">3D demo</a> · <a href="/compare.html">Physics quality comparison</a> · <a href="/compare-frame.html">Rendered workflow benchmark</a>
-    <h1>Rapier and AVBD, side by side</h1>
+    <nav aria-label="Related pages"><a href="/examples/">Demo gallery</a><a href="/">3D demo</a><a href="/compare.html">Physics quality comparison</a><a href="/compare-frame.html">Rendered workflow benchmark</a></nav>
+    <h1><img src="/favicon.svg" width="24" height="24" alt="" />Rapier and AVBD, side by side</h1>
     <div>
       <label>Scene <select id="scene"></select></label>
       <label id="scale-label">Bodies <select id="scale"></select></label>

@@ -5,6 +5,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { BodyMesh, World, recommendedLimits, type Vec3 } from '../src/lib/index.ts';
 import { bakeVoxelSdfAsync, finalizeSdf } from '../src/lib/sdf.ts';
+import { releaseRenderer, requireWebGpu, startExample } from './startup.ts';
 
 const status = document.getElementById('status')!;
 const MODULE = .15, DEPTH = .32, INPUT_TEETH = 24, OUTPUT_TEETH = 16;
@@ -49,72 +50,78 @@ async function prepare(teeth: number) {
   return { geometry, field: baked.field, massProperties };
 }
 
-const renderer = new THREE.WebGPURenderer({ antialias: true, requiredLimits: await recommendedLimits() });
-renderer.setPixelRatio(devicePixelRatio);
-renderer.setSize(innerWidth, innerHeight);
-document.body.append(renderer.domElement);
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x101216);
-const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, .1, 100);
-camera.position.set(0, -2, 7);
-const controls = new OrbitControls(camera, renderer.domElement);
-scene.add(new THREE.HemisphereLight(0xdde8ff, 0x302820, 2));
-const sun = new THREE.DirectionalLight(0xffffff, 2.5);
-sun.position.set(-3, 5, 8);
-scene.add(sun);
-
-const gears = [await prepare(INPUT_TEETH), await prepare(OUTPUT_TEETH)];
-status.textContent = 'Starting…';
-const world = await World.create({ renderer, maxBodies: 4, gravity: [0, 0, 0], iterations: 20, dt: 1 / 120 });
-
-// The follower starts half a tooth turned so the teeth interleave instead of overlapping.
-const angles = [0, Math.PI - Math.PI / OUTPUT_TEETH];
-const support = world.addBox({ size: [1, 1, 1], fixed: true, collidesWith: 0, group: 0 })!;
-const [input, output] = gears.map((gear, i) => world.addBox({
-  size: [1, 1, 1], // a unit proxy box: BodyMesh scales the gear geometry by this size
-  position: CENTERS[i], rotation: rotationZ(angles[i]), fixed: i === 0,
-  massProperties: gear.massProperties, friction: .05,
-})!);
-// Two ball joints along z make an axle: the follower can only spin about z.
-for (const z of [-.65, .65]) world.addJoint(support, output, { type: 'ball', anchorA: [CENTERS[1][0], 0, z], anchorB: [0, 0, z] });
-
-// 3. Switch the world to SDF collisions, binding each gear body to its baked field.
-//    These contact settings follow the sdf-gears demo; library defaults also work but are looser.
-await world.enableSdfCollisions([{ body: input, field: gears[0].field }, { body: output, field: gears[1].field }], {
-  cacheSize: 4, randomSamples: 1, maxIterations: 60, tolerance: .001, epsilon: .0004,
-  margin: .008, allowedPenetration: .001, alpha: .001, meshVertexContacts: true, refreshDeeperContacts: true,
-});
-
-const colors = [0xeac46a, 0x74bed0];
-gears.forEach((gear, i) => scene.add(new BodyMesh(world, { bodies: [[input, output][i]], geometry: gear.geometry,
-  material: new THREE.MeshStandardNodeMaterial({ color: colors[i], metalness: .4, roughness: .35 }) })));
-
-const SPEED = 2 * Math.PI / 10; // input: one turn every ten seconds
-let angle = 0, owed = 0, reading = false, last = performance.now();
-renderer.setAnimationLoop((time: number) => {
-  owed = Math.min(owed + (time - last) / 1000, 4 * world.dt);
-  last = time;
-  while (owed >= world.dt) {
-    angle += SPEED * world.dt;
-    input.moveTo(CENTERS[0], rotationZ(angles[0] + angle)); // kinematic drive, keeps contacts warm
-    world.step();
-    owed -= world.dt;
-  }
-  if (!reading) {
-    reading = true;
-    // Read back only the follower, a few times a second, for the ratio readout.
-    void world.read([output]).then(() => {
-      const ratio = output.angularVelocity[2] / SPEED;
-      status.textContent = `input ${(SPEED * 60 / (2 * Math.PI)).toFixed(1)} rpm · output ${(output.angularVelocity[2] * 60 / (2 * Math.PI)).toFixed(1)} rpm · ratio ${ratio.toFixed(2)}`;
-      setTimeout(() => { reading = false; }, 250);
-    });
-  }
-  controls.update();
-  renderer.render(scene, camera);
-});
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
+const startup = startExample(status);
+try {
+  requireWebGpu();
+  const renderer = startup.own(new THREE.WebGPURenderer({ antialias: true, requiredLimits: await recommendedLimits() }), releaseRenderer);
+  renderer.setPixelRatio(devicePixelRatio);
   renderer.setSize(innerWidth, innerHeight);
-});
-Object.assign(window, { world });
+  document.body.append(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x101216);
+  const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, .1, 100);
+  camera.position.set(0, -2, 7);
+  const controls = new OrbitControls(camera, renderer.domElement);
+  scene.add(new THREE.HemisphereLight(0xdde8ff, 0x302820, 2));
+  const sun = new THREE.DirectionalLight(0xffffff, 2.5);
+  sun.position.set(-3, 5, 8);
+  scene.add(sun);
+
+  const gears = [await prepare(INPUT_TEETH), await prepare(OUTPUT_TEETH)];
+  status.textContent = 'Starting…';
+  const world = startup.own(await World.create({ renderer, maxBodies: 4, gravity: [0, 0, 0], iterations: 20, dt: 1 / 120 }), w => w.destroy());
+
+  // The follower starts half a tooth turned so the teeth interleave instead of overlapping.
+  const angles = [0, Math.PI - Math.PI / OUTPUT_TEETH];
+  const support = world.addBox({ size: [1, 1, 1], fixed: true, collidesWith: 0, group: 0 })!;
+  const [input, output] = gears.map((gear, i) => world.addBox({
+    size: [1, 1, 1], // a unit proxy box: BodyMesh scales the gear geometry by this size
+    position: CENTERS[i], rotation: rotationZ(angles[i]), fixed: i === 0,
+    massProperties: gear.massProperties, friction: .05,
+  })!);
+  // Two ball joints along z make an axle: the follower can only spin about z.
+  for (const z of [-.65, .65]) world.addJoint(support, output, { type: 'ball', anchorA: [CENTERS[1][0], 0, z], anchorB: [0, 0, z] });
+
+  // 3. Switch the world to SDF collisions, binding each gear body to its baked field.
+  //    These contact settings follow the sdf-gears demo; library defaults also work but are looser.
+  await world.enableSdfCollisions([{ body: input, field: gears[0].field }, { body: output, field: gears[1].field }], {
+    cacheSize: 4, randomSamples: 1, maxIterations: 60, tolerance: .001, epsilon: .0004,
+    margin: .008, allowedPenetration: .001, alpha: .001, meshVertexContacts: true, refreshDeeperContacts: true,
+  });
+
+  const colors = [0xeac46a, 0x74bed0];
+  gears.forEach((gear, i) => scene.add(new BodyMesh(world, { bodies: [[input, output][i]], geometry: gear.geometry,
+    material: new THREE.MeshStandardNodeMaterial({ color: colors[i], metalness: .4, roughness: .35 }) })));
+
+  const SPEED = 2 * Math.PI / 10; // input: one turn every ten seconds
+  let angle = 0, owed = 0, reading = false, last = performance.now();
+  await renderer.setAnimationLoop((time: number) => {
+    owed = Math.min(owed + (time - last) / 1000, 4 * world.dt);
+    last = time;
+    while (owed >= world.dt) {
+      angle += SPEED * world.dt;
+      input.moveTo(CENTERS[0], rotationZ(angles[0] + angle)); // kinematic drive, keeps contacts warm
+      world.step();
+      owed -= world.dt;
+    }
+    if (!reading) {
+      reading = true;
+      // Read back only the follower, a few times a second, for the ratio readout.
+      void world.read([output]).then(() => {
+        const ratio = output.angularVelocity[2] / SPEED;
+        status.textContent = `input ${(SPEED * 60 / (2 * Math.PI)).toFixed(1)} rpm · output ${(output.angularVelocity[2] * 60 / (2 * Math.PI)).toFixed(1)} rpm · ratio ${ratio.toFixed(2)}`;
+        setTimeout(() => { reading = false; }, 250);
+      });
+    }
+    controls.update();
+    renderer.render(scene, camera);
+  });
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+  Object.assign(window, { world });
+} catch (error) {
+  await startup.fail(error);
+}

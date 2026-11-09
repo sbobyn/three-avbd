@@ -4,26 +4,26 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>three-avbd gallery</title>
+    <title>Demo gallery · three-avbd</title>
     <meta name="description" content="Every three-avbd demo, scene collection, Rapier comparison, example and benchmark in one place, with search and filters." />
   </head>
   <body>
     <a class="skip" href="#results">Skip to the gallery</a>
     <header class="masthead">
       <div class="wrap">
-        <p class="crumbs"><a href="../index.html">← 3D demo</a></p>
+        <p class="crumbs"><a href="../index.html">← 3D demo</a> · <a href="../2d.html">2D demo</a></p>
         <div class="brand">
           <img src="/favicon.svg" width="44" height="44" alt="" />
           <div>
-            <h1>three-avbd gallery</h1>
-            <p class="lede">GPU rigid-body physics for Three.js. Play, compare with Rapier, or build your own scene.</p>
+            <h1>Demo gallery</h1>
+            <p class="lede">three-avbd: GPU rigid-body physics for Three.js. Play, compare with Rapier, or build your own scene.</p>
           </div>
         </div>
       </div>
     </header>
 
     <main class="wrap">
-      <div id="filters" class="toolbar" role="search" aria-label="Filter the gallery" hidden>
+      <div id="filters" class="toolbar" role="search" aria-label="Search the gallery" hidden>
         <div class="search-row">
           <label class="sr-only" for="search">Search demos and scenes</label>
           <input id="search" type="search" placeholder="Search scenes, e.g. bridge, torus, 28k" autocomplete="off" spellcheck="false" maxlength="200" />
@@ -31,8 +31,8 @@
           <span id="count" class="count" role="status" aria-live="polite"></span>
           <button id="clear" type="button" class="btn" hidden>Clear</button>
         </div>
-        <div id="filter-rows" class="filter-rows"></div>
       </div>
+      <div id="filter-rows" class="filter-rows" hidden></div>
 
       <div id="start"></div>
 

@@ -4,12 +4,12 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>three-avbd example: SDF from a mesh</title>
+    <title>SDF from a mesh · three-avbd</title>
     <link rel="stylesheet" href="./example.css" />
   </head>
   <body>
     <aside class="note">
-      <h1>SDF from a mesh <span class="badge">experimental</span></h1>
+      <h1><img src="/favicon.svg" width="28" height="28" alt="" style="vertical-align:middle;margin-right:8px">SDF from a mesh <span class="badge">experimental</span></h1>
       <p>A procedural torus knot is baked in a Web Worker with <code>bakeVoxelSdfInWorker</code>.
       <code>finalizeSdf</code> integrates its mass and full inertia tensor, <code>principalInertia</code>
       diagonalises it, and <code>world.enableSdfCollisions</code> binds the field to each knot body.
@@ -24,7 +24,7 @@
         <li>Adding or removing bodies needs <code>await world.updateSdfCollisions()</code> before the next step.</li>
       </ul>
       <div class="status" id="status">Baking in a worker…</div>
-      <p><a href="./index.html">All examples</a> · <a href="https://github.com/sbobyn/three-avbd/blob/main/examples/sdf-from-mesh.ts">Source</a></p>
+      <p><a href="./index.html">Demo gallery</a> · <a href="https://github.com/sbobyn/three-avbd/blob/main/examples/sdf-from-mesh.ts">Source</a></p>
     </aside>
     <script type="module" src="./sdf-from-mesh.ts"></script>
   </body>

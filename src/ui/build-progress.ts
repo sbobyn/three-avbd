@@ -38,6 +38,7 @@ export class BuildProgress {
     this.root.id = 'building';
     this.root.className = 'panel build-progress';
     this.root.setAttribute('role', 'progressbar');
+    this.root.setAttribute('aria-label', 'Building the scene');
     this.root.innerHTML = '<span class="text"></span><div class="track"><div class="fill"></div></div>';
     this.root.hidden = true;
     this.text = this.root.querySelector('.text')!;
@@ -75,6 +76,7 @@ export class BuildProgress {
     this.fill.style.transition = `transform ${Math.round(ms * 1.15)}ms cubic-bezier(0.25, 0.7, 0.35, 1)`;
     this.fill.style.transform = `scaleX(${to})`;
     this.root.setAttribute('aria-valuenow', String(Math.round(to * 100)));
+    this.root.setAttribute('aria-valuetext', text);
     this.current = { stage, t0: performance.now(), bodies };
     await nextFrame();
   }
@@ -89,6 +91,7 @@ export class BuildProgress {
     this.fill.style.transition = 'transform 150ms linear';
     this.fill.style.transform = `scaleX(${fraction})`;
     this.root.setAttribute('aria-valuenow', String(Math.round(fraction * 100)));
+    this.root.setAttribute('aria-valuetext', text);
   }
 
   /** Hide the bar (the scene is ready, or the load was superseded). */

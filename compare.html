@@ -4,7 +4,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Rapier and three-avbd comparison</title>
+    <title>Physics quality comparison · three-avbd</title>
     <style>
       :root { color-scheme: light dark; font: 15px/1.5 system-ui, sans-serif; }
       body { max-width: 1100px; margin: 32px auto; padding: 0 20px; }
@@ -16,8 +16,8 @@
     </style>
   </head>
   <body>
-    <a href="/">Back to demo</a> · <a href="/compare-frame.html">Rendered workflow benchmark</a> · <a href="/compare-side.html">Live side-by-side view</a>
-    <h1>Rapier and three-avbd comparison</h1>
+    <a href="/examples/">Demo gallery</a> · <a href="/compare-frame.html">Rendered workflow benchmark</a> · <a href="/compare-side.html">Live side-by-side view</a>
+    <h1><img src="/favicon.svg" width="28" height="28" alt="" style="vertical-align:middle;margin-right:8px">Rapier and three-avbd comparison</h1>
     <p>Preliminary physics-only measurements on identical box and sphere scenes. Timing waits once per batch (use batch size 1 for serialized latency).
       A separate replay checks every step and must reproduce the timed final state exactly.
       The floor target is penetration ≤1% of each body's smallest dimension throughout the replay;

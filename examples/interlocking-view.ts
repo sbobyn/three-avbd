@@ -4,17 +4,19 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { INTERLOCKING, ringMassProperties, type RingPieces } from '../src/comparison/interlocking-scene.ts';
 import type { AvbdPose } from '../src/comparison/interlocking-avbd.ts';
 import { DisposableScope, createStudySlot, runFixedSteps } from './interlocking-rapier-lifecycle.ts';
+import { progressLine, shouldWriteProgress } from './interlocking-progress.ts';
 
 declare const __COMPARISON_BUILD__: object;
 const isAvbd = document.body.dataset.engine === 'avbd';
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const status = element('status'), view = element('view');
+const status = element('status'), view = element('view'), progress = element('progress');
 const play = element<HTMLButtonElement>('play'), push = element<HTMLButtonElement>('push');
 const resetButton = element<HTMLButtonElement>('reset'), save = element<HTMLButtonElement>('export');
-const pieces = element<HTMLSelectElement>('pieces');
+// Only the Rapier page has a piece count to choose; the AVBD page describes its exact torus fields in text instead.
+const pieces = document.getElementById('pieces') as HTMLSelectElement | null;
 const buttons = (enabled: boolean) => {
   play.disabled = push.disabled = resetButton.disabled = save.disabled = !enabled;
-  pieces.disabled = !enabled || isAvbd;
+  if (pieces) pieces.disabled = !enabled;
 };
 interface Study {
   label: string; engine: object; step(): void; push(): void; dispose(): void;
@@ -28,7 +30,7 @@ const slot = createStudySlot<Study>(async () => {
     return { ...model, label: 'three-avbd source · analytic torus SDFs', engine: model.metadata };
   }
   const { createRapierInterlocking } = await import('../src/comparison/interlocking-rapier.ts');
-  const model = await createRapierInterlocking(Number(pieces.value) as RingPieces);
+  const model = await createRapierInterlocking(Number(pieces?.value ?? 32) as RingPieces);
   let step = 0;
   return { ...model, label: `Rapier ${model.version} · ${model.pieces * 2 + 2} colliders`,
     engine: { name: 'rapier', version: model.version, piecesPerRing: model.pieces, sleeping: false, ccd: false },
@@ -38,10 +40,18 @@ const listeners = new AbortController();
 const scope = new DisposableScope(error => console.error('Late teardown step failed', error));
 let releasedByPageHide = false, paused = true, accumulator = 0, previous: number | null = null;
 let steps = 0, pushes = 0, droppedSeconds = 0, frameBusy = false;
+// The progress line: the study's own step count (from its pose readback), throttled while live
+let physicsStep = 0, pushQueued = false, progressText = '', progressAt = 0, lastFrameAt = 0;
+function showProgress(now?: number) {
+  const text = progressLine({ step: physicsStep, dt: INTERLOCKING.dt, paused, pushes, pushQueued });
+  if (!shouldWriteProgress(progressText, text, progressAt, now)) return;
+  progressText = text; progressAt = now ?? lastFrameAt; progress.textContent = text;
+}
+function clearProgress() { progressText = ''; progress.textContent = ''; }
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 function dispose() {
   if (scope.disposed) return;
-  listeners.abort(); slot.close(); buttons(false);
+  listeners.abort(); slot.close(); buttons(false); clearProgress();
   void scope.dispose().then(errors => errors.forEach(error => console.error('Teardown step failed', error)));
 }
 addEventListener('pagehide', () => { releasedByPageHide = true; dispose(); }, { signal: listeners.signal });
@@ -94,31 +104,33 @@ try {
     const result = await study.readPoses();
     if (scope.disposed || slot.current !== study) return;
     result.poses.forEach((pose, i) => { rings[i].position.copy(pose.position); rings[i].quaternion.copy(pose.rotation); });
+    physicsStep = result.step;
   };
   async function reset() {
     if (slot.busy || scope.disposed) return;
     buttons(false); paused = true; play.textContent = 'Play';
-    previous = null; accumulator = 0; steps = pushes = droppedSeconds = 0;
+    previous = null; accumulator = 0; steps = pushes = droppedSeconds = 0; pushQueued = false;
     if (await slot.reset() !== 'ready') return;
     const study = slot.current!; await sync(study);
     if (scope.disposed || slot.current !== study) return;
+    showProgress();
     status.textContent = `${study.label} · ${ringMassProperties().mass.toFixed(3)} kg/ring\nGraphics: ${info.vendor || 'unknown vendor'} ${info.architecture || ''} · use Play/Pause. No benchmark measured.`;
     buttons(true);
   }
-  play.addEventListener('click', () => { paused = !paused; previous = null; accumulator = 0; play.textContent = paused ? 'Play' : 'Pause'; }, { signal: listeners.signal });
-  push.addEventListener('click', () => { if (slot.current) { slot.current.push(); pushes++; } }, { signal: listeners.signal });
+  play.addEventListener('click', () => { paused = !paused; previous = null; accumulator = 0; play.textContent = paused ? 'Play' : 'Pause'; showProgress(); }, { signal: listeners.signal });
+  push.addEventListener('click', () => { if (slot.current) { slot.current.push(); pushes++; pushQueued = true; showProgress(); } }, { signal: listeners.signal });
   const resetFromUi = () => { void reset().catch(error => {
     if (scope.disposed) return;
     status.textContent = `Reset failed: ${message(error)}. State is unreliable; press Reset to reconstruct.`;
-    buttons(false); resetButton.disabled = false; pieces.disabled = isAvbd;
+    buttons(false); resetButton.disabled = false; if (pieces) pieces.disabled = false; clearProgress();
   }); };
   resetButton.addEventListener('click', resetFromUi, { signal: listeners.signal });
-  pieces.addEventListener('change', resetFromUi, { signal: listeners.signal });
-  document.addEventListener('visibilitychange', () => { paused = true; play.textContent = 'Play'; previous = null; accumulator = 0; }, { signal: listeners.signal });
+  pieces?.addEventListener('change', resetFromUi, { signal: listeners.signal });
+  document.addEventListener('visibilitychange', () => { paused = true; play.textContent = 'Play'; previous = null; accumulator = 0; showProgress(); }, { signal: listeners.signal });
   addEventListener('resize', resize, { signal: listeners.signal });
   save.addEventListener('click', () => { void (async () => {
     const study = slot.current; if (!study) return;
-    paused = true; play.textContent = 'Play'; previous = null; accumulator = 0;
+    paused = true; play.textContent = 'Play'; previous = null; accumulator = 0; showProgress();
     const result = await study.readPoses();
     if (scope.disposed || slot.current !== study) return;
     const record = { schema: 1, observedAt: new Date().toISOString(), source: __COMPARISON_BUILD__, engine: study.engine,
@@ -143,8 +155,10 @@ try {
         if (study && !paused) {
           const frame = runFixedSteps(accumulator, delta, INTERLOCKING.dt, 4, () => study.step());
           accumulator = frame.accumulator; steps += frame.steps; droppedSeconds += frame.droppedSeconds;
+          if (frame.steps > 0) pushQueued = false;
           if ('error' in frame) throw frame.error;
           await sync(study);
+          lastFrameAt = now; showProgress(now);
         }
         if (!scope.disposed) { rendering = true; renderer.render(scene, camera); }
       })().catch(error => {
@@ -153,7 +167,7 @@ try {
           status.textContent = `Renderer failed: ${message(error)}. Resources released; reload explicitly to reconstruct.`;
           dispose(); return;
         }
-        paused = true; play.textContent = 'Play'; play.disabled = push.disabled = save.disabled = true;
+        paused = true; play.textContent = 'Play'; play.disabled = push.disabled = save.disabled = true; clearProgress();
         status.textContent = `Simulation/render failed: ${message(error)}. State is unreliable; press Reset to reconstruct.`;
       }).finally(() => { frameBusy = false; });
     });

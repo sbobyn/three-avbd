@@ -1,7 +1,7 @@
 // The examples gallery page (examples/index.html). Static: it renders ./catalog.ts and filters it;
 // it never imports the solver, Three.js or Rapier and never requests a GPU device.
 
-import { ENGINE_LABELS, type Engine, ENTRIES, type Entry, FEATURED, GROUPS, type GroupId, type Kind, KIND_LABELS, REQUIREMENT_LABELS, sourceUrl } from './catalog.ts';
+import { ENGINE_LABELS, type Engine, ENTRIES, type Entry, FEATURED, GROUPS, type GroupId, HEAVY_NOTE, type Kind, KIND_LABELS, REQUIREMENT_LABELS, sourceUrl } from './catalog.ts';
 import { filterEntries, type Filters, formatFilters, isFiltered, matchedItems, NO_FILTERS, parseFilters } from './filter.ts';
 import './gallery.css';
 
@@ -52,15 +52,17 @@ function card(e: Entry) {
     const list = el('ul', { class: 'chips' });
     for (const i of e.items) {
       const cls = `chip${hits.has(i.label) ? ' hit' : ''}`;
-      list.append(el('li', {}, i.href ? el('a', { class: cls, href: i.href }, i.label) : el('span', { class: `${cls} static` }, i.label)));
+      const mark = i.heavy ? el('span', { class: 'heavy' }, 'heavy') : null;
+      list.append(el('li', {}, i.href ? el('a', { class: cls, href: i.href }, i.label, mark) : el('span', { class: `${cls} static` }, i.label)));
     }
     wrap.append(list);
+    if (e.items.some(i => i.heavy)) wrap.append(el('p', { class: 'items-hint' }, HEAVY_NOTE));
     body.append(wrap);
   }
   if (e.limits) body.append(el('details', { class: 'limits' }, el('summary', {}, 'Limits'), el('p', {}, e.limits)));
   const foot = el('p', { class: 'foot' });
   if (e.href && !e.pair) foot.append(el('a', { class: 'open', href: e.href }, 'Open', el('span', { 'aria-hidden': 'true' }, ' →')));
-  for (const l of e.links ?? []) foot.append(el('a', { href: l.href, title: l.note ?? '' }, l.label));
+  for (const l of e.links ?? []) foot.append(el('a', l.note ? { href: l.href, title: l.note } : { href: l.href }, l.label));
   if (e.source) foot.append(el('a', { class: 'muted', href: sourceUrl(e.source) }, 'Source'));
   body.append(foot);
   return el('article', { class: 'card', 'aria-labelledby': `t-${e.id}`, id: e.id }, thumb(e, 'card'), body);
@@ -89,6 +91,7 @@ function chipRow<K extends 'group' | 'kind' | 'engine'>(key: K, label: string, o
 
 const results = document.getElementById('results')!;
 const toolbar = document.getElementById('filters')!;
+const filterRows = document.getElementById('filter-rows')!;
 const count = document.getElementById('count')!;
 const search = document.getElementById('search') as HTMLInputElement;
 const clear = document.getElementById('clear') as HTMLButtonElement;
@@ -101,7 +104,7 @@ function update(next: Partial<Filters>) {
 }
 
 function buildToolbar() {
-  document.getElementById('filter-rows')!.replaceChildren(
+  filterRows.replaceChildren(
     chipRow('group', 'Topic', GROUPS.map((g): [GroupId, string] => [g.id, g.title])),
     chipRow('kind', 'Type', (Object.keys(KIND_LABELS) as Kind[]).map((k): [Kind, string] => [k, KIND_LABELS[k]])),
     chipRow('engine', 'Engine', [['avbd', `${ENGINE_LABELS.avbd} only`], ['rapier', 'Includes Rapier']] as [Engine, string][]),
@@ -109,7 +112,7 @@ function buildToolbar() {
 }
 
 function render() {
-  for (const b of toolbar.querySelectorAll<HTMLButtonElement>('button.fchip')) {
+  for (const b of filterRows.querySelectorAll<HTMLButtonElement>('button.fchip')) {
     const current = filters[b.dataset.key as 'group' | 'kind' | 'engine'] ?? '';
     b.setAttribute('aria-pressed', String(current === b.dataset.value));
   }
@@ -147,4 +150,5 @@ document.addEventListener('keydown', e => {
   if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey) { e.preventDefault(); search.focus(); }
 });
 toolbar.hidden = false;
+filterRows.hidden = false;
 render();

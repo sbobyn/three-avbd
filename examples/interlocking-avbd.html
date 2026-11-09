@@ -10,26 +10,28 @@
     #view { height: min(55vh, 540px); min-height:280px; border:1px solid #667788; border-radius:8px; overflow:hidden }
     #view canvas { display:block } button,select { font:inherit; padding:6px; margin:4px }
     #status { white-space:pre-wrap } label { white-space:nowrap }
+    #progress { margin:0 0 .5em; font-variant-numeric:tabular-nums }
   </style>
 </head>
 <body data-engine="avbd"><main>
-  <p><a href="./">← Examples</a></p>
+  <p><a href="./index.html">← Demo gallery</a></p>
   <h1><img src="/favicon.svg" width="36" height="36" alt="">Interlocking sculpture: AVBD SDF counterpart</h1>
   <p>Two pre-linked rings hang from a peg. Orbit to inspect the openings, press Play, then push the lower ring.
     No joint connects the rings: support comes from contact. This counterpart reuses the <a href="./interlocking-rapier.html">Rapier baseline</a> inputs and rendering. No performance winner is established.</p>
   <div>
     <button id="play" disabled>Play</button><button id="push" disabled>Push lower ring</button>
     <button id="reset" disabled>Reset</button>
-    <label>Rapier-only convex pieces <select id="pieces" disabled><option>16</option><option selected>32</option><option>64</option></select></label>
     <button id="export" disabled>Save observation JSON</button>
   </div>
+  <p id="representation">Ring shape: exact analytic torus fields, not convex pieces. The Rapier baseline approximates each ring with 16, 32 or 64.</p>
   <div id="view" aria-label="Interactive three-dimensional interlocking ring scene"></div>
+  <p id="progress" aria-live="off"></p>
   <p id="status" role="status">Initializing…</p>
   <p>Fixed timestep 1/120 s; 10 AVBD iterations; analytic torus SDFs with default contact settings and curvature seeds.
     Native sleeping and CCD are unavailable; restitution is not modelled. SDF contact regularization may add drag.
     Reset recreates this owned World; the camera is retained. Mass, inertia and visible meshes match Rapier.
     This shared view reads poses back to the CPU: it does not showcase AVBD’s GPU-resident BodyMesh path.</p>
   <p>Observation export contains inputs, poses, settings and device/build context—not an editable scene or a benchmark.
-    <a href="../docs/PAIRED_STUDIES.md">Study protocol</a>.</p>
+    <a href="https://github.com/sbobyn/three-avbd/blob/main/docs/PAIRED_STUDIES.md">Study protocol</a>.</p>
   <script type="module" src="./interlocking-view.ts"></script>
 </main></body></html>

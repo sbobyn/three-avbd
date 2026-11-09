@@ -9,11 +9,11 @@
 // a deep link (sdf.html, sdf-released.html, compare.html) list their contents with a `pick` hint.
 
 export type GroupId = 'contacts' | 'joints' | 'large' | 'sdf' | 'rapier' | 'library' | 'research';
-/** How you use it: an interactive scene, a page that prints a result, a measuring tool, or a terminal command. */
-export type Kind = 'playable' | 'headless' | 'diagnostic' | 'benchmark' | 'command';
+/** How you use it: an interactive scene, a page that prints a result, a measuring tool, a terminal command, or a written guide. */
+export type Kind = 'playable' | 'headless' | 'diagnostic' | 'benchmark' | 'command' | 'guide';
 export type Engine = 'avbd' | 'rapier';
-/** What it needs: WebGPU; WebGPU for the large scenes but CPU for the small ones; Node (no GPU); Node with headless Dawn. */
-export type Requirement = 'webgpu' | 'webgpu-or-cpu' | 'node' | 'node-gpu';
+/** What it needs: WebGPU; WebGPU for the large scenes but CPU for the small ones; Node (no GPU); Node with headless Dawn; nothing (a static page). */
+export type Requirement = 'webgpu' | 'webgpu-or-cpu' | 'node' | 'node-gpu' | 'none';
 
 export interface Group { id: GroupId; title: string; blurb: string }
 
@@ -23,7 +23,12 @@ export interface Item {
   href?: string;
   /** Searchable names the item also covers, e.g. the body-count variants of one comparison family. */
   covers?: string[];
+  /** A very large scene: the link opens it paused and the chip is marked (see HEAVY_NOTE). */
+  heavy?: boolean;
 }
+
+/** Shown with any entry that has heavy items. Paused does not bound the cost: the scene is still built in full. */
+export const HEAVY_NOTE = 'Marked heavy: opens paused, but the whole scene is still built. Memory and time on your device are not qualified.';
 
 export interface Link { label: string; href: string; note?: string }
 
@@ -70,25 +75,34 @@ export const GROUPS: Group[] = [
 ];
 
 export const KIND_LABELS: Record<Kind, string> = {
-  playable: 'Playable', headless: 'Headless', diagnostic: 'Diagnostic', benchmark: 'Benchmark', command: 'Command',
+  playable: 'Playable', headless: 'Headless', diagnostic: 'Diagnostic', benchmark: 'Benchmark', command: 'Command', guide: 'Guide',
 };
 export const ENGINE_LABELS: Record<Engine, string> = { avbd: 'three-avbd', rapier: 'Rapier' };
 export const REQUIREMENT_LABELS: Record<Requirement, string> = {
-  webgpu: 'WebGPU', 'webgpu-or-cpu': 'Small scenes: CPU physics available', node: 'Node, no GPU', 'node-gpu': 'Node + headless WebGPU',
+  webgpu: 'WebGPU', 'webgpu-or-cpu': 'Small scenes: CPU physics available', node: 'Node, no GPU', 'node-gpu': 'Node + headless WebGPU', none: 'No GPU needed',
 };
 
 const scene3D = (name: string): Item => ({ label: name, href: `../index.html?scene=${encodeURIComponent(name)}` });
 const scene2D = (name: string): Item => ({ label: name, href: `../2d.html?scene=${encodeURIComponent(name)}` });
 /** A comparison case: the searchable case ID selects exactly the linked input. */
-const side = (label: string, scene: string): Item => ({ label, href: `../compare-side.html?scene=${scene}`, covers: [scene] });
+const side = (label: string, scene: string): Item => {
+  const heavy = isHeavyCase(scene);
+  return { label, href: `../compare-side.html?scene=${scene}${heavy ? '&paused=1' : ''}`, covers: [scene], ...(heavy ? { heavy } : {}) };
+};
+/** Comparison cases of 9k bodies and up (rest-grid-10k, pile-10k, ring-9k, ring-110k...), named by their `Nk` count. */
+export function isHeavyCase(id: string): boolean {
+  const thousands = /-(\d+)k(?:-|$)/.exec(id);
+  return thousands !== null && Number(thousands[1]) >= 9;
+}
 const GITHUB = 'https://github.com/sbobyn/three-avbd/blob/main/';
+const TWO_D_LIMITS = "The 2D solver is a TypeScript port of the authors' 2D demo for study, with a GPU backend. It is not part of the published three-avbd package, which is 3D.";
 export const sourceUrl = (path: string) => GITHUB + path;
 
 export const ENTRIES: Entry[] = [
   // Start here (see FEATURED) is drawn from these entries; every entry belongs to one group.
   {
     id: 'playground-3d', title: '3D physics playground', group: 'contacts', kind: 'playable', engines: ['avbd'], requires: 'webgpu-or-cpu', dimension: '3D',
-    description: 'Drag blocks, press Space to fire a cannonball and switch scenes from the menu. Opens on the largest scene your GPU can run in real time.',
+    description: 'Drag blocks, press Space to fire a cannonball and switch scenes from the menu. A one-time GPU speed check picks the opening scene: a 28,000-brick ring, a 2,000-body wall or a Pyramid.',
     href: '../index.html', source: 'src/app3d/main.ts', thumb: 'playground-3d.svg', thumbKind: 'illustration',
     thumbAlt: 'Coloured blocks stacked in a pyramid with a cannonball flying towards it',
   },
@@ -105,6 +119,7 @@ export const ENTRIES: Entry[] = [
     href: '../2d.html?scene=Pyramid', source: 'src/avbd2d/ref/scenes.ts', thumb: 'contacts-2d.svg', thumbKind: 'illustration',
     thumbAlt: 'A flat 2D pyramid of boxes next to a leaning house of cards',
     items: ['Pyramid', 'Cards', 'Stack', 'Stack Ratio', 'Dynamic Friction', 'Static Friction'].map(scene2D),
+    limits: TWO_D_LIMITS,
   },
   {
     id: 'joints-3d', title: 'Ropes, bridges and breakable joints', group: 'joints', kind: 'playable', engines: ['avbd'], requires: 'webgpu-or-cpu', dimension: '3D',
@@ -112,6 +127,7 @@ export const ENTRIES: Entry[] = [
     href: '../index.html?scene=Bridge', source: 'src/avbd3d/ref/scenes.ts', thumb: 'joints-3d.svg', thumbKind: 'illustration',
     thumbAlt: 'A plank bridge sagging between two posts, with a broken chain hanging beside it',
     items: ['Rope', 'Heavy Rope', 'Bridge', 'Breakable', 'Plastic Beam', 'Spring', 'Spring Ratio', 'Soft Body'].map(scene3D),
+    limits: 'Soft Body is a grid of rigid boxes held by soft joints, not a continuum or finite-element soft body. The scene names follow the AVBD demos.',
   },
   {
     id: 'joints-2d', title: 'Ropes, nets and motors in 2D', group: 'joints', kind: 'playable', engines: ['avbd'], requires: 'webgpu-or-cpu', dimension: '2D',
@@ -119,14 +135,15 @@ export const ENTRIES: Entry[] = [
     href: '../2d.html?scene=Rope', source: 'src/avbd2d/ref/scenes.ts', thumb: 'joints-2d.svg', thumbKind: 'illustration',
     thumbAlt: 'A 2D net of jointed nodes sagging under a weight, next to a spinning motor',
     items: ['Rope', 'Heavy Rope', 'Hanging Rope', 'Rod', 'Spring', 'Spring Ratio', 'Soft Body', 'Joint Grid', 'Net', 'Motor', 'Fracture'].map(scene2D),
+    limits: `Soft Body is a grid of rigid boxes held by soft joints, not a continuum soft body. ${TWO_D_LIMITS}`,
   },
   {
     id: 'paper-3d', title: "The paper's large scenes", group: 'large', kind: 'playable', engines: ['avbd'], requires: 'webgpu', dimension: '3D',
-    description: 'Topple a 28,000-brick ring, smash a wall with the cannonball, or drop ragdolls on cloth. Scenes after the AVBD paper figures, on your GPU.',
+    description: 'Topple a 28,000-brick ring, smash a wall with the cannonball, or drop ragdolls on a sheet of linked plates. Scenes after the AVBD paper figures, on your GPU.',
     href: '../index.html?scene=Brick%20Ring%20(28k)', source: 'src/avbd3d/bench-scenes.ts', thumb: 'paper-3d.svg', thumbKind: 'illustration',
     thumbAlt: 'A circular ring of bricks, partly toppled, seen from above at an angle',
     items: ['Brick Ring (28k)', 'Brick Ring (110k)', 'Brick Walls (27k)', 'Wall Smash (2k)', 'Breakable Wall (600)', 'Chain Mail (1.6k)', 'Ragdolls on Cloth (24k)', 'Flag in the Wind (1.5k)', 'Heavy Pendulum'].map(scene3D),
-    limits: 'Scene layouts follow the paper; its reported timings are not a claim about your device. See Results vs the paper.',
+    limits: 'Scene layouts follow the paper; its reported timings are not a claim about your device. See Results vs the paper. The "cloth" in Ragdolls on Cloth and Flag in the Wind is a grid of thin rigid plates on ball joints, not a cloth simulation.',
   },
   {
     id: 'paintings-3d', title: 'Paintings made of blocks', group: 'large', kind: 'playable', engines: ['avbd'], requires: 'webgpu', dimension: '3D',
@@ -151,6 +168,7 @@ export const ENTRIES: Entry[] = [
       'Pyramid 50 (1.3k)', 'Pyramid 100 (5k)', 'Box Rain 40x25 (1k)', 'Box Rain 100x50 (5k)', 'Joint Lattice 64x64 (4k)', 'Wrecking Ball 100x40 (4k)',
       'Pyramid 200 (20k)', 'Wrecking Ball 400x100 (40k)', 'Box Rain 900x100 (90k)', 'Joint Lattice 320x320 (100k)', 'Joint Lattice 512x512 (262k)',
     ].map(scene2D),
+    limits: TWO_D_LIMITS,
   },
   {
     id: 'custom', title: 'Build your own scene', group: 'large', kind: 'playable', engines: ['avbd'], requires: 'webgpu-or-cpu',
@@ -158,6 +176,7 @@ export const ENTRIES: Entry[] = [
     href: '../index.html?scene=Custom', source: 'src/avbd3d/custom.ts', thumb: 'custom.svg', thumbKind: 'illustration',
     thumbAlt: 'A slider controlling how many blocks fill a scene',
     items: [{ label: '3D Custom (WebGPU)', href: '../index.html?scene=Custom' }, { label: '2D Custom', href: '../2d.html?scene=Custom' }],
+    limits: `The 2D Custom scene runs on the 2D solver. ${TWO_D_LIMITS}`,
   },
   {
     id: 'sdf-playground', title: 'SDF playground', group: 'sdf', kind: 'playable', engines: ['avbd'], requires: 'webgpu', experimental: true, dimension: '3D',
@@ -268,14 +287,13 @@ export const ENTRIES: Entry[] = [
     thumbAlt: 'A sphere swept along a dashed path, stopping where it meets a wall',
   },
   {
-    id: 'fresh-project', title: 'Fresh project setup', group: 'library', kind: 'command', engines: ['avbd'], requires: 'webgpu',
-    description: 'Copy two files into a new Vite project to check the installed package works outside this repository.',
-    command: 'See docs/SETUP.md (examples/fresh-project/)', source: 'examples/fresh-project/main.js', thumb: 'fresh-project.svg', thumbKind: 'illustration',
+    id: 'fresh-project', title: 'Fresh project setup', group: 'library', kind: 'guide', engines: ['avbd'], requires: 'webgpu',
+    description: 'Follow the setup guide to install a locally built package in a new Vite project, then copy two files to check it works outside this repository.',
+    href: sourceUrl('docs/SETUP.md#fresh-threejs-consumer'), source: 'examples/fresh-project/main.js', thumb: 'fresh-project.svg', thumbKind: 'illustration',
     thumbAlt: 'An opened package box with a small cube inside',
-    links: [{ label: 'Setup guide', href: sourceUrl('docs/SETUP.md') }],
   },
   {
-    id: 'results', title: 'Results vs the paper', group: 'research', kind: 'benchmark', engines: ['avbd'], requires: 'webgpu-or-cpu',
+    id: 'results', title: 'Results vs the paper', group: 'research', kind: 'benchmark', engines: ['avbd'], requires: 'none',
     description: "Recorded step times from saved machine reports beside the paper's reported times; paste your own report to add it.",
     href: '../results.html', source: 'src/results/main.ts', thumb: 'results.svg', thumbKind: 'illustration',
     thumbAlt: 'Paired bars comparing recorded times to reference times',

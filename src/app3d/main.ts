@@ -17,20 +17,23 @@ import { titleCard } from '../ui/title-card.ts';
 import { otherDemoUrl, sceneMenu } from '../ui/scene-menu.ts';
 import { ScenePanel } from '../ui/scene-panel.ts';
 import { WindPanel } from '../ui/wind-panel.ts';
+import { type Backend3D, backendParams3D, shortcut, solverUnavailable } from '../ui/viewer-ui.ts';
 import type { CameraView, Picture3D, SceneOptions } from '../avbd3d/bench-scenes.ts';
-import { type ExtrasContext, kilograms, panelFor } from './scene-extras.ts';
+import { CANNONBALL, type ExtrasContext, kilograms, panelFor } from './scene-extras.ts';
 import { Renderer3D } from './renderer3d.ts';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#view')!;
 const hud = document.querySelector<HTMLDivElement>('#hud')!;
 const timing = document.querySelector<HTMLDivElement>('#timing')!;
+/** Lasting messages (no WebGPU, a solver fallback): the HUD is rewritten twice a second. */
+const notice = document.querySelector<HTMLDivElement>('#notice')!;
+const showNotice = (text: string) => ((notice.textContent = text), (notice.hidden = false));
 
 titleCard('avbd3d-card-collapsed');
 const keysHint = document.querySelector<HTMLDivElement>('#keys')!;
 
 // Ask for the adapter's full storage-binding size, as the 2D app does, for large GPU scenes
 const adapter = 'gpu' in navigator ? await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null) : null;
-if (!adapter) document.querySelector<HTMLElement>('#no-webgpu')!.hidden = false;
 const renderer = new Renderer3D(
   canvas,
   // …and its storage buffers per stage: hull contacts bind a ninth (GpuSolver3D.hulls)
@@ -44,10 +47,13 @@ const renderer = new Renderer3D(
 );
 await renderer.init();
 
-type Backend3D = 'ref' | 'gpu';
 const BACKENDS: Record<Backend3D, string> = { ref: 'Reference (CPU)', gpu: 'WebGPU' };
 const url = new URL(location.href);
 const gpuAvailable = renderer.device !== null;
+if (!gpuAvailable) {
+  document.querySelector<HTMLElement>('#no-webgpu')!.hidden = false;
+  showNotice('No WebGPU here: the small scenes run on the CPU solver, and the GPU scenes are left out.');
+}
 // The paper's showcase scenes first (GPU only), then the upstream demo's scenes
 const sceneNames = [...allScenes3D.filter((s) => s.gpuOnly && gpuAvailable), ...allScenes3D.filter((s) => !s.gpuOnly)].map((s) => s.name);
 
@@ -104,8 +110,7 @@ const defaults = () => ({
   ...gpuParams3D(),
   // The scenes are the reference's, z-up
   up: REF_UP,
-  matchNearest: state.backend === 'gpu',
-  faceBias: state.backend === 'gpu',
+  ...backendParams3D(state.backend),
   ...resolve(sceneByName3D(state.scene).params),
 });
 Object.assign(params, defaults());
@@ -181,13 +186,15 @@ function fly(now: number): void {
 async function buildSim(stillWanted: () => boolean): Promise<Sim3D | null> {
   if (state.backend !== 'gpu' && sceneByName3D(state.scene).gpuOnly) {
     state.backend = 'gpu';
-    Object.assign(params, defaults());
+    Object.assign(params, backendParams3D('gpu'));
   }
   const device = state.backend === 'gpu' ? renderer.device : null;
   if (state.backend === 'gpu' && !device) {
-    hud.textContent = 'The WebGPU solver needs a WebGPU device; falling back to the CPU solver.';
     state.backend = 'ref';
-    if (sceneByName3D(state.scene).gpuOnly) state.scene = DEFAULT_SCENE;
+    Object.assign(params, backendParams3D('ref'));
+    const gpuOnly = sceneByName3D(state.scene).gpuOnly;
+    if (gpuOnly) state.scene = DEFAULT_SCENE;
+    showNotice(`The WebGPU solver needs a WebGPU device: running on the CPU solver${gpuOnly ? `, with ${DEFAULT_SCENE} (that scene is GPU-only)` : ''}.`);
   }
   const expected = sizeOf(state.scene) || 2000;
   renderer.setDecor([]);
@@ -376,7 +383,9 @@ const ui = new Controls({
     loadScene();
   },
   buttons: [
-    { label: 'Play / pause (P)', icon: () => (state.paused ? ICONS.play : ICONS.pause), onClick: () => (state.paused = !state.paused) },
+    // A toggle named for what pressing it does when not pressed; the tooltip says what a click does
+    { label: 'Pause (P)', title: () => (state.paused ? 'Play (P)' : 'Pause (P)'), pressed: () => state.paused, icon: () => (state.paused ? ICONS.play : ICONS.pause), onClick: () => (state.paused = !state.paused) },
+    { label: 'Step once (.)', icon: ICONS.step, disabled: () => !state.paused, onClick: () => stepOnce() },
     { label: 'Restart the scene (R)', icon: ICONS.restart, onClick: () => loadScene(false) },
     { label: 'Fire a cannonball (Space)', icon: ICONS.ball, onClick: () => shootBall() },
     { label: 'Reset the camera', icon: ICONS.focus, onClick: () => resetCamera() },
@@ -391,10 +400,12 @@ const ui = new Controls({
         .map(([value, label]) => ({ label, value })),
       get: () => state.backend,
       set: (v) => {
+        // Keep the user's settings: only the solver's own heuristics follow it
         state.backend = v as Backend3D;
-        Object.assign(params, defaults());
+        Object.assign(params, backendParams3D(state.backend));
         loadScene(false);
       },
+      unavailable: (v) => solverUnavailable(v, sceneByName3D(state.scene), gpuAvailable),
     },
     { kind: 'range', label: 'Iterations', min: 1, max: 30, step: 1, get: () => params.iterations, set: (v) => (params.iterations = Math.round(v)), format: (v) => String(Math.round(v)) },
     { kind: 'range', label: 'Gravity', min: -20, max: 0, step: 0.5, get: () => params.gravity, set: (v) => (params.gravity = v), format: (v) => `${v.toFixed(1)} m/s²` },
@@ -418,12 +429,12 @@ const ui = new Controls({
         { kind: 'toggle', label: 'Face-biased SAT (GPU)', get: () => params.faceBias, set: (v) => (params.faceBias = v) },
         { kind: 'toggle', label: 'Slow bodies start at rest (GPU)', get: () => params.startAtRest, set: (v) => (params.startAtRest = v) },
         { kind: 'toggle', label: 'Contacts as stiff as the mass (GPU)', get: () => params.massPenalty, set: (v) => (params.massPenalty = v) },
-        { kind: 'range', label: 'Cannonball radius', min: 0.2, max: 2, step: 0.05, get: () => state.ballRadius, set: (v) => (state.ballRadius = v), format: (v) => `${v.toFixed(2)} m` },
-        { kind: 'range', label: 'Cannonball mass', min: 1, max: 10_000, log: true, get: () => state.ballMass, set: (v) => (state.ballMass = v), format: kilograms },
-        { kind: 'range', label: 'Cannonball speed', min: 5, max: 80, step: 1, get: () => state.ballSpeed, set: (v) => (state.ballSpeed = v), format: (v) => `${v.toFixed(0)} m/s` },
+        { kind: 'range', label: 'Cannonball radius', ...CANNONBALL.radius, step: 0.05, get: () => state.ballRadius, set: (v) => (state.ballRadius = v), format: (v) => `${v.toFixed(2)} m` },
+        { kind: 'range', label: 'Cannonball mass', ...CANNONBALL.mass, log: true, get: () => state.ballMass, set: (v) => (state.ballMass = v), format: kilograms },
+        { kind: 'range', label: 'Cannonball speed', ...CANNONBALL.speed, step: 1, get: () => state.ballSpeed, set: (v) => (state.ballSpeed = v), format: (v) => `${v.toFixed(0)} m/s` },
       ],
     },
-    { kind: 'action', label: 'Reset settings to defaults', run: () => Object.assign(params, defaults()) },
+    { kind: 'action', label: 'Reset solver settings', run: () => Object.assign(params, defaults()) },
     { kind: 'action', label: 'Measure this GPU again (reloads)', run: () => (forgetBudget('3d'), location.reload()) },
   ],
 });
@@ -602,18 +613,20 @@ for (const type of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'resize'] 
 canvas.addEventListener('pointerup', () => drag && endDrag());
 canvas.addEventListener('pointercancel', () => drag && endDrag());
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-window.addEventListener('keyup', (e) => (e.code === 'Space' || e.key === ' ') && e.preventDefault());
+window.addEventListener('keyup', (e) => shortcut(e) === 'Space' && e.preventDefault());
 window.addEventListener('keydown', (e) => {
-  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
-  // Space fires, even with a dock button focused (which would otherwise be clicked)
-  if (e.code === 'Space' || e.key === ' ') {
+  // Not with a modifier held, in a field, or on a control focused from the keyboard (viewer-ui.ts)
+  const key = shortcut(e);
+  if (key === null) return;
+  // Space fires, even with a dock button focused by a click (which would otherwise be clicked)
+  if (key === 'Space') {
     e.preventDefault();
     shootBall();
   }
-  if (e.code === 'KeyP') state.paused = !state.paused;
-  if (e.code === 'KeyR') loadScene(false);
-  if (e.code === 'KeyB') shootBall();
-  if (e.code === 'Period' && state.paused) stepOnce();
+  if (key === 'KeyP') state.paused = !state.paused;
+  if (key === 'KeyR') loadScene(false);
+  if (key === 'KeyB') shootBall();
+  if (key === 'Period' && state.paused) stepOnce();
   ui.refresh();
 });
 
@@ -724,13 +737,15 @@ function updateHud(): void {
   // The simulation's own cost per step: GPU timestamps when the device has them
   const simMs = gs?.gpuStepMs ?? (gpu ? undefined : stepMs);
   timing.innerHTML = simMs === undefined ? '' : `<b>${simMs.toFixed(1)} ms</b> <span>/ step</span>`;
-  const summary = `${sim.bodyCount.toLocaleString('en')} bodies · ${fps.toFixed(0)} fps · ${gpu ? 'WebGPU solver' : 'CPU solver'}`;
+  const paused = state.paused ? ' · paused' : '';
+  const summary = `${sim.bodyCount.toLocaleString('en')} bodies · ${fps.toFixed(0)} fps · ${gpu ? 'WebGPU solver' : 'CPU solver'}${paused}`;
   keysHint.hidden = state.details;
   panel.refresh();
   hud.textContent = state.details
     ? [
         `${sim.label} · ${renderer.isWebGPU ? 'WebGPU' : 'WebGL2'} render · ${fps.toFixed(0)} fps · ` +
-          (gs?.gpuStepMs === undefined ? `step ${stepMs.toFixed(2)} ms` : `GPU step ~${gs.gpuStepMs.toFixed(2)} ms (encode ${stepMs.toFixed(2)} ms)`),
+          (gs?.gpuStepMs === undefined ? `step ${stepMs.toFixed(2)} ms` : `GPU step ~${gs.gpuStepMs.toFixed(2)} ms (encode ${stepMs.toFixed(2)} ms)`) +
+          paused,
         `bodies ${sim.bodyCount} · joints ${st.joints} · contacts ${st.contacts}` + (gs ? ` · colours ${gs.colors} (clashes ${gs.clashes})` : ''),
         `KE ${st.kineticEnergy.toFixed(3)} · max joint error ${st.maxJointError.toExponential(2)} · iterations ${params.iterations}`,
         ...(profile ? [`GPU phases: ${PHASES.map((ph) => `${ph} ${profile[ph].toFixed(2)}`).join(' · ')} ms`] : []),

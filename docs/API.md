@@ -129,6 +129,26 @@ flowchart LR
   Page -->|links only| Demos[Existing demo pages]
 ```
 
+### Demo UI consistency overlay — 2026-11-09, STE-3288
+
+Based on gallery head `da7c6197189ae69f1970b2381219e594ea50d801`, the shared
+`src/ui/tokens.css` contains namespaced light/dark primitives only. Each owning page
+maps the intended set; it does not acquire a renderer or change solver settings.
+`src/ui/viewer-ui.ts` supplies tested shortcut/solver-availability policies;
+`src/comparison/labels.ts` names existing case IDs without changing report identity.
+`examples/startup.ts` handles example startup failures/owned reverse-order cleanup,
+`examples/interlocking-progress.ts` formats readback-based step status, and
+`src/sdf-released/framing.ts` preserves an orbited camera across same-scene rebuilds.
+These are UI contracts, not new public library APIs or physical qualification.
+
+```mermaid
+flowchart LR
+  Tokens[UI brand primitives] --> Pages[Gallery / viewers / examples / SDF / comparisons]
+  Policy[Viewer shortcut and backend policy] --> Viewers[2D / 3D controls]
+  Cases[Stable comparison case IDs] --> Labels[Descriptive labels] --> Pages
+  Study[Study pose readback] --> Progress[Quiet step status]
+```
+
 ### Initialization diagnostics — local overlay, 2026-11-07
 
 `World.create({ renderer })` wraps renderer-init rejection with hardware WebGPU / secure-origin

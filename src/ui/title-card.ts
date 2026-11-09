@@ -13,6 +13,8 @@ export function titleCard(storageKey: string): void {
     card.classList.toggle('collapsed', collapsed);
     toggle.textContent = collapsed ? '+' : '–';
     toggle.title = collapsed ? 'About this demo' : 'Hide';
+    toggle.setAttribute('aria-label', collapsed ? 'Show about this demo' : 'Hide about this demo');
+    toggle.setAttribute('aria-expanded', String(!collapsed));
   };
   try {
     set(localStorage.getItem(storageKey) === '1' || window.innerWidth < NARROW);

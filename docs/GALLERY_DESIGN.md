@@ -58,9 +58,11 @@ Groups, derived from the actual content and the viewers' own menu kinds (`src/ui
 Filters (combine with AND; pressing an active chip or *All* turns it off):
 - **Search**: every word must prefix a word in the title, description, labels, command, source path or
   any contained scene name (case, accents and punctuation folded). Matched scene chips are highlighted.
-- **Topic**: the seven groups. **Type**: Playable, Headless, Diagnostic, Benchmark, Command.
+- **Topic**: the seven groups. **Type**: Playable, Headless, Diagnostic, Benchmark, Command, Guide (a written
+  procedure with no runnable command, e.g. Fresh project setup).
 - **Engine**: *three-avbd only* or *Includes Rapier*.
 
+Only the search row is sticky (about 60 px); the three filter rows scroll with the page, and `/` returns to search.
 Result count is a polite live region; *Clear* appears only while filtered; the empty state names the
 query and offers *Clear filters*. `/` focuses search and Escape clears it. Filter state is kept in the
 query string (`?q=&group=&kind=&engine=`) so a filtered view can be linked; unknown values are ignored.
@@ -90,6 +92,12 @@ accepts, every thumbnail exists and is referenced, and the page imports only gal
 
 ## Comparison honesty
 
+Heavy comparison chips (cases of 9k bodies and up: `rest-grid-10k`, `pile-10k`, `pile-10k-settled`, `ring-9k`,
+`ring-110k`) open with `&paused=1` and carry a visible *heavy* mark plus a line saying that paused still builds the
+whole scene and that memory and time are not qualified. Labels that could imply features the library lacks carry a
+Limits line: Soft Body is rigid boxes on soft joints, "cloth" is thin plates on ball joints, and the 2D solver is a
+reference port outside the published package. Results needs no GPU.
+
 The interlocking card leads with *1 Rapier first*, then *2 AVBD counterpart*, and its Limits state the
 geometry difference (16–64 convex pieces vs analytic torus fields), async AVBD readback, no native
 sleeping/CCD, restitution not modelled and SDF regularization drag, and that results are
@@ -99,7 +107,11 @@ measured results.
 
 ## Tokens (manual transfer source)
 
-From `src/ui/page.css` and the brand mark `public/favicon.svg`; defined in `src/gallery/gallery.css`.
+From `src/ui/page.css` and the brand mark `public/favicon.svg`. The values are now `--avbd-*` primitives in
+`src/ui/tokens.css`: constants only, a light and a dark set, no `color-scheme`, background or element rule, so
+importing the file changes nothing. `src/gallery/gallery.css` imports it, maps the light set to its own variables and
+the dark set under its own `prefers-color-scheme`. The dark example pages take only link and focus colours from it.
+`page.css`, `controls.css` and the SDF/comparison pages do not import it yet; viewers stay light and headless pages dark.
 
 | Token | Light | Dark |
 |---|---|---|
@@ -141,3 +153,40 @@ This did not open/run a physics scene or establish any new performance/physical/
 No installations, CI changes or production deployment are part of local visual acceptance.
 Current source/ticket/head/PR evidence is in the lead receipt; update this reference alongside
 relevant gallery/catalog/token changes, without blanket regeneration or a new CI gate.
+
+
+## Round-one consistency audit follow-through — 2026-11-09
+
+Fable5.2High audited all20site entries at base da7c619, using qualified Apple Metal
+browser DOM/source evidence; final pixel captures remained unavailable. Opus/Sonnet
+implemented the bounded findings: shared brand primitives and readable controls,
+consistent gallery links/titles/marks, explicit approximations and2D-package limits,
+visible example startup failures with reverse-order cleanup, viewer settings kept on
+3D backend changes, accessible dock/step/state/focus and persistent fallback notices,
+SDF camera preservation, shared comparison labels and quiet study progress.
+
+Corrected counts: both2D/3D registries contain31entries; each viewer lists29excluding
+Ground/Empty. The gallery links29+29viewer scenes plus27comparison cases (85chips).
+The earlier31+40listed claim was incorrect. The underlying scene names/physics remain.
+
+No full SDF reskin or viewer dark-mode redesign is implied by shared primitives.
+The gallery keeps its own light/dark mapping; full-canvas viewers stay light, examples
+and comparisons stay dark. Touch orbit evidence (G24) and an in-page heavy-load
+confirmation (G23) remain explicit followups, not claimed fixes. Heavy gallery links
+open paused but still allocate their scenes; no capacity/performance acceptance.
+
+All active UI findings are tracked under STE-3288; the original audit and lane notes
+are in docs/audits/. The lead records final source/gates/runtime/merge in the receipt.
+The next requested Fable pass rechecks these fixes and evaluates solver/API/realtime
+and baked-workflow maturity; it is not a claim of industry feature or speed parity.
+
+Final round-one disposition: G01–G07, G09–G11, G13–G17, G20–G22 and G25
+implemented with focused checks. G08's catalog links are paused/marked heavy; a
+page-side allocation guard remains proposed. G12's shared primitives/titles/marks
+and G18's concrete navigation/search/docs-link polish are implemented; full SDF
+reskin/viewer dark mode and optional group-name alignment remain proposals/taste.
+G19's descriptive comparison labels are implemented without changing case IDs.
+G23 remains a working native confirmation with an in-page version proposed; G24
+needs actual touch evidence. The mobile gear legend stays visible in the scrollable
+panel, so its load colours retain a readable key. No finding is treated as physical
+or human acceptance, and no unbounded industry feature-parity build is implied.
