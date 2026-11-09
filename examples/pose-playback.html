@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pose playback · three-avbd</title>
+    <link rel="stylesheet" href="./example.css" />
+  </head>
+  <body>
+    <aside class="note">
+      <h1><img src="/favicon.svg" width="28" height="28" alt="" style="vertical-align:middle;margin-right:8px">Pose playback</h1>
+      <p>Plays back a <b>pose track</b> you captured yourself: body transforms read from a headless
+      <code>World</code> by <a href="https://github.com/sbobyn/three-avbd/blob/main/examples/pose-capture.ts"><code>examples/pose-capture.ts</code></a>
+      (Node + Dawn, hardware GPU), drawn here with plain Three.js instanced meshes. Nothing is simulated in this page.</p>
+      <p>No track ships with the site. Run the capture command from the <a href="https://github.com/sbobyn/three-avbd/blob/main/docs/USER_GUIDE.md#capture-poses-and-play-them-back">user guide</a>,
+      then choose the JSON file it wrote. The file stays in your browser; nothing is uploaded or stored.</p>
+      <p><label for="file">Pose track (.json)</label><br /><input type="file" id="file" accept=".json,application/json" disabled /></p>
+      <p><button type="button" id="play" disabled>Pause</button>
+      <label for="scrub" style="margin-left:8px">Time</label>
+      <input type="range" id="scrub" min="0" max="1000" step="1" value="0" disabled style="width:100%;box-sizing:border-box;margin:6px 0 0" /></p>
+      <div class="status" id="clock" aria-hidden="true"></div>
+      <div class="status" id="track-status" role="status">Waiting for graphics…</div>
+      <div class="status" id="status">Starting…</div>
+      <p>Transforms only: no velocities, events or editable world state, so it cannot restore a World, and it makes no claim of repeatable replay. Drag to orbit, scroll to zoom.</p>
+      <p><a href="./index.html">Demo gallery</a> · <a href="https://github.com/sbobyn/three-avbd/blob/main/examples/pose-playback.ts">Source</a></p>
+    </aside>
+    <script type="module" src="./pose-playback.ts"></script>
+  </body>
+</html>

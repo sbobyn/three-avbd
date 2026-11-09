@@ -150,6 +150,33 @@ flowchart LR
   Study[Study pose readback] --> Progress[Quiet step status]
 ```
 
+### Pose capture and playback example — 2026-11-09, STE-3003 (partial)
+
+Source base `fc12420916470384ff5be5fce9e11f7ce5f412f4`, branch
+`feat/ste-3003-pose-capture-20261109` plus the pose-example patch at qualification; Git history
+identifies its delivered revision. Example flow with the
+current public API only; no library, solver, package-export or serialization change. In Node with Dawn,
+[`examples/pose-capture.ts`](../examples/pose-capture.ts) creates a `World` on a hardware adapter
+(reusing the trial's adapter assessment), steps it, `await world.read()` after each step, and writes
+one JSON track (new file only). [`examples/pose-track.ts`](../examples/pose-track.ts) is the pure
+provisional schema, validator and sampler; [`examples/pose-playback.ts`](../examples/pose-playback.ts)
+imports it, not the library, and draws an `InstancedMesh` per shape. The track is transforms only (no
+velocities, events or restorable state) and an example-local format, not the interchange exporter or
+snapshot proposed in P-2 of the maturity audit. A bounded 2026-11-09 M4 Max/Metal run captured
+six dynamic bodies plus the floor for 30 steps, then loaded the resulting 31 frames in the
+hardware WebGPU player. Pause/scrub/reset/reload and invalid-file preservation were observed;
+this is workflow evidence, not physical correctness, deterministic replay or scale qualification.
+
+```mermaid
+flowchart LR
+  World[World.create device + step + read, public API] --> Capture[pose-capture.ts CLI]
+  Capture -->|new JSON file| Track[(pose track, provisional)]
+  Track -->|user selects file| Playback[pose-playback.ts]
+  Validator[pose-track.ts validate + sample] --> Capture
+  Validator --> Playback
+  Playback --> Three[Plain Three.js InstancedMesh, no World]
+```
+
 ### Initialization diagnostics — local overlay, 2026-11-07
 
 `World.create({ renderer })` wraps renderer-init rejection with hardware WebGPU / secure-origin
@@ -191,7 +218,7 @@ device, settings and provenance must accompany performance claims.
 | `src/app3d/`, `src/app2d/`, `src/ui/` | Interactive solver demos and shared controls/calibration |
 | `src/sdf-showcase/`, `src/sdf-released/`, `src/sdf-gears/` | Bounded SDF demos; reference metrics and playback queue policy |
 | `src/comparison/`, `src/results/`, `scripts/` | AVBD/Rapier adapters, quality metrics, benchmark and provenance tools |
-| `examples/` | Public API consumer journeys, including lifecycle/pool/SDF; `examples/index.html` is the gallery |
+| `examples/` | Public API consumer journeys, including lifecycle/pool/SDF and pose capture/playback; `examples/index.html` is the gallery |
 | `src/gallery/`, `public/gallery/` | Static demo gallery: dependency-free catalog, filters and SVG illustrations ([design](GALLERY_DESIGN.md)) |
 | `tests/`, `tests-gpu/`, `tools/cpp-oracle*/` | CPU/GPU checks and upstream-generated oracle fixtures; never regenerate fixtures to hide failures |
 | `docs/data/`, `docs/measurements/`, `research/` | Dated raw results and retained experiments; not automatically accepted runtime behavior |
