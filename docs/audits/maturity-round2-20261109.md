@@ -479,3 +479,35 @@ The API already documented brute-force ray cost, so that text was retained. New 
 notes describe actual current behavior, not new features. The remaining Clock sketch in
 COMPARISON was aligned by the lead. Pixel appearance, real device loss, touch, replay, baked
 workflow and target-device performance remain separate gates/proposals.
+
+
+### Lead integration — provisional pose capture/playback (2026-11-09)
+
+Slice 3 uses only the public World API and adds no library export or snapshot format. Sonnet
+implemented bounded Node/Dawn capture, a pure example-local validator/sampler, a physics-free
+Three.js player and one honest gallery card. Lead review added regressions for sparse frames
+bypassing the 300-step span bound and finite looping arithmetic overflow; both first failed
+and then passed after correction. Invalid replacement files now preserve the loaded track,
+and displayed capture metadata is labelled as what the file reports, not independent attestation.
+
+Final focused parser/capture-refusal/gallery/example checks pass 94/94; typecheck and site build
+pass. No library/solver/dependency/CI change, full-suite replay or broad benchmark. Actual
+Node25.2.1/Dawn0.6.1 AppleM4Max/Metal3/apple-m4-max/fallbackfalse capture: six dynamic bodies
+plus floor, dt1/60, 10iterations, 30steps, 31frames and13,574bytes. Every read.step matched.
+Capture91.6ms wall included65.5ms awaiting reads; a single diagnostic observation, not active
+GPUtime, a performance comparison, cold-start or scale qualification. No optional features
+were requested; no uncaptured GPU errors were reported. Original track retained privately
+with exact dirty provenance; no example track ships publicly.
+
+Browser preflight in a new gallery QA tab: ANGLE AppleM4MaxMetal and WebGPUapple/metal-3,
+fallbackfalse, 29cards/0canvases before navigating. Actual playback selected the capture file
+through its file input, looped31frames, paused, scrubbed tostep30 andback tostep0, rejected a
+foreign-schema file while retaining the previous usable track, then reselected the original.
+The page used a WebGPU canvas and requested no solver/World/WASM modules. Own QA tab closed.
+This is source/DOM/runtime workflow evidence, not pixel approval, memory stress/leak census,
+real loss/recovery, deterministic re-simulation, other hardware or large-scene acceptance.
+
+The requested second audit/fix cycle now has its bounded findings implemented. Larger joint,
+material, sleeping/CCD, replay and exporter/cache API proposals remain explicit; sample-based
+quality and target-device/performance gates are not closed by these changes. No third broad
+audit is implied. Exact delivery/readback is recorded by the existing lead receipt.

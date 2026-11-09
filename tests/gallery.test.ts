@@ -173,7 +173,7 @@ test('deployed-link check rejects repository-only targets and accepts built page
 });
 
 test('no built page links to a file the deployed site does not serve', () => {
-  assert.equal(PAGES.length, 20);
+  assert.equal(PAGES.length, 21);
   assert.deepEqual(PAGES.flatMap(page => deployedLinkProblems(page, read(page))), []);
 });
 
@@ -197,7 +197,7 @@ test('titles of the static pages follow "Page · three-avbd" and match what the 
   const title = (page: string) => /<title>([^<]+) · three-avbd<\/title>/.exec(read(page))![1];
   assert.equal(title('examples/index.html'), 'Demo gallery');
   for (const [id, page] of [['basic-world', 'examples/basic.html'], ['body-lifecycle', 'examples/body-lifecycle.html'], ['body-pool', 'examples/body-pool.html'],
-    ['results', 'results.html'], ['quality-runner', 'compare.html']] as const) assert.equal(title(page), byId(id).title, page);
+    ['pose-playback', 'examples/pose-playback.html'], ['results', 'results.html'], ['quality-runner', 'compare.html']] as const) assert.equal(title(page), byId(id).title, page);
   assert.equal(title('bench3d.html'), '3D benchmark');
   assert.equal(title('bench.html'), '2D benchmark');
 });
@@ -228,6 +228,35 @@ test('the Write-your-own page has a title, instructions, gallery and source link
   }
   // Headless output is announced
   for (const f of ['body-lifecycle', 'body-pool']) assert.match(read(`examples/${f}.html`), /<pre id="output" role="status">/, f);
+});
+
+test('the pose playback page is physics-free, says it needs your own captured file, and is honest in the catalog', () => {
+  const entry = byId('pose-playback');
+  assert.equal(entry.href, './pose-playback.html');
+  assert.equal(entry.requires, 'webgpu');
+  assert.match(entry.limits ?? '', /none ships with the site/);
+  assert.match(entry.limits ?? '', /no velocities.*cannot restore a World.*repeatable replay/);
+  assert.doesNotMatch(entry.description, /replay|deterministic|benchmark|fast|restore/i);
+  assert.ok(entry.links?.some(l => l.href.endsWith('examples/pose-capture.ts')));
+  // The player draws with plain Three.js: no World, solver, library entry or Rapier
+  const player = read('examples/pose-playback.ts');
+  const imports = [...player.matchAll(/^import [^'"]*['"]([^'"]+)['"]/gm)].map(m => m[1]);
+  assert.deepEqual(imports, ['three/webgpu', 'three/addons/controls/OrbitControls.js', './pose-track.ts', './startup.ts']);
+  assert.doesNotMatch(player.replace(/^\s*\/\/.*$/gm, ''), /World\.create|rapier|localStorage|sessionStorage|indexedDB|fetch\(/i);
+  // Shared startup and failure lifecycle, a status line, and a visible refusal of the WebGL fallback
+  assert.match(player, /startExample\(status\)/);
+  assert.match(player, /catch \(error\) \{[\s\S]*await startup\.fail\(error\);/);
+  assert.match(player, /await startup\.animate\(renderer,/);
+  assert.match(player, /isWebGPUBackend/);
+  assert.match(player, /checkTrackBytes\(file\.size\)/, 'the file is size-checked before it is read');
+  const html = read('examples/pose-playback.html');
+  assert.match(html, /id="status"/);
+  assert.match(html, /id="track-status" role="status"/);
+  assert.match(html, /<input type="file" id="file" accept="\.json,application\/json" disabled/);
+  assert.match(html, /rel="stylesheet" href="\.\/example\.css"/);
+  assert.match(html, /<a href="\.\/index\.html">Demo gallery<\/a>/);
+  assert.doesNotMatch(html, /innerHTML/);
+  assert.match(read('examples/pose-capture.ts'), /await import\('webgpu'\)/, 'the capture script loads the GPU binding lazily, after validation');
 });
 
 test('comparison chips of 9k bodies and up open paused, are marked heavy, and the page really reads paused', () => {

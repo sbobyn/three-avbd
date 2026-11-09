@@ -281,6 +281,14 @@ export const ENTRIES: Entry[] = [
     thumbAlt: 'Spheres leaving and re-entering a fixed rack of slots',
   },
   {
+    id: 'pose-playback', title: 'Pose playback', group: 'library', kind: 'playable', engines: ['avbd'], requires: 'webgpu', dimension: '3D',
+    description: 'Play back a pose track you captured with the headless World in Node: choose the JSON file it wrote; plain Three.js draws it, with no physics in the page.',
+    href: './pose-playback.html', source: 'examples/pose-playback.ts', thumb: 'pose-playback.svg', thumbKind: 'illustration',
+    thumbAlt: 'A saved track file feeding ghosted copies of a sphere along a bounce path',
+    links: [{ label: 'Capture CLI (Node + Dawn)', href: sourceUrl('examples/pose-capture.ts') }, { label: 'User guide steps', href: sourceUrl('docs/USER_GUIDE.md#capture-poses-and-play-them-back') }],
+    limits: 'Needs a track file you capture yourself on a hardware GPU; none ships with the site. Transforms only: no velocities, events or World state, so it cannot restore a World or claim a repeatable replay. Example-local, provisional format.',
+  },
+  {
     id: 'static-projectile', title: 'Static projectile queries', group: 'library', kind: 'command', engines: ['avbd'], requires: 'node',
     description: 'Sweep spheres against static meshes on the CPU with three-avbd/queries; no browser or GPU needed.',
     command: 'node --experimental-transform-types examples/static-projectile.ts', source: 'examples/static-projectile.ts', thumb: 'static-projectile.svg', thumbKind: 'illustration',

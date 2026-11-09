@@ -157,6 +157,54 @@ The design and what's planned: [docs/API.md](API.md). Runnable examples are inde
 ([gears](../examples/sdf-gear.ts), [balls in a torus](../examples/sdf-hollow.ts),
 [mesh baked in a worker](../examples/sdf-from-mesh.ts)).
 
+## Capture poses and play them back
+
+A small, end-to-end use of the public API: step a `World` headless, record every body's pose, and
+play the result back with plain Three.js and no physics. It is an example-local workflow
+(STE-3003, partial), separate from the realtime demo and not a release or format claim.
+
+Prerequisites: a source checkout with its dependencies already installed (Node with
+`--experimental-transform-types`, the `webgpu` Dawn binding from `devDependencies`) and a **hardware**
+WebGPU adapter. Fallback, software and unidentified adapters are refused, with no override, and
+nothing is written when they are. Run from the repository root:
+
+```bash
+node --experimental-transform-types --no-warnings examples/pose-capture.ts --out ~/pose-track.json --bodies 12 --steps 120
+pnpm dev    # then open http://127.0.0.1:5317/examples/pose-playback.html and choose the file
+```
+
+- `--out` is required, must end in `.json`, and must be a **new** file in an existing directory
+  (never overwritten; write it outside the repository). Bad arguments, an existing file or a missing
+  directory are refused before any GPU is requested. `--bodies` is 1 to 63 dynamic bodies (a fixed
+  floor is added; default 12), `--steps` 1 to 300 (default 120). Time step 1/60 s and 10 iterations
+  are fixed and written into the file.
+- The scene is a fixed floor and a staggered grid of dropped boxes and spheres. It is authored in
+  [pose-capture.ts](../examples/pose-capture.ts), not a scene editor.
+- The track records, per step actually read (`world.read().step`), each body's id, shape, size,
+  position and unit quaternion (y-up, metres, seconds), plus the capture record: package version,
+  Git head and change counts (no paths), adapter identity, requested limits (no optional features),
+  configuration, and **one run's** wall-clock capture and readback times and the file's byte size.
+  Those times are not GPU time, a performance comparison or a first-load measurement.
+- The playback page checks the 8 MiB byte limit before reading the file. After parsing JSON it
+  validates counts, poses and a frame span of at most 300 steps (64 bodies, 301 frames) before
+  allocating pose arrays or meshes. An invalid file keeps the previous track loaded. Play,
+  pause, scrub and orbit; it loops.
+  The file stays in the browser. No sample track ships with the site.
+- **Transforms only.** No velocities, joints, contacts or events are recorded, so the file cannot
+  restore a World, resume a simulation or support a claim of repeatable replay. The schema
+  (`three-avbd.example.pose-track/v0-provisional`) is private to these examples, not a package
+  export or interchange format (no USD/Alembic/glTF).
+
+Status (2026-11-09, source base `fc12420` plus the pose-example patch): focused CPU checks
+cover validation, sampling and CLI refusals. A Node 25.2.1/Dawn 0.6.1 run on Apple M4 Max,
+Metal 3 (not a fallback adapter), captured six dynamic bodies plus the floor for 30 steps:
+31 frames, 13,574 bytes. Capture wall time was 91.6 ms, including 65.5 ms awaiting reads;
+these are one run's observations, not a performance qualification. In the Three 0.187.0
+hardware WebGPU player, selecting that file, pause, scrubbing to the end/back to zero,
+reloading and rejecting a bad file while keeping the previous track all worked. No sample
+file is shipped. Large scenes, pixel quality, touch, memory stress, other devices and
+deterministic re-simulation remain unqualified.
+
 ## What's in the demo
 
 - **The paper's scenes.** Brick Ring (110,000 bricks, Fig. 1), Brick Walls (Fig. 3), Wall

@@ -39,6 +39,7 @@ export default defineConfig({
         interlockingAvbd: 'examples/interlocking-avbd.html',
         exampleBodyLifecycle: 'examples/body-lifecycle.html',
         exampleBodyPool: 'examples/body-pool.html',
+        examplePosePlayback: 'examples/pose-playback.html',
         exampleSdfGear: 'examples/sdf-gear.html',
         exampleSdfHollow: 'examples/sdf-hollow.html',
         exampleSdfFromMesh: 'examples/sdf-from-mesh.html',
