@@ -143,6 +143,23 @@ flowchart LR
   Host --> Teardown["Dispose model, renderer and hooks, then device; finalize report"]
 ```
 
+### Public-World repeatability diagnostic — 2026-11-10, STE-3003/F1
+
+[`tools/world-determinism.ts`](../tools/world-determinism.ts) owns a qualified Dawn device;
+its [pure runner](../tools/world-determinism-core.ts) creates two sequential fixed-storage
+Worlds through the public API, takes one final body read each and compares declared float32
+fields exactly. It adds no solver switch, package entry or replay guarantee. Device/cleanup
+errors fail the published result even when the compared words match.
+[Protocol and bounded source-qualified observation](WORLD_DETERMINISM.md).
+
+```mermaid
+flowchart LR
+  Host["Qualified device; fixed authored inputs"] --> First["World1: step, final read, destroy"]
+  First --> Second["World2: step, final read, destroy"]
+  Second --> Compare["Compare final public body words"]
+  Compare --> Finish["Drain/destroy owned device; finalize diagnostic report"]
+```
+
 ### Demo gallery — 2026-11-09, STE-3288
 
 Source base `34a8f78a1da40a69ed839bec09e44c32e6194490` plus the gallery topic overlay.
@@ -251,6 +268,7 @@ device, settings and provenance must accompany performance claims.
 | `src/comparison/`, `src/results/`, `scripts/` | AVBD/Rapier adapters, quality metrics, benchmark and provenance tools |
 | `examples/` | Public API consumer journeys, including lifecycle/pool/SDF and pose capture/playback; `examples/index.html` is the gallery |
 | `src/gallery/`, `public/gallery/` | Static demo gallery: dependency-free catalog, filters and SVG illustrations ([design](GALLERY_DESIGN.md)) |
+| `tools/world-determinism*.ts` | Opt-in public-World repeatability diagnostic; fixed-storage final fields only, no hidden-state replay guarantee |
 | `tests/`, `tests-gpu/`, `tools/cpp-oracle*/` | CPU/GPU checks and upstream-generated oracle fixtures; never regenerate fixtures to hide failures |
 | `docs/data/`, `docs/measurements/`, `research/` | Dated raw results and retained experiments; not automatically accepted runtime behavior |
 | `public/`, `tools/trailer/` | Demo assets and capture tooling; licenses/provenance remain attached |
