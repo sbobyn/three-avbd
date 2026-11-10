@@ -195,6 +195,27 @@ flowchart LR
   Compare --> Finish["Drain/destroy owned device; finalize diagnostic report"]
 ```
 
+### Internal native pose-cache draft — 2026-11-10, STE-3349
+
+[`src/bake/pose-cache.ts`](../src/bake/pose-cache.ts) is pure CPU code, with no GPU/Three/DOM/Node
+imports. It is an **internal v0 draft**, not a package entry, library-build output or a stable
+file format. The existing pose-capture/player keeps its separate provisional JSON schema.
+No recorder, DCC interchange, solver checkpoint or input replay is implied.
+
+```mermaid
+flowchart LR
+  Input["Authored metadata + poses + distinct caller cacheId"] --> Validate["Counts/byte budgets, conventions, lifetimes and values"]
+  Validate --> Encode["Manifest + LE chunks; header-bound frame CRC"]
+  Encode --> Strict["Strict decode OR explicit verified-prefix recovery"]
+  Strict --> Sample["Owned CPU arrays; bounded pose sampling"]
+```
+
+The codec validates budgets before allocating/large pose scans, copies caller data, freezes
+validation constants and never returns an invalid empty-body recovered cache. Frames are tied
+to their bake/chunk through a caller-assigned ID and running CRC; this is accidental integrity
+at CRC-32 strength, not authentication. Reusing IDs or checksum collisions remain limits.
+[Format, recovery boundary and v1 gates](POSE_CACHE.md); [review findings and lead fixes](audits/pose-cache-review-20261110.md).
+
 ### Demo gallery — 2026-11-09, STE-3288
 
 Source base `34a8f78a1da40a69ed839bec09e44c32e6194490` plus the gallery topic overlay.
@@ -298,6 +319,7 @@ device, settings and provenance must accompany performance claims.
 | `src/avbd3d/ref/`, `src/avbd2d/ref/` | Reference/oracle implementations; SDF preparation under `ref/sdf/` |
 | `src/avbd3d/gpu/`, `src/avbd2d/gpu/`, `src/avbd2d/soa/` | GPU kernels/layouts and 2D CPU SoA validation path |
 | `src/queries/` | Independent CPU triangle BVH and shape queries |
+| `src/bake/` | Internal CPU pose-cache draft; no public export or emitted library entry yet |
 | `src/app3d/`, `src/app2d/`, `src/ui/` | Interactive solver demos and shared controls/calibration |
 | `src/sdf-showcase/`, `src/sdf-released/`, `src/sdf-gears/` | Bounded SDF demos; reference metrics and playback queue policy |
 | `src/comparison/`, `src/results/`, `scripts/` | AVBD/Rapier adapters, quality metrics, benchmark and provenance tools |
