@@ -4,9 +4,17 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { INTERLOCKING, ringMassProperties, torusSectors, type RingPieces } from './interlocking-scene.ts';
 
 let initialized: Promise<void> | undefined;
+// Concurrent callers share one pending init; a rejected attempt is evicted so a later model can retry.
+function initialize() {
+  const attempt: Promise<void> = initialized ??= RAPIER.init().catch(error => {
+    if (initialized === attempt) initialized = undefined;
+    throw error;
+  });
+  return attempt;
+}
 export async function createRapierInterlocking(pieces: RingPieces = 32) {
   const sectors = torusSectors(pieces);
-  await (initialized ??= RAPIER.init());
+  await initialize();
   const world = new RAPIER.World({ x: INTERLOCKING.gravity[0], y: INTERLOCKING.gravity[1], z: INTERLOCKING.gravity[2] });
   try {
     world.timestep = INTERLOCKING.dt;
