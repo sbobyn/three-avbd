@@ -16,7 +16,7 @@ breakable structures; experimental non-convex SDF collisions are also available.
 ## Status and requirements
 
 Current source has **0.4.0 candidate APIs** and is not published. The last npm check recorded
-(**November 9, 2026**) showed latest **0.3.0**, which lacks the 0.4 subpaths such as SDF; check the
+(**November 10, 2026**) showed latest **0.3.0**, which lacks the 0.4 subpaths such as SDF; check the
 registry yourself for anything newer. The frozen **review-20261106-1** snapshot has exact
 source/package hashes and [verification notes](docs/REVIEW_20261106.md); `main` has moved on since,
 and the hosted demo and your checkout may differ. Record the commit you run with feedback.

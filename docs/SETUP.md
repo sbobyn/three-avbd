@@ -34,7 +34,7 @@ archive without running pack lifecycle hooks; it does not publish or run the ver
 The `prepublishOnly` gate runs on `npm publish`. The tarball exposes five entry points: `three-avbd`,
 `/advanced`, `/sdf`, `/queries` and `/pool`. Its version stays `0.4.0` for every local build,
 so keep your tarball's SHA-256 (`shasum -a 256`) with it to tell builds apart.
-Registry 0.3.0 (last recorded November 9) lacks `/sdf` and other 0.4 APIs.
+Registry 0.3.0 (last recorded November 10) lacks `/sdf` and other 0.4 APIs.
 
 In the same terminal, create a **new empty directory of your choice**, outside any existing
 project. Replace the example path before running it. Keep `AVBD_SOURCE` pointing at the snapshot:
