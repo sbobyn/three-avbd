@@ -111,6 +111,13 @@ The optional [bounded runner](../src/comparison/interlocking-trial.ts), invoked 
 queue drain/readback and snapshot observers. It owns its model; the CLI owns any Dawn device.
 JSON reports keep these wall spans separate and rendering unmeasured; they do not certify a
 performance comparison or alter the running demo/library API.
+The diagnostic [startup probe](../src/comparison/startup-profile.ts) (2026-11-10, STE-3003,
+[contract](STARTUP_PROFILING.md)) times one first-on-device and up to three same-device recreate
+cycles of the AVBD interlocking model through its public `step`/`readPoses`/`dispose` and
+`metadata.setupMs`. Hosts own the device: [`scripts/startup-profile.ts`](../scripts/startup-profile.ts)
+(Node + Dawn) and the dev-only [`examples/startup-profile.html`](../examples/startup-profile.html)
+(renderer, not a build input or gallery entry). Counters shadow only the probe's own device methods
+and are restored; no library, model or default changes.
 
 ### Demo gallery — 2026-11-09, STE-3288
 

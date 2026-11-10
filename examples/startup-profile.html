@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <title>Startup profile probe · three-avbd (dev only)</title>
+  <link rel="stylesheet" href="./headless.css">
+  <style>
+    main { max-width:1000px } #view { width:960px; height:540px; border:1px solid #667788; overflow:hidden }
+    #view canvas { display:block } #status { white-space:pre-wrap } button { font:inherit; padding:6px; margin:4px 0 }
+  </style>
+</head>
+<body><main>
+  <h1>Startup profile probe (dev-only diagnostic)</h1>
+  <p>Runs one bounded sequence on a new device: the interlocking AVBD study created, stepped three times and read,
+    then disposed and recreated on the same device (four cycles by default, <code>?cycles=1..4</code>).
+    <code>?label=nav1</code> names the run; <code>?instrument=0</code> skips the device-call counters.
+    Keep this tab in the foreground. Not a benchmark; cache state is always unknown. Not part of the gallery or the build.</p>
+  <div id="view" aria-label="Interlocking ring scene rendered once by the probe"></div>
+  <p id="status" role="status">Initializing…</p>
+  <button id="download" disabled>Download report JSON</button>
+  <pre id="report"></pre>
+  <script type="module" src="./startup-profile.ts"></script>
+</main></body></html>
