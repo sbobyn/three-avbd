@@ -17,14 +17,24 @@ No bare Git dependency is supported without building: compiled exports are not c
 
 ## Fresh Three.js consumer
 
-From the extracted snapshot, build and pack the exact local source (no publication):
+The 0.4 candidate is not published, and a bare Git dependency (`github:sbobyn/three-avbd`) installs
+source without the compiled `build/` that every export points to, so imports fail. Build and pack
+the exact local source instead (no publication). From your source checkout after
+`pnpm install --frozen-lockfile`, or from an extracted snapshot after the same install:
 
 ```sh
 pnpm build:lib
 npm pack --ignore-scripts
-# Produces three-avbd-0.4.0.tgz in this source directory.
+# Produces three-avbd-0.4.0.tgz in this source directory (untracked; do not commit it).
 export AVBD_SOURCE="$PWD"
 ```
+
+`build:lib` replaces the ignored `build/` folder. `npm pack --ignore-scripts` creates a local
+archive without running pack lifecycle hooks; it does not publish or run the verification gate.
+The `prepublishOnly` gate runs on `npm publish`. The tarball exposes five entry points: `three-avbd`,
+`/advanced`, `/sdf`, `/queries` and `/pool`. Its version stays `0.4.0` for every local build,
+so keep your tarball's SHA-256 (`shasum -a 256`) with it to tell builds apart.
+Registry 0.3.0 (last recorded November 9) lacks `/sdf` and other 0.4 APIs.
 
 In the same terminal, create a **new empty directory of your choice**, outside any existing
 project. Replace the example path before running it. Keep `AVBD_SOURCE` pointing at the snapshot:
@@ -71,7 +81,7 @@ Save `main.js`, `index.html`, package.json and package-lock.json in your consume
 local AVBD tarball accessible too: the lockfile can refer to that local path. Stop your server with
 Ctrl-C, reopen a terminal in the same consumer and run the documented `npx vite` command again.
 The scene is reconstructed from code; transient physics state and camera movement are not restored.
-The November 6 initial install/build/runtime was tested; [November 7 bounded source/input recovery](REVIEW_20261107.md) now passes in a separate copy. A browser-origin preference backup and cross-version update/rollback are still unverified.
+The November 6 initial install/build/runtime was tested (a dated record, not a claim about today's `main`); [November 7 bounded source/input recovery](REVIEW_20261107.md) now passes in a separate copy. A browser-origin preference backup and cross-version update/rollback are still unverified.
 
 For a portable copy, copy those source/configuration files and the exact tarball together, avoiding
 node_modules/dist caches. Reinstall from that tarball in a **new** directory, update its local dependency
