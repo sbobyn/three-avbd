@@ -8,6 +8,9 @@ import {
   evaluateHanging, INTERLOCKING_QUALITY_CRITERIA, observeInterlocking, summarizeTrial,
   type InterlockingObservation, type InterlockingVerdict, type RingRepresentation, type StudyPose,
 } from './interlocking-quality.ts';
+import {
+  AVBD_NATIVE_CONTACTS_UNAVAILABLE, observeNativeContacts, type NativeContactObservation, type NativeContactsUnavailable, type NativeStudyBodies,
+} from './interlocking-native-contacts.ts';
 
 import type { createRapierInterlocking } from './interlocking-rapier.ts';
 import type { AvbdPose } from './interlocking-avbd.ts';
@@ -149,6 +152,8 @@ export interface TrialEngine {
   /** Throws if the engine/device has recorded an error (called at snapshots only). */
   check?(): void;
   readPoses(): PoseRead | Promise<PoseRead>;
+  /** Native-collider contact diagnostic at snapshots only (Rapier); absent when the engine has none. Must not step or mutate. */
+  observeNativeContacts?(): NativeContactObservation;
   dispose(): void | Promise<void>;
 }
 export type TrialAcquire = (config: ValidatedTrialConfig) => Promise<TrialEngine>;
@@ -171,7 +176,10 @@ export interface SnapshotRecord {
   poses: PoseRecord[]; observation: InterlockingObservation;
   /** Hanging-phase criteria only; after the push the summary scores the push-safe subset. */
   verdict: InterlockingVerdict | null;
-  timingMs: { gpuCompletionWait: number | null; readback: number; observer: number };
+  /** Additive diagnostic of actual native component pairs; independent of observation/verdict and never a pass. */
+  nativeContacts: NativeContactObservation | NativeContactsUnavailable;
+  /** nativeContacts is timed separately from observer; null when the engine has no native query. */
+  timingMs: { gpuCompletionWait: number | null; readback: number; observer: number; nativeContacts: number | null };
 }
 /** `step` is the number of steps completed when the failure occurred. */
 export interface TrialError { phase: TrialPhase; step: number; message: string }
@@ -190,6 +198,7 @@ const LIMITS = [
   'Observations are pose-only at sparse snapshots; qualification stays gated and unknown is not zero or a pass',
   'Compound (Rapier) representation bands are unproven: boundCertified false, pair/floor/thread verdicts unknown',
   'analyticCoreLinkResolved concerns the analytic centre circles only, not solid/compound-body topology',
+  'nativeContacts: Rapier contactCollider per attached sector pair (prediction 0) at stored collider poses at snapshots only; not a global compound distance, physical proof or continuous no-pass-through check; no-returned-contact is not a pass; AVBD has no equivalent and none is compared',
   'This report is an observation record, not restorable state: no save/load of simulation state is provided',
 ];
 
@@ -217,6 +226,8 @@ export interface TrialReport {
     gpuCompletionWait: { available: boolean; totalMs: number | null; perSnapshotMs: (number | null)[] };
     readback: { totalMs: number | null; perSnapshotMs: number[] };
     observer: { totalMs: number | null; perSnapshotMs: number[] };
+    /** Native-contact query wall at snapshots, separate from observer and CPU step; unavailable engines are null. */
+    nativeContacts: { available: boolean; totalMs: number | null; perSnapshotMs: (number | null)[] };
     /** From before acquire() to after the last snapshot/summary; includes all of the above plus loop overhead. Excludes dispose. */
     trialWallMs: number | null;
     disposeMs: number | null;
@@ -267,11 +278,17 @@ export async function runInterlockingTrial(rawConfig: unknown, acquire: TrialAcq
     phase = 'check'; engine!.check?.();
     phase = 'read';
     if (read.step !== undefined && read.step !== at) throw new Error(`engine returned poses for step ${read.step}, expected ${at}`);
+    let nativeContacts: NativeContactObservation | NativeContactsUnavailable, nativeMs: number | null = null;
+    if (engine!.observeNativeContacts) {
+      t = clock();
+      try { nativeContacts = engine!.observeNativeContacts(); } catch (e) { nativeContacts = { available: false, reason: `native contact observation failed: ${sanitizeMessage(e)}` }; }
+      nativeMs = clock() - t;
+    } else nativeContacts = { available: false, reason: description!.engine === 'avbd' ? AVBD_NATIVE_CONTACTS_UNAVAILABLE : 'engine exposes no native-collider contact query' };
     phase = 'observer'; t = clock();
     const poses = read.poses.map(poseRecord), observation = observe(poses, description!.representation);
     const verdict = hanging ? evaluateHanging(observation) : null, observerMs = clock() - t;
-    snapshots.push({ step: at, phase: hanging ? 'hanging' : 'after-push', pushApplied, engineStep: read.step ?? null, poses, observation, verdict,
-      timingMs: { gpuCompletionWait: gpuWait, readback: readbackMs, observer: observerMs } });
+    snapshots.push({ step: at, phase: hanging ? 'hanging' : 'after-push', pushApplied, engineStep: read.step ?? null, poses, observation, verdict, nativeContacts,
+      timingMs: { gpuCompletionWait: gpuWait, readback: readbackMs, observer: observerMs, nativeContacts: nativeMs } });
   }
 
   try {
@@ -317,6 +334,7 @@ export async function runInterlockingTrial(rawConfig: unknown, acquire: TrialAcq
 
   const sum = (v: (number | null)[]) => v.length ? v.reduce<number>((a, b) => a + (b ?? 0), 0) : null;
   const gpuAvailable = !!engine?.completeGpu, gpuWaits = snapshots.map(s => s.timingMs.gpuCompletionWait);
+  const nativeAvailable = !!engine?.observeNativeContacts, nativeWaits = snapshots.map(s => s.timingMs.nativeContacts);
   return {
     schema: TRIAL_SCHEMA, status: error ? 'failed' : 'completed', diagnostic: true, benchmark: false,
     source: options.source ?? null, environment: options.environment ?? null, config,
@@ -329,6 +347,7 @@ export async function runInterlockingTrial(rawConfig: unknown, acquire: TrialAcq
       gpuCompletionWait: { available: gpuAvailable, totalMs: gpuAvailable ? sum(gpuWaits) : null, perSnapshotMs: gpuWaits },
       readback: { totalMs: sum(snapshots.map(s => s.timingMs.readback)), perSnapshotMs: snapshots.map(s => s.timingMs.readback) },
       observer: { totalMs: sum(snapshots.map(s => s.timingMs.observer)), perSnapshotMs: snapshots.map(s => s.timingMs.observer) },
+      nativeContacts: { available: nativeAvailable, totalMs: nativeAvailable ? sum(nativeWaits) : null, perSnapshotMs: nativeWaits },
       trialWallMs, disposeMs,
       notes: 'Per-category totals only; they overlap/include one another and must not be added together or compared across engines as like-for-like.',
     },
@@ -340,10 +359,12 @@ export async function runInterlockingTrial(rawConfig: unknown, acquire: TrialAcq
 // ---- engine adapters over the existing models ---------------------------------------------------
 export type RapierTrialModel = Awaited<ReturnType<typeof createRapierInterlocking>>;
 
-/** Rapier: physics completes inside step(); poses are a synchronous CPU read. */
-export function rapierTrialEngine(model: Pick<RapierTrialModel, 'pieces' | 'version' | 'step' | 'push' | 'poses' | 'dispose'> & { bodies: { mass(): number }[] }): TrialEngine {
+/** Rapier: physics completes inside step(); poses are a synchronous CPU read. `native` (actual attached
+ * colliders) enables the snapshot-only native-contact diagnostic; without it the field is unavailable. */
+export function rapierTrialEngine(model: Pick<RapierTrialModel, 'pieces' | 'version' | 'step' | 'push' | 'poses' | 'dispose'> & { bodies: { mass(): number }[] },
+  native?: NativeStudyBodies): TrialEngine {
   const { dt, iterations, friction, gravity } = INTERLOCKING;
-  return {
+  const engine: TrialEngine = {
     // A getter: Rapier derives body mass on its first step, so mass read earlier is 0 (unknown), never reported as measured.
     get description(): TrialEngineDescription {
       const mass = model.bodies.map(b => b.mass());
@@ -359,12 +380,16 @@ export function rapierTrialEngine(model: Pick<RapierTrialModel, 'pieces' | 'vers
     readPoses: () => ({ poses: model.poses() }),
     dispose: () => model.dispose(),
   };
+  if (native) engine.observeNativeContacts = () => observeNativeContacts(native, { describeError: sanitizeMessage });
+  return engine;
 }
 
 export async function createRapierTrialEngine(pieces: RingPieces): Promise<TrialEngine> {
   const { createRapierInterlocking } = await import('./interlocking-rapier.ts');
   const model = await createRapierInterlocking(pieces);
-  try { return rapierTrialEngine(model); } catch (e) { model.dispose(); throw e; }
+  try {
+    return rapierTrialEngine(model, { rings: [model.bodies[0], model.bodies[1]], peg: model.peg, floor: model.floor, pieces: model.pieces });
+  } catch (e) { model.dispose(); throw e; }
 }
 
 export interface AvbdTrialHooks {

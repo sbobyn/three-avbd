@@ -290,6 +290,23 @@ test('real Rapier trial (CPU): all piece counts complete, report records bands/l
     assert.deepEqual(report.source, { package: 'test' });
     assert.equal(report.rendering.measured, false);
     assert.deepEqual(report.cleanup, { disposed: true, error: null });
+    // Additive native-collider diagnostic at the same snapshots; analytic summaries above are unchanged.
+    assert.equal(report.timing.nativeContacts.available, true);
+    assert.equal(report.timing.nativeContacts.perSnapshotMs.length, 5);
+    for (const s of report.snapshots) {
+      assert.ok(s.nativeContacts.available, 'Rapier exposes the native query');
+      const n = s.nativeContacts;
+      assert.equal(n.totalQueries, pieces * pieces + 4 * pieces, 'every attached sector pair covered');
+      for (const p of n.pairs) {
+        if (p.pair === 'peg-floor') { assert.equal(p.exclusion, 'fixed-fixed'); continue; }
+        assert.equal(p.status, 'observed', `${p.pair}@${s.step}`);
+        assert.equal(p.queries, p.expectedQueries);
+        assert.ok(['contact-returned', 'no-returned-contact'].includes(p.result));
+        assert.ok(p.minReturnedDistance === null || Number.isFinite(p.minReturnedDistance));
+      }
+    }
+    assert.ok(report.snapshots[0].nativeContacts.available && report.snapshots[0].nativeContacts.pairs.every(p => p.result !== 'contact-returned'),
+      'authored step-0 pose returns no native contact');
     assert.deepEqual(JSON.parse(JSON.stringify(report)).steps, report.steps, 'JSON-serializable');
     assert.ok(!/\/Users\/|\/home\//.test(JSON.stringify(report)), 'no absolute machine paths');
   }
@@ -358,4 +375,29 @@ test('failed disposal timing remains unknown without masking successful resource
   assert.deepEqual(report.cleanup, { disposed: true, error: null });
   assert.equal(report.timing.disposeMs, null);
   assert.equal(fake.disposed(), 1);
+});
+
+test('native-contact diagnostic: AVBD unavailable with reason, separate timing, throwing query recorded and still disposed', async () => {
+  const { clock, spend } = fakeClock(), avbd = fakeEngine(spend, { gpu: true, kind: 'avbd' });
+  const a = await run(avbd, clock, { engine: 'avbd' });
+  assert.ok(a.snapshots.every(s => !s.nativeContacts.available && /AVBD has no native-collider/.test(s.nativeContacts.reason)));
+  assert.deepEqual(a.timing.nativeContacts, { available: false, totalMs: null, perSnapshotMs: [null, null, null, null, null] });
+  assert.ok(!JSON.stringify(a).includes('minReturnedDistance'), 'no missing AVBD value is compared with Rapier');
+
+  const { clock: c2, spend: s2 } = fakeClock(), rapier = fakeEngine(s2);
+  let calls = 0;
+  rapier.engine.observeNativeContacts = () => {
+    s2(4);
+    if (++calls === 2) throw new Error('query unsupported at /Users/someone/x.ts');
+    return { available: true, method: 'rapier Collider.contactCollider at current stored collider poses', prediction: 0, pieces: 32, totalQueries: 0, pairs: [], note: 'fake' };
+  };
+  const r = await run(rapier, c2, { engine: 'rapier' }, { observe: (p, rep) => { s2(3); return observeInterlocking(p, rep); } });
+  assert.equal(r.status, 'completed', 'a native diagnostic failure does not change the analytic trial outcome');
+  assert.deepEqual(r.snapshots[1].nativeContacts, { available: false, reason: 'native contact observation failed: query unsupported at <path>' });
+  assert.deepEqual(r.timing.nativeContacts, { available: true, totalMs: 20, perSnapshotMs: [4, 4, 4, 4, 4] });
+  assert.deepEqual(r.timing.observer.perSnapshotMs, [3, 3, 3, 3, 3], 'observer timing excludes the native query');
+  assert.equal(r.timing.cpuStep.totalMs, 240, 'CPU step timing excludes the native query');
+  assert.equal(calls, 5, 'snapshots only');
+  assert.equal(rapier.log.filter(e => e === 'step').length, 240, 'no extra stepping');
+  assert.equal(rapier.disposed(), 1);
 });

@@ -32,7 +32,7 @@ export async function createRapierInterlocking(pieces: RingPieces = 32) {
     });
     let disposed = false;
     return {
-      world, bodies, pieces, version: RAPIER.version(),
+      world, bodies, floor, peg, pieces, version: RAPIER.version(),
       step() { if (disposed) throw new Error('Study disposed'); world.step(); },
       push() { if (disposed) throw new Error('Study disposed'); bodies[1].applyImpulse({ x: INTERLOCKING.push[0], y: 0, z: 0 }, true); },
       poses() { return bodies.map(b => ({ position: b.translation(), rotation: b.rotation() })); },
