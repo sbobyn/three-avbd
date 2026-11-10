@@ -11,6 +11,10 @@ Read [breaking changes and migration](#breaking-changes-and-migration) before up
 
 ## Highlights
 
+- **CPU time accounting (current source).** Read-only `world.droppedTime` reports cumulative
+  seconds discarded by `update` at its existing catch-up clamp. No stepping policy change,
+  capability flag, GPU timer or readback; host-side omitted/clamped time is not included.
+
 - **Per-body gravity scale (current source).** Options/getter/setter, standard/SDF built-in
   integrator; default1,0 disables gravity only, negative reverses it. Reset/disable retain it;
   pools restore their template. Finite-f32 input/effective-product validation,16B per slot in

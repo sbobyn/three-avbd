@@ -160,7 +160,9 @@ The design and what's planned: [docs/API.md](API.md). Runnable examples are inde
 ## Per-body gravity scale
 
 Candidate source supports `gravityScale` on box, sphere and hull options. In your small
-consumer, change only the ball's value to see a floatier or reversed-gravity mechanic:
+consumer, replace the existing ball creation line to try a floatier mechanic. Try each
+setter separately while the simulation is running; running all calls before the first step
+would leave only the final value:
 
 ```ts
 const ball = world.addSphere({ radius: 0.5, position: [0, 7, 0], gravityScale: 0.35 })!;
@@ -288,6 +290,15 @@ Cross-device bitwise determinism is not promised. The SDF interface is experimen
 storage pools use standard collisions, and a convex hull is not an arbitrary concave mesh.
 See [API and architecture](API.md), [queries](QUERIES.md),
 [SDF contracts](SDF_WORLD.md) and [migration](RELEASE_0.4.md).
+
+### Timing diagnostics
+
+`world.update(seconds)` retains its existing fixed-step and `maxSubsteps` policy. Read
+`world.droppedTime` for the cumulative seconds discarded by its catch-up clamp, starting at 0
+per World. Simulated time and the at-most-one-dt carried remainder are excluded. If your app
+caps a frame delta before passing it to `update`, that earlier loss is invisible to the World;
+keep host-clock accounting separately if needed. The value is not GPU time or a speed score.
+It has no reset setter; creating a new World starts a new total, and body reset does not.
 
 ## Troubleshooting and updates
 
