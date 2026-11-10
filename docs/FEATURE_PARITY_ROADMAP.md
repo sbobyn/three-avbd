@@ -870,7 +870,7 @@ inference; any change to the 2D oracle or to reference defaults.
 F1's bounded public-World probe delivered in PR88/main31bb39b; its actual scope and limits
 are in [WORLD_DETERMINISM](WORLD_DETERMINISM.md). F2's [aux design](BODY_AUX_DESIGN.md) and
 G1's first gravity-scale slice include115affected real-adapterGPU checks, focusedCPU checks
-and public guidance. G1 remains open for damping; dropped-time reporting has a separate bounded implementation. B1 has a reviewed/fixed internal draft codec and corruption/recovery fixtures. It is not a
+and public guidance. G1 now has damping, gravity scale and dropped-time implementations; dated hardware/consumer evidence below qualifies their support. B1 has a reviewed/fixed internal draft codec and corruption/recovery fixtures. It is not a
 package export, recorder or stable cache contract; v1/export/consumer acceptance remains open.
 Tracking, implemented features, consumer adoption, cleanup and release acceptance are separate.
 
@@ -880,3 +880,10 @@ runner and a [dated bounded observation](measurements/qualification-small-2026-1
 One default-margin sphere-pile contact-depth failure is retained under G7/STE-3334; all rest-grid
 verdicts remain unknown because the window is short. S1 remains partial: broad qualification,
 World-level paths and target devices are not covered. No default or performance claim changed.
+
+
+G1's velocity-damping slice reuses the private auxiliary record and preserves default-zero
+behavior and exported custom-solve source. The [API/units/lifecycle contract](API.md#per-body-velocity-damping)
+and [small consumer exercise](USER_GUIDE.md#per-body-velocity-damping) are current source only.
+Focused M4 Max standard/SDF/free-body/default/lifecycle tests passed; other devices, contact-heavy
+quality, physical correctness and release acceptance remain separate from feature delivery.

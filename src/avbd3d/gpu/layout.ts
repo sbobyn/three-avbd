@@ -33,7 +33,8 @@ fn bodyCold(i: u32) -> bool { return (lifecycleBits(bodies[i].initialPos.w) & 4u
 /**
  * @internal Per-body auxiliary record (docs/BODY_AUX_DESIGN.md): one vec4f per body slot in its
  * own buffer, bound only by warmStartBodies (binding 9 of the small integrate layout). x: gravity
- * scale (default 1), y, z: reserved for damping (written 0, unread), w: reserved (0). Not exported
+ * scale (default 1), y, z: linear and angular damping rates (1/s, default 0; dynamic bodies only),
+ * w: reserved (0). Not exported
  * from three-avbd/advanced: the record may widen before restitution, sensors and CCD settle.
  */
 export const BODY_AUX_FLOATS = 4;

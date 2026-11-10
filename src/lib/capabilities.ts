@@ -29,6 +29,8 @@ export interface WorldCapabilities extends DeviceCapabilities {
   readonly sensors: false;
   /** Body gravityScale on built-in solve shaders, independent of the collision backend. */
   readonly gravityScale: boolean;
+  /** Body damping on built-in solve shaders, independent of the collision backend (as gravityScale). */
+  readonly damping: boolean;
 }
 
 /** @internal Pure backend decision, also used for CPU limit-boundary tests. */
@@ -40,6 +42,7 @@ export function worldCapabilities(device: DeviceCapabilities, backend: WorldCapa
     boxes: backend !== 'custom', spheres: backend !== 'custom', sdfFields: backend === 'sdf',
     capsules: false, compounds: false, sensors: false,
     gravityScale: !customShaders && bodyAux,
+    damping: !customShaders && bodyAux,
   });
 }
 

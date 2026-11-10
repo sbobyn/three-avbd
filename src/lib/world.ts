@@ -9,7 +9,7 @@ import type { SdfCollisionBridge } from '../avbd3d/gpu/sdf-bridge.ts';
 import * as THREE from 'three/webgpu';
 import { releaseStorageAttribute } from './storage.ts';
 import { bodyFields, copyBodyPatch, observedField, assignBodyPatch, type BodyField, type BodyPatch } from './body-commands.ts';
-import { checkBodyMaterial, checkBodySize, checkDelta, checkDt, checkEffectiveGravity, checkGravity, checkGravityScale, checkIterations, checkMaxSubsteps, checkRadius } from './world-validation.ts';
+import { checkBodyMaterial, checkBodySize, checkDamping, checkDelta, checkDt, checkEffectiveDamping, checkEffectiveGravity, checkGravity, checkGravityScale, checkIterations, checkMaxSubsteps, checkRadius, type BodyDamping, type DampingOptions } from './world-validation.ts';
 import { deviceCapabilities, worldCapabilities, checkRequiredHulls, type WorldCapabilities } from './capabilities.ts';
 import { BodyReset } from '../avbd3d/gpu/body-reset.ts';
 import { BodyDisabledError, BodyLifecycleError, UnsupportedLifecycleError, checkEnabled, resetBodyPatch } from './lifecycle.ts';
@@ -99,6 +99,14 @@ export interface BodyOptions extends BodyState {
    * keep it but do not fall.
    */
   gravityScale?: number;
+  /**
+   * Velocity damping rates (1/s), each default 0: every step a dynamic body's incoming linear and
+   * angular velocities are multiplied by exp(-rate × dt) before the step predicts its motion.
+   * Phenomenological decay, not a drag or fluid model. Finite as f32 within [0, 1000] (an API
+   * bound, not a stability claim), and rate × dt must be finite as f32. Fixed and kinematic bodies
+   * keep it but are not damped.
+   */
+  damping?: DampingOptions;
 }
 
 export interface BoxOptions extends BodyOptions {
@@ -280,6 +288,8 @@ export interface Reservation {
   readonly hull: HullShape | null;
   /** Its template's gravity scale: World.gravity refuses a value its leases could not fall with. */
   readonly gravityScale: number;
+  /** Its template's larger damping rate: World.dt refuses a step its leases could not decay over. */
+  readonly dampingRate: number;
   state: 'active' | 'disposed';
 }
 
@@ -310,6 +320,7 @@ export class Body {
   addedAt = 0;
   private reports: boolean;
   private scale: number;
+  private dampingPair: BodyDamping;
   private groups: number;
   private mask: number;
   private isFixed: boolean;
@@ -345,6 +356,8 @@ export class Body {
     this.mask = options.collidesWith ?? 0xffffffff;
     this.reports = options.reportContacts ?? false;
     this.scale = options.gravityScale ?? 1;
+    // A fresh frozen copy (World and BodyPool pass their own checked copies; nothing aliases it)
+    this.dampingPair = Object.freeze({ linear: options.damping?.linear ?? 0, angular: options.damping?.angular ?? 0 });
     this.state = {
       position: options.position ?? [0, 0, 0],
       rotation: options.rotation ?? [0, 0, 0, 1],
@@ -388,6 +401,20 @@ export class Body {
     this.world.assertLive('Body.setGravityScale');
     this.world.checkGravityScale(scale, 'Body.setGravityScale');
     this.scale = scale;
+    this.world.reaux(this);
+  }
+  /** Its damping rates (BodyOptions.damping), 1/s: a frozen pair, never the object it was given. */
+  get damping(): BodyDamping {
+    return this.dampingPair;
+  }
+  /**
+   * Set both damping rates, from the next step (contacts and warm starts are kept); allowed while
+   * disabled, kept by reset. Throws, changing nothing, unless both are given, each finite as f32
+   * within [0, 1000] 1/s with rate × dt finite as f32.
+   */
+  setDamping(damping: { linear: number; angular: number }): void {
+    this.world.assertLive('Body.setDamping');
+    this.dampingPair = this.world.checkDamping(damping, 'Body.setDamping', true);
     this.world.reaux(this);
   }
   /** Whether it reports its contacts (World.onContact), from the next step. */
@@ -692,7 +719,7 @@ export class World {
   private readonly contactOptions: { pairs: number; events: number };
   /** Bodies whose collision groups go to the GPU at the next step (every new body, so a reused slot's are reset). */
   private readonly refilters = new Set<number>();
-  /** Slots whose aux record (gravity scale) goes to the GPU next flush: their occupant's, or the default. */
+  /** Slots whose aux record (gravity scale, damping) goes to the GPU next flush: their occupant's, or the default. */
   private readonly reauxes = new Set<number>();
   /** Fixed bodies moved (moveTo) since the last step, and those still sliding there (steps left). */
   private readonly moves = new Set<Body>();
@@ -854,7 +881,10 @@ export class World {
     return this.solver.params.dt;
   }
   set dt(dt: number) {
-    this.solver.params.dt = checkDt(dt);
+    checkDt(dt);
+    // Every damped body's (and pooled template's) decay exponent stays finite as f32, or nothing changes
+    checkEffectiveDamping(this.maxDampingRate(), dt, 'World.dt');
+    this.solver.params.dt = dt;
   }
   get iterations(): number {
     return this.solver.params.iterations;
@@ -1035,6 +1065,21 @@ export class World {
     return scale as number;
   }
 
+  /** @internal A damping pair a body of this World may take now (checked and copied, before any change). */
+  checkDamping(value: unknown, what: string, full = false): BodyDamping {
+    const pair = checkDamping(value, what, full);
+    checkEffectiveDamping(Math.max(pair.linear, pair.angular), this.solver.params.dt, what);
+    return pair;
+  }
+
+  /** The largest damping rate a live body or an active pool's template has (0 at least: the default). */
+  private maxDampingRate(): number {
+    let most = 0;
+    for (const body of this.slots) if (body?.alive) most = Math.max(most, body.damping.linear, body.damping.angular);
+    for (const reservation of this.reservations) if (reservation.state === 'active') most = Math.max(most, reservation.dampingRate);
+    return most;
+  }
+
   /** The largest |gravity scale| a live body or an active pool's template has (1 at least: the default). */
   private maxGravityScale(): number {
     let most = 1;
@@ -1052,7 +1097,8 @@ export class World {
     size = checkBodySize(size, what);
     checkBodyMaterial(options, what);
     if (options.gravityScale !== undefined) this.checkGravityScale(options.gravityScale, what);
-    options = { ...options, ...copyBodyPatch(options) } as BodyOptions;
+    const damping = this.checkDamping(options.damping, what);
+    options = { ...options, ...copyBodyPatch(options), damping } as BodyOptions;
     // A removed body's slot first, else the next one past the end (past any reserved tail)
     const index = this.free.length ? this.free[this.free.length - 1] : this.solver.bodyCount + this.appends.length;
     if (index >= this.maxBodies) return null;
@@ -1109,9 +1155,10 @@ export class World {
    * @internal Reserve `capacity` slots (free holes first, then the tail) and pin `hull`, all or
    * nothing, before any body or ID exists. Ordinary adds never take reserved slots.
    */
-  reserveBodies(capacity: number, hull: HullShape | null, gravityScale = 1): Reservation | ReserveFailure {
+  reserveBodies(capacity: number, hull: HullShape | null, gravityScale = 1, dampingRate = 0): Reservation | ReserveFailure {
     this.assertLive('BodyPool.create');
     this.checkGravityScale(gravityScale, 'BodyPool.create');
+    this.checkDamping({ linear: dampingRate }, 'BodyPool.create');
     if (!this.fixed) return 'fixed-storage-required';
     if (this.sdfState !== 'off' || this.solver.activeCollisionBackend || this.solver.customShaders) return 'unsupported-backend';
     if (hull && !this.solver.hulls) return 'resource-limit';
@@ -1127,7 +1174,7 @@ export class World {
       indices.push(this.solver.bodyCount + this.appends.length);
       this.appends.push(null);
     }
-    const reservation: Reservation = { capacity, indices: Object.freeze(indices), vacant: [...indices].reverse(), live: new Set(), hull, gravityScale, state: 'active' };
+    const reservation: Reservation = { capacity, indices: Object.freeze(indices), vacant: [...indices].reverse(), live: new Set(), hull, gravityScale, dampingRate, state: 'active' };
     for (const index of indices) {
       this.owners[index] = reservation;
       // A hole's parking write (if any) becomes the vacant record
@@ -1169,8 +1216,9 @@ export class World {
     if (this.bodyIds.remaining < 1) return 'id-exhausted';
     // (World.gravity keeps the reservation's template scale valid; checked again before an ID is taken)
     if (options.gravityScale !== undefined) this.checkGravityScale(options.gravityScale, 'BodyPool.tryAcquire');
+    const damping = this.checkDamping(options.damping, 'BodyPool.tryAcquire');
     const index = reservation.vacant[reservation.vacant.length - 1];
-    const body = new Body(this, index, shape, [size[0], size[1], size[2]], { ...options, enabled: true }, publicHull);
+    const body = new Body(this, index, shape, [size[0], size[1], size[2]], { ...options, damping, enabled: true }, publicHull);
     reservation.vacant.pop();
     body.solverHull = reservation.hull ?? publicHull;
     body.owner = reservation;
@@ -1591,7 +1639,7 @@ export class World {
     if (body.alive) this.refilters.add(body.index);
   }
 
-  /** @internal Body.setGravityScale. */
+  /** @internal Body.setGravityScale and Body.setDamping. */
   reaux(body: Body): void {
     assertOwner(this, body);
     if (body.alive) this.reauxes.add(body.index);
@@ -1692,9 +1740,15 @@ export class World {
       this.refilters.clear();
     }
     if (this.reauxes.size) {
-      // A slot's occupant's scale, or the default for a vacant or parked slot (no previous value leaks)
+      // A slot's occupant's scale and damping, or the defaults for a vacant or parked slot (no previous value leaks)
       const list = [...this.reauxes].sort((x, y) => x - y);
-      this.solver.setBodyAux(list, list.map(index => { const b = this.slots[index]; return b?.alive ? b.gravityScale : 1; }));
+      const occupant = (index: number) => { const b = this.slots[index]; return b?.alive ? b : null; };
+      this.solver.setBodyAux(
+        list,
+        list.map(index => occupant(index)?.gravityScale ?? 1),
+        list.map(index => occupant(index)?.damping.linear ?? 0),
+        list.map(index => occupant(index)?.damping.angular ?? 0),
+      );
       this.reauxes.clear();
     }
     if (this.pendingJoints.length) {

@@ -23,7 +23,7 @@ import {
   BODY_DIRTY, BODY_DISABLED, BODY_COLD, ARGS_ITEMS_3D, B_ANGVEL, B_INERTIAL_POS, B_INERTIAL_ROT, B_INITIAL_POS, B_INITIAL_ROT, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS,
   C_CLASHING_COLORS, C_MANIFOLDS, C_TAIL_BODIES, CONTACT_WORDS, FLAG_FACE_BIAS, FLAG_SPARSE_COLORS, FLAG_MASS_PENALTY, FLAG_MATCH_NEAREST, FLAG_REUSE_CONTACTS, FLAG_REUSE_MANIFOLDS, FLAG_START_AT_REST, J_C0_ANG, J_C0_LIN, J_LAM_ANG, K_LAM, K_PEN, K_RA, K_RB, M_GEO, MANIFOLD_WORDS, SDF_ROLLING_BIT, SPARSE_COLOR_START, STICK_BIT,
   J_BREAK_BEND, J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, J_REST, J_REST_START, J_YIELD, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_HULL, SHAPE_SAIL, SHAPE_SPHERE, T_JOINT, T_SPRING,
-  TOPOLOGY_ACCESSORS_3D, A_GRAVITY_SCALE, BODY_AUX_BINDING, BODY_AUX_DEFAULT, BODY_AUX_FLOATS,
+  TOPOLOGY_ACCESSORS_3D, A_ANGULAR_DAMPING, A_GRAVITY_SCALE, A_LINEAR_DAMPING, BODY_AUX_BINDING, BODY_AUX_DEFAULT, BODY_AUX_FLOATS,
 } from './layout.ts';
 import { hullOf, isSail, isSphere, type HullShape } from '../shapes.ts';
 import { rotate, vec3 } from '../ref/math.ts';
@@ -1717,32 +1717,43 @@ export class GpuSolver3D {
   }
 
   /**
-   * @internal Per-body gravity scale (aux.x): body `indices[k]` falls with `gravity * scales[k]`
-   * from the next step. Uploads one f32 per body (runs of consecutive slots in one write); does
-   * not invalidate manifold reuse. The caller validates the values (World: finite as f32, within
-   * [-1000, 1000], and a finite product with gravity). Refused under custom shaders, whose solve
-   * module may ignore the record.
+   * @internal Per-body gravity scale (aux.x) and, optionally, damping rates (aux.y linear, aux.z
+   * angular, 1/s): body `indices[k]` falls with `gravity * scales[k]` and, if dynamic, its velocities
+   * decay by exp(-rate dt) per step, from the next step. With both rate arrays, every write is the
+   * whole record (scale, linear, angular, 0), so all three lanes are set together. Without them
+   * (older callers) a single slot's write sets the scale lane only and a run's whole records hold
+   * rates 0, as before. Runs of consecutive slots go in one write; manifold reuse is kept. All
+   * inputs are checked before any write (finite as f32; rates at least 0); the caller validates
+   * the API bounds (World: scale within [-1000, 1000], rates within [0, 1000], finite products with
+   * gravity and dt). Refused under custom shaders, whose solve module may ignore the record.
    */
-  setBodyAux(indices: ArrayLike<number>, scales: ArrayLike<number>): void {
+  setBodyAux(indices: ArrayLike<number>, scales: ArrayLike<number>, linear?: ArrayLike<number>, angular?: ArrayLike<number>): void {
     if (this.customShaders || !this.integrateGroup) throw new Error('GpuSolver3D.setBodyAux: per-body gravity scale requires the built-in solve shaders');
     if (indices.length !== scales.length) throw new Error('GpuSolver3D.setBodyAux: one scale per index');
+    if ((linear === undefined) !== (angular === undefined)) throw new Error('GpuSolver3D.setBodyAux: pass both damping rate arrays or neither');
+    const rates = linear !== undefined && angular !== undefined;
+    if (rates && (linear.length !== indices.length || angular.length !== indices.length)) throw new Error('GpuSolver3D.setBodyAux: one damping pair per index');
+    const rate = (r: number) => typeof r === 'number' && Number.isFinite(Math.fround(r)) && r >= 0;
     for (let k = 0; k < indices.length; k++) {
       const i = indices[k];
       if (!Number.isInteger(i) || i < 0 || i >= this.bodyCapacity) throw new Error(`GpuSolver3D.setBodyAux: slot ${i} is outside the body capacity`);
       if (!Number.isFinite(Math.fround(scales[k]))) throw new Error('GpuSolver3D.setBodyAux: scales must be finite (as f32)');
+      if (rates && !(rate(linear[k]) && rate(angular[k]))) throw new Error('GpuSolver3D.setBodyAux: damping rates must be finite (as f32) and at least 0');
     }
     const stride = BODY_AUX_FLOATS * 4;
     for (let k = 0; k < indices.length; ) {
       let e = k + 1;
       while (e < indices.length && indices[e] === indices[e - 1] + 1) e++;
-      if (e - k === 1) {
+      if (e - k === 1 && !rates) {
         this.device.queue.writeBuffer(this.auxBuffer, indices[k] * stride + A_GRAVITY_SCALE * 4, new Float32Array([scales[k]]));
       } else {
-        // Whole records for a run: the reserved lanes stay at their defaults
+        // Whole records for a run: the reserved lane (and rates, when not given) at their defaults
         const f = new Float32Array((e - k) * BODY_AUX_FLOATS);
         for (let i = k; i < e; i++) {
-          f.set(BODY_AUX_DEFAULT, (i - k) * BODY_AUX_FLOATS);
-          f[(i - k) * BODY_AUX_FLOATS + A_GRAVITY_SCALE] = scales[i];
+          const at = (i - k) * BODY_AUX_FLOATS;
+          f.set(BODY_AUX_DEFAULT, at);
+          f[at + A_GRAVITY_SCALE] = scales[i];
+          if (rates) { f[at + A_LINEAR_DAMPING] = linear[i]; f[at + A_ANGULAR_DAMPING] = angular[i]; }
         }
         this.device.queue.writeBuffer(this.auxBuffer, indices[k] * stride, f);
       }

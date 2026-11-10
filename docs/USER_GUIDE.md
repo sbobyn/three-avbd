@@ -183,8 +183,38 @@ unsupported for per-body scaling. Standard and experimental SDF paths have bound
 checks; no M1/GTX1080 or performance claim follows.
 
 This is current source, not registry0.3.0. Rebuild/repack deliberately using the setup recipe
-before trying it in your own consumer. Damping, restitution, sleeping and CCD remain separate
+before trying it in your own consumer. Restitution, sleeping and CCD remain separate
 unsupported features. [API and data flow](API.md#per-body-gravity-scale).
+
+## Per-body velocity damping
+
+In the existing small crate-and-ball consumer, replace the ball's creation line:
+
+```ts
+const ball = world.addSphere({
+  radius: 0.5, position: [0, 7, 0], velocity: [2, 0, 0],
+  angularVelocity: [0, 0.5, 0], damping: { linear: 1, angular: 0.2 },
+})!;
+// Later, while running: turn decay off, or set another complete pair.
+ball.setDamping({ linear: 0, angular: 0 });
+console.log(ball.damping, world.capabilities.damping);
+```
+
+Try the creation setting first, then call the setter separately while it is running.
+Rates are in 1/s: rate 1 leaves about 37% of an incoming free velocity after one second.
+The predictor applies `exp(-rate * dt)` each step; ongoing gravity/contacts still affect motion.
+This is useful for an art-directed drifting or spinning prop, not air/fluid simulation.
+The default is 0 for each rate; fixed/kinematic motion is never damped. To isolate decay,
+use a free body with `gravityScale: 0` and no contacts, then restore gravity for the mechanic.
+
+Creation may omit a component (0), but `setDamping` requires both. Nonnegative finite-f32
+rates are capped at 1000; their product with `world.dt` must stay finite. Invalid pairs,
+misspelled keys and an overflowing future `dt` throw before mutation. The getter is frozen
+and owns its data. Reset/disable keep the pair, pools restore their template for every lease,
+and dispose/recreate remains the normal way to start a new World. Standard and experimental
+SDF integrators have focused M4 Max checks; custom solve shaders do not support damping.
+See [API/units/limits](API.md#per-body-velocity-damping). Rebuild/repack current source using
+[setup](SETUP.md#fresh-threejs-consumer); registry0.3.0 does not contain this API.
 
 ## Capture poses and play them back
 
