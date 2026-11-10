@@ -1,6 +1,9 @@
 # Startup, reload and reset profiling: specification (STE-3003)
 
-Status: **specification only, 2026-11-10**. Nothing here has been measured. Source read at
+Status: **diagnostic implemented and hardware-screened, 2026-11-10**; see
+[current observations and decision](#14-hardware-attribution-and-decision--2026-11-10).
+Sections 1–10 retain the pre-measurement specification, not current acceptance.
+No application cache or pipeline-concurrency optimization was implemented. Planning source read at
 `e3552bb` (branch `night/ste-3003-startup-20261110`); installed three 0.187.0, webgpu (Dawn
 binding) 0.6.1, Node 25.2.1, TypeScript 5.9.3, Vite 8.3.6.
 
@@ -487,3 +490,127 @@ Browser profiles stayed visible and no user data/cache was cleared. QA port5321 
 and left untouched; a short-lived server on5322 was used and stopped, and own tabs closed.
 The original live5317/5318 sources/processes remain preserved. No browser restart or production
 load-time, target-device, cache-hit or performance-winner claim is made.
+
+
+## 13. getCompilationInfo attribution and page lifecycle — 2026-11-10 (CPU-verified only)
+
+Closes the section 12 attribution gap. Additive to schema `v1`: reports gain
+`deviceCalls.<window>.compilationInfo` and `environment.preloadSdf` (browser); nothing existing
+is renamed or removed, so earlier private reports stay readable and a consumer that ignores the new
+field is unaffected. **No GPU, browser or rendering run was made for this slice**; whether a native
+or Chrome `GPUShaderModule` accepts an own-property shadow is therefore unverified (the report says
+so itself when it does not: see unavailable, below).
+
+**What `compilationInfo` is.** For every `GPUShaderModule` created by the instrumented probe
+device while hooks are installed, `getCompilationInfo` is shadowed by an own property on that module
+instance (no Proxy, never the prototype or another device's modules). Per window it records:
+
+| Field | Meaning |
+|---|---|
+| `requests` | calls made while the window was open, including synchronous throws |
+| `requestToSettleMs[]` | raw wall from the call to the observer callback of its promise (up to one microtask turn later), requests *issued in this window* that settled before it ended, in request order |
+| `unsettledAtEnd` | requests issued in this window still pending at `end()` |
+| `rejected`, `syncThrown` | rejected promises; calls whose original threw synchronously |
+| `settledUnmeasured` | settled but the clock failed or went backwards: interval unavailable, never 0 |
+| `unobserved` | returned something that is not a thenable, or the observer could not be attached |
+| `maxInFlight` | highest concurrent info requests, starting at those already in flight at window open |
+| `messageCounts` | `error`/`warning`/`info` message types in fulfilled results that settled before the window ended; no message text, source or position is read or exported |
+
+It is the **API request→settle wall**. It is not shader or binary compile time, not a cache signal,
+and is kept apart from `asyncRequestToSettleMs` (pipeline requests) and `shaderModuleCallWallMs`
+(synchronous create call). It is not summed with them; windows overlap (`modelCreate` ⊃ `sdfEnable`).
+Hook installation happens after the timed `createShaderModule` call returns, so it is not in
+`shaderModuleCallWallMs`, but it is inside the caller's real wall. An ended window's snapshot never
+changes (`end()` is idempotent; late settles are ignored), and a request issued before a window opened
+is not that window's request. Caller-visible behaviour is unchanged: the original `this`, arguments,
+promise object, fulfilment value and rejection error identity are passed through, and a synchronous
+throw propagates as the same object. The observer's handlers never throw, so it derives no rejecting
+promise; as with the pipeline observer, attaching a handler marks the original promise as handled, so
+an application that ignored a rejected `getCompilationInfo` would no longer see an unhandled-rejection
+report while instrumented. The uninstrumented companion has no such effect and is still required.
+
+**Unavailable, not zero.** If any module cannot be shadowed (sealed, frozen, non-configurable prior
+own property, or a hook that is not visible after definition), that module's partial hook is rolled
+back, no exception reaches the World, and every window that ends afterwards reports
+`compilationInfo: { value: null, reason }`. All other counters and timings remain usable. Windows
+that already ended keep their numbers. A prior own method or accessor on a module is saved and put
+back exactly (a getter is read once when the hook is installed, as for device methods).
+`restore()` puts module hooks back first, then the queue and device methods, attempts every step and
+throws one combined error if any could not be restored. The hooked-module list holds strong references
+until `restore()`: bounded to the 4-cycle probe, not a general tracing facility.
+
+**Page lifecycle.** The browser page now records `visibilitychange` through `recordVisibility`
+(core, CPU-tested): the listener is removed and the record deep-frozen after teardown, immediately
+before publication, so switching tabs after a completed run cannot mark it "changed during run" and
+`window.__startupProfile` keeps no reference to a live object. Real during-run events (teardown
+included) are kept. `statusOf` takes an optional `teardownErrors` and a regression fixture pins that
+`completed` cannot coexist with GPU errors, device loss or teardown errors (validation already
+rejected it); the hosts' own final-status lines are unchanged.
+
+**`?preloadSdf=1` (dev-only attribution arm, default off).** Before model creation, after renderer
+initialisation, the page times `import('../src/avbd3d/gpu/sdf-bridge.ts')`
+(`environment.preloadSdf.importMs`) and states in `limits` that this *moves* the lazy import out of
+every cycle window; `sdf-bridge` statically pulls in `sdf-pass` and `sdf-broadphase`. It is not an
+end-to-end, faster-startup or cold-cache result; compare only with a same-session default run of the
+same build, and never merge the two arms' windows. No library, model or default changed; the Node
+script has no such arm.
+
+Parent commands are unchanged from section 11; add the page variant only if the attribution needs it:
+`/examples/startup-profile.html?label=nav1-preload&preloadSdf=1`. Read `compilationInfo.requestToSettleMs`
+and `maxInFlight` for `cycleWall`'s first-on-device `modelCreate`, then look at `sdfEnable` in the
+same cycle; if `compilationInfo` is `unavailable`, the reason says the browser would not take the hook.
+No speedup, cache-benefit or C1 conclusion follows from this slice.
+
+## 14. Hardware attribution and decision — 2026-11-10
+
+Observed source: `t3/startup-profiling` at `e03fc38d885bf12df3f22117ac0e706dad20bf9c`
+plus the four-file module-info/visibility/preload refinement in section 13. This is
+a dirty diagnostic candidate, not the published artifact or a pristine benchmark.
+The solver, model and default settings were unchanged. Every run used four cycles,
+three steps per cycle, the same tiny interlocking scene and no push.
+
+Node 25.2.1 / Dawn 0.6.1 identified **Apple M4 Max**, `apple / metal-3`,
+`apple-m4-max`, fallback false. The browser's actual WebGPU adapter reported
+`apple / metal-3`, fallback false; documents remained visible without during-run
+visibility changes. Instrumentation installed on both hosts, including module
+methods. All five new runs completed with no reported GPU or teardown errors.
+
+| Host / arm | First `worldCreate` ms | First `sdfEnable` ms | First `cycleWall` ms | Recreate `sdfEnable` ms | Recreate `cycleWall` ms |
+|---|---:|---:|---:|---:|---:|
+| Node, instrumented | 66.18 | 40.35 | 123.99 | 9.19–9.41 | 19.37–19.73 |
+| Node, uninstrumented companion | 52.35 | 42.52 | 113.74 | 13.07–13.87 | 22.68–25.08 |
+| Browser, instrumented default | 2.00 | 52.10 | 65.70 | 3.50–4.60 | 11.10–11.30 |
+| Browser, instrumented preload | 1.80 | 50.50 | 64.10 | 3.00–4.10 | 9.10–10.40 |
+| Browser, uninstrumented companion | 1.60 | 53.10 | 66.60 | 3.70–5.10 | 10.00–11.30 |
+
+These are raw single-sequence diagnostic observations, not medians, a controlled
+instrumentation-overhead estimate or an optimization speedup. The preload arm
+separately spent **17.8 ms** importing the SDF graph; it moved work outside the cycle.
+The first of six module-info requests settled after **5.7 ms** in the default
+browser arm and **34.6 ms** in the preload arm, with the other five at 0.4–1.0 ms.
+The ten async pipeline requests were serial (max in flight 1), individually
+0.4–4.2 ms default and 0.4–4.4 ms preload. These API intervals are not compile time;
+their change does not attribute the remaining setup wall to any one cause.
+
+**Decision:** do not add C1 concurrency or C2/C3 pipeline reuse on this evidence.
+Recreate windows are below the frozen 50 ms screen. First-device observed async
+pipeline waits and module-info waits also fail its 50 ms requirement; the whole
+`sdfEnable` window alone cannot justify a pipeline optimization. Native first-world
+creation exceeds 50 ms but is a new-device path, not evidence for same-device reuse.
+This does not rule out benefits in another scene/device or a production bundle.
+No custom shader/pipeline cache, cache-hit signal, cold-cache test or reload-speed
+promise was implemented. The earlier reload observations in section 12 remain valid
+only for their recorded source and session. No browser relaunch, cache clearing,
+software rendering, other-device qualification or production asset profiling ran.
+
+Raw reports (`node2-info-*`, `browser-info-{default,preload,noinst}`), the earlier
+screen, logs and source manifests are preserved in the existing private recovery
+area; they are not uploaded or included in the package. The dev-only probe is not
+a new gallery page. Repeat it only for a material startup complaint or changed
+source/device; production profiling and M1/GTX 1080 evidence remain open.
+
+API guardrails checked against the [WebGPU specification](https://www.w3.org/TR/2026/CRD-webgpu-20260915/):
+[compilation information](https://www.w3.org/TR/2026/CRD-webgpu-20260915/#gpucompilationinfo)
+is diagnostic output, and [default-layout compatibility](https://www.w3.org/TR/2026/CRD-webgpu-20260915/#bind-group-layout-compatibility)
+is pipeline-specific. These APIs provide no application binary-cache serialization
+contract. The measurements above do not reveal an implementation's internal cache.

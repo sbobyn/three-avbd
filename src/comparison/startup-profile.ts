@@ -24,6 +24,8 @@ export const STARTUP_LIMITS = [
   'Device-call counters identify requests and request variants, not driver or browser cache hits',
   'Dev-server asset timings reflect an unbundled module graph and the HTTP cache only',
   'M4 Max development-machine figures do not transfer to the M1 / GTX 1080 target',
+  'compilationInfo is the getCompilationInfo() API request→settle wall (observed in a promise callback), never shader or binary compile time',
+  'compilationInfo covers only modules created by the instrumented device while hooks are installed; observing a promise marks a rejection as handled',
 ];
 
 // ---- device-call instrumentation --------------------------------------------------------------------
@@ -46,6 +48,34 @@ export interface DeviceCalls {
   distinctModuleSources: number; distinctPipelineKeys: number;
   buffersCreated: number; bufferBytesCreated: number;
   queueWrites: number; queueWriteBytes: number;
+  /** getCompilationInfo() requests on probe-created shader modules, or why they are not observable. */
+  compilationInfo: CompilationInfoCalls | Unavailable;
+}
+
+/**
+ * getCompilationInfo() API request→settle wall. NOT shader compile time, binary compile time or a cache
+ * signal: it is the wall between the call and the observer callback of its promise (up to a microtask
+ * turn later), kept separate from createComputePipelineAsync intervals and from shaderModuleCallWallMs.
+ * Message text, source and positions are never exported.
+ */
+export interface CompilationInfoCalls {
+  /** Calls made while the window was open, including ones that threw synchronously. */
+  requests: number;
+  /** Calls whose original method threw synchronously (same error delivered to the caller). */
+  syncThrown: number;
+  /** Calls that returned something this probe could not observe (not a thenable, or the observer could not be attached). */
+  unobserved: number;
+  /** Raw wall of requests issued in this window that settled with a measured interval before it ended, in request order. */
+  requestToSettleMs: number[];
+  /** Requests issued in this window that settled before it ended but whose interval the clock could not give. */
+  settledUnmeasured: number;
+  /** Requests issued in this window still pending when it ended (absent from the lists above). */
+  unsettledAtEnd: number;
+  rejected: number;
+  /** Highest concurrent info requests seen while open; starts at the number already in flight at open. */
+  maxInFlight: number;
+  /** Message types in fulfilled results of requests that settled before the window ended. */
+  messageCounts: { error: number; warning: number; info: number };
 }
 
 export interface DeviceWindow { end(): DeviceCalls }
@@ -57,8 +87,15 @@ const DEVICE_METHODS = ['createShaderModule', 'createComputePipeline', 'createCo
   'createRenderPipelineAsync', 'createBindGroupLayout', 'createPipelineLayout', 'createBuffer'] as const;
 const QUEUE_METHODS = ['writeBuffer'] as const;
 
+interface InfoState {
+  requests: number; syncThrown: number; unobserved: number; rejected: number; maxInFlight: number;
+  messageCounts: { error: number; warning: number; info: number };
+  settles: (number | null | undefined)[]; // request order; undefined while pending, null settled but unmeasured
+}
+
 interface WindowState {
-  calls: Omit<DeviceCalls, 'asyncRequestToSettleMs' | 'asyncUnsettledAtEnd' | 'distinctModuleSources' | 'distinctPipelineKeys'>;
+  calls: Omit<DeviceCalls, 'asyncRequestToSettleMs' | 'asyncUnsettledAtEnd' | 'distinctModuleSources' | 'distinctPipelineKeys' | 'compilationInfo'>;
+  info: InfoState;
   settles: (number | undefined)[]; // request order; undefined while pending
   sources: string[];               // references only; compared after the window closes
   pipelines: object[];             // descriptor references; keyed after the window closes
@@ -118,6 +155,8 @@ export function instrumentDevice(device: GPUDevice, now: () => number): Instrume
       targets.forEach(w => { w.calls.shaderModules++; if (typeof descriptor?.code === 'string') w.sources.push(descriptor.code); });
       const module = timed(() => original.apply(this, args), e => targets.forEach(w => { w.calls.shaderModuleCallWallMs += e; }));
       if (module && typeof module === 'object' && typeof descriptor?.code === 'string') sourceOf.set(module, descriptor.code);
+      // Outside the timed call: hooking never counts as module-create wall and never throws into the caller.
+      if (module && typeof module === 'object' && !restored) hookModule(module);
       return module;
     },
     createBindGroupLayout: original => function (this: unknown, ...args) { each(w => w.calls.bindGroupLayouts++); return original.apply(this, args); },
@@ -165,6 +204,87 @@ export function instrumentDevice(device: GPUDevice, now: () => number): Instrume
     }
     return result;
   };
+  // ---- getCompilationInfo on modules created by this device (hooks installed per module, restored first) ----
+  let restored = false;
+  let infoInFlight = 0;
+  const moduleHookFailures: string[] = []; // sanitised reasons; sticky: windows ending after one see no counters
+  const hooked: { target: object; prior: PropertyDescriptor | undefined; wrapper: Fn }[] = [];
+  const infoWrapper = (original: Fn): Fn => function (this: unknown, ...args) {
+    const targets = [...open];
+    targets.forEach(w => { w.info.requests++; });
+    let t0: number | undefined;
+    try { t0 = now(); } catch { /* clock failure: this request's interval is unmeasured, never 0 */ }
+    let result: unknown;
+    try { result = original.apply(this, args); } // a synchronous throw reaches the caller unchanged
+    catch (error) { targets.forEach(w => { w.info.syncThrown++; }); throw error; }
+    let then: unknown;
+    try { then = result && (typeof result === 'object' || typeof result === 'function') ? (result as { then?: unknown }).then : undefined; } catch { then = undefined; }
+    if (typeof then !== 'function') { targets.forEach(w => { w.info.unobserved++; }); return result; }
+    const slots = targets.map(w => { w.info.settles.push(undefined); return w.info.settles.length - 1; });
+    infoInFlight++;
+    each(w => { w.info.maxInFlight = Math.max(w.info.maxInFlight, infoInFlight); });
+    const settle = (rejected: boolean, value?: unknown) => {
+      infoInFlight--;
+      let elapsed: number | null = null;
+      try { const t1 = now(); if (t0 !== undefined && Number.isFinite(t1 - t0) && t1 - t0 >= 0) elapsed = t1 - t0; } catch { /* unmeasured */ }
+      let counts: { error: number; warning: number; info: number } | null = null;
+      if (!rejected) {
+        try {
+          const messages = (value as { messages?: ArrayLike<{ type?: unknown }> } | null)?.messages;
+          if (messages && typeof messages.length === 'number') {
+            counts = { error: 0, warning: 0, info: 0 };
+            for (let i = 0; i < messages.length; i++) { const type = messages[i]?.type; if (type === 'error' || type === 'warning' || type === 'info') counts[type]++; }
+          }
+        } catch { counts = null; }
+      }
+      targets.forEach((w, i) => {
+        if (!w.open) return; // a window that has ended keeps the snapshot it exported
+        if (rejected) w.info.rejected++;
+        w.info.settles[slots[i]] = elapsed;
+        if (counts) for (const k of ['error', 'warning', 'info'] as const) w.info.messageCounts[k] += counts[k];
+      });
+    };
+    // Observation only: the handlers never throw, so the derived promise never rejects; the caller still
+    // receives the original promise and, on rejection, its original error. Attaching a handler marks it handled.
+    try { (then as Fn).call(result, (value: unknown) => { settle(false, value); }, () => { settle(true); }); }
+    catch { // could not observe: the slots were the last entries (nothing ran in between)
+      infoInFlight--;
+      targets.forEach(w => { w.info.settles.pop(); w.info.unobserved++; });
+    }
+    return result;
+  };
+  function hookModule(module: object) {
+    let defined = false, prior: PropertyDescriptor | undefined, wrapper: Fn | undefined;
+    try {
+      const original = (module as Record<string, unknown>).getCompilationInfo;
+      if (typeof original !== 'function') return; // nothing callable to observe
+      prior = Object.getOwnPropertyDescriptor(module, 'getCompilationInfo');
+      wrapper = infoWrapper(original as Fn);
+      Object.defineProperty(module, 'getCompilationInfo', { value: wrapper, writable: true, configurable: true, enumerable: prior?.enumerable ?? false });
+      defined = true;
+      hooked.push({ target: module, prior, wrapper });
+      if ((module as Record<string, unknown>).getCompilationInfo !== wrapper) throw new Error('getCompilationInfo shadow not visible');
+    } catch (e) {
+      let reason = `getCompilationInfo could not be shadowed on a shader module: ${sanitizeMessage(e)}`;
+      if (defined) { // partially installed: take this module's hook back out now
+        const entry = hooked.pop()!;
+        try { restoreOne(entry); } catch (r) { hooked.push(entry); reason += `; ${sanitizeMessage(r)}`; }
+      }
+      moduleHookFailures.push(reason);
+    }
+  }
+  function restoreOne({ target, prior }: { target: object; prior: PropertyDescriptor | undefined }) {
+    if (prior) Object.defineProperty(target, 'getCompilationInfo', prior);
+    else if (!Reflect.deleteProperty(target, 'getCompilationInfo')) throw new Error('delete refused');
+  }
+  const restoreModules = () => {
+    const failures: string[] = [];
+    while (hooked.length) {
+      const entry = hooked.pop()!;
+      try { restoreOne(entry); } catch (e) { failures.push(sanitizeMessage(e)); }
+    }
+    if (failures.length) throw new Error(`module hook restore failed (${failures.length}: ${failures[0]})`);
+  };
   wrappers.createComputePipeline = syncPipeline('computePipelinesSync');
   wrappers.createRenderPipeline = syncPipeline('renderPipelinesSync');
   wrappers.createComputePipelineAsync = asyncPipeline('computePipelinesAsync');
@@ -202,28 +322,46 @@ export function instrumentDevice(device: GPUDevice, now: () => number): Instrume
     try { rollback(); } catch (r) { reason += `; ${sanitizeMessage(r)}`; }
     return { available: false, reason, window: () => ({ end: () => unavailable(reason) }), restore() {} };
   }
-  let restored = false;
   return {
     available: true,
     window(_name: string): DeviceWindow {
       const state: WindowState = { open: true, settles: [], sources: [], pipelines: [], calls: {
         shaderModules: 0, computePipelinesSync: 0, computePipelinesAsync: 0, renderPipelinesSync: 0, renderPipelinesAsync: 0,
         bindGroupLayouts: 0, pipelineLayouts: 0, autoLayoutPipelines: 0, syncPipelineCallWallMs: 0, shaderModuleCallWallMs: 0,
-        asyncRejected: 0, maxAsyncInFlight: inFlight, buffersCreated: 0, bufferBytesCreated: 0, queueWrites: 0, queueWriteBytes: 0 } };
+        asyncRejected: 0, maxAsyncInFlight: inFlight, buffersCreated: 0, bufferBytesCreated: 0, queueWrites: 0, queueWriteBytes: 0 },
+        info: { requests: 0, syncThrown: 0, unobserved: 0, rejected: 0, maxInFlight: infoInFlight, messageCounts: { error: 0, warning: 0, info: 0 }, settles: [] } };
       if (!restored) open.add(state);
+      let exported: DeviceCalls | undefined;
       return {
         end(): DeviceCalls {
+          if (exported) return exported; // a second call returns the first snapshot, never newer data
           open.delete(state);
+          state.open = false;
           const settled = state.settles.filter((v): v is number => v !== undefined);
           const snapshot = { ...state.calls, asyncRequestToSettleMs: settled, asyncUnsettledAtEnd: state.settles.length - settled.length };
+          const measured = state.info.settles.filter((v): v is number => typeof v === 'number');
+          const compilationInfo: CompilationInfoCalls | Unavailable = moduleHookFailures.length
+            ? unavailable(`${moduleHookFailures.length} shader module hook(s) failed, so getCompilationInfo requests are not fully observed: ${moduleHookFailures[0]}`)
+            : { requests: state.info.requests, syncThrown: state.info.syncThrown, unobserved: state.info.unobserved,
+              requestToSettleMs: measured, settledUnmeasured: state.info.settles.filter(v => v === null).length,
+              unsettledAtEnd: state.info.settles.filter(v => v === undefined).length, rejected: state.info.rejected,
+              maxInFlight: state.info.maxInFlight, messageCounts: { ...state.info.messageCounts } };
           // Value comparison happens only now, outside the timed window.
           const sourceIds = new Map<string, number>(), ids = new WeakMap<object, number>(), next = { id: 0 };
           const keys = new Set(state.pipelines.map(p => variantKey(p, sourceOf, sourceIds, ids, next)));
-          return { ...snapshot, distinctModuleSources: new Set(state.sources).size, distinctPipelineKeys: keys.size };
+          return exported = { ...snapshot, distinctModuleSources: new Set(state.sources).size, distinctPipelineKeys: keys.size, compilationInfo };
         },
       };
     },
-    restore() { if (restored) return; restored = true; open.clear(); rollback(); },
+    /** Module hooks first, then queue and device methods (reverse of acquisition). Every step is attempted. */
+    restore() {
+      if (restored) return;
+      restored = true; open.clear();
+      const failures: string[] = [];
+      try { restoreModules(); } catch (e) { failures.push(sanitizeMessage(e)); }
+      try { rollback(); } catch (e) { failures.push(sanitizeMessage(e)); }
+      if (failures.length) throw new Error(failures.join('; '));
+    },
   };
 }
 
@@ -426,8 +564,10 @@ export function probeSettings(metadata: Record<string, unknown> | null, cycles: 
     cycles, stepsPerCycle: STARTUP_STEPS_PER_CYCLE, push: false, instrument };
 }
 
-export function statusOf(cycles: readonly CycleRecord[], expected: number, gpuErrors: readonly string[], deviceLost: string | null = null): 'completed' | 'failed' {
-  return cycles.length === expected && cycles.every(c => !c.error && !c.disposeError) && gpuErrors.length === 0 && !deviceLost ? 'completed' : 'failed';
+/** `completed` only when every cycle ran clean and nothing (GPU error, device loss, teardown error) says otherwise. */
+export function statusOf(cycles: readonly CycleRecord[], expected: number, gpuErrors: readonly string[], deviceLost: string | null = null,
+  teardownErrors: readonly string[] = []): 'completed' | 'failed' {
+  return cycles.length === expected && cycles.every(c => !c.error && !c.disposeError) && gpuErrors.length === 0 && !deviceLost && teardownErrors.length === 0 ? 'completed' : 'failed';
 }
 
 export function sanitizeLabel(label: unknown): string {
@@ -492,13 +632,38 @@ export function validateStartupReport(report: unknown): string[] {
     }
     for (const name of Object.keys(c.phases ?? {})) if (!(SINGLE_PHASES as readonly string[]).includes(name) && !(STEP_PHASES as readonly string[]).includes(name)) problems.push(`${at}.phases.${name}: unknown phase`);
     for (const [name, v] of Object.entries(c.deviceCalls ?? {})) {
-      const ok = (x: unknown) => isUnavailable(x) || (!!x && typeof x === 'object' && typeof (x as DeviceCalls).shaderModules === 'number');
+      const infoOk = (x: unknown) => isUnavailable(x) || (!!x && typeof x === 'object' && typeof (x as CompilationInfoCalls).requests === 'number'
+        && Array.isArray((x as CompilationInfoCalls).requestToSettleMs) && (x as CompilationInfoCalls).requestToSettleMs.every(v => typeof v === 'number' && v >= 0));
+      const ok = (x: unknown) => isUnavailable(x) || (!!x && typeof x === 'object' && typeof (x as DeviceCalls).shaderModules === 'number'
+        && infoOk((x as DeviceCalls).compilationInfo));
       if (Array.isArray(v) ? !v.every(ok) : !ok(v)) problems.push(`${at}.deviceCalls.${name}: counters or {value:null,reason}`);
     }
     if (r.status === 'completed' && (c.error || c.disposeError)) problems.push(`${at}: error in a completed report`);
   });
   if (r.status === 'completed' && (r.cycles.length !== (r.settings as { cycles?: number } | undefined)?.cycles || r.uncapturedGpuErrors?.length || r.deviceLost || r.teardownErrors?.length)) problems.push('completed report must have every cycle and no GPU or teardown error');
   return problems;
+}
+
+// ---- tab visibility during one run ----------------------------------------------------------------
+
+export interface VisibilityRecord { atStart: string; changed: boolean; changes: { at: number; state: string }[] }
+/** Records `visibilitychange` events from start until `finish()`. `finish()` removes the listener and returns a
+ * deeply frozen record, so a tab switch after a completed run can never rewrite what the report says. */
+export function recordVisibility(target: Pick<EventTarget, 'addEventListener' | 'removeEventListener'>, state: () => string, now: () => number) {
+  const live: VisibilityRecord = { atStart: state(), changed: false, changes: [] };
+  const listener = () => { live.changed = true; live.changes.push({ at: now(), state: state() }); };
+  target.addEventListener('visibilitychange', listener);
+  const frozen = (): Readonly<VisibilityRecord> => Object.freeze({ atStart: live.atStart, changed: live.changed,
+    changes: Object.freeze(live.changes.map(change => Object.freeze({ ...change }))) as VisibilityRecord['changes'] });
+  let finished: Readonly<VisibilityRecord> | undefined;
+  return {
+    /** A frozen copy of what has been seen so far. */
+    snapshot: frozen,
+    finish(): Readonly<VisibilityRecord> {
+      if (!finished) { target.removeEventListener('visibilitychange', listener); finished = frozen(); }
+      return finished;
+    },
+  };
 }
 
 // ---- CLI arguments (validated before any GPU import) --------------------------------------------

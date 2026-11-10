@@ -6,7 +6,7 @@ import packageText from '../package.json?raw';
 import { INTERLOCKING } from '../src/comparison/interlocking-scene.ts';
 import { assessAdapter, sanitizeMessage } from '../src/comparison/interlocking-trial.ts';
 import {
-  instrumentDevice, observeTimerStep, probeSettings, profileSequence, sanitizeLabel, sanitizeResourceName, STARTUP_LIMITS,
+  instrumentDevice, observeTimerStep, probeSettings, profileSequence, recordVisibility, sanitizeLabel, sanitizeResourceName, STARTUP_LIMITS,
   STARTUP_MAX_CYCLES, STARTUP_SCHEMA, statusOf, unavailable, validateStartupReport,
   type DeviceCalls, type Instrumentation, type ProbeModel, type StartupReport, type Unavailable,
 } from '../src/comparison/startup-profile.ts';
@@ -23,14 +23,16 @@ const status = element('status'), view = element('view'), output = element('repo
 const params = new URLSearchParams(location.search);
 const label = sanitizeLabel(params.get('label') ?? 'browser');
 const instrument = params.get('instrument') !== '0';
+// Dev-only attribution arm: imports the SDF bridge module graph before model creation, timed on its own.
+const preloadSdf = params.get('preloadSdf') === '1';
 const cyclesParam = Number(params.get('cycles') ?? STARTUP_MAX_CYCLES);
 const cycles = Number.isInteger(cyclesParam) && cyclesParam >= 1 && cyclesParam <= STARTUP_MAX_CYCLES ? cyclesParam : STARTUP_MAX_CYCLES;
 let loadIndexInTab: number | null = null;
 try { loadIndexInTab = Number(sessionStorage.getItem('three-avbd:startup-profile:loads') ?? 0) + 1; sessionStorage.setItem('three-avbd:startup-profile:loads', String(loadIndexInTab)); }
 catch { loadIndexInTab = null; }
 const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-const visibility = { atStart: document.visibilityState as string, changed: false, changes: [] as { at: number; state: string }[] };
-document.addEventListener('visibilitychange', () => { visibility.changed = true; visibility.changes.push({ at: now(), state: document.visibilityState }); });
+// Records during the run (teardown included); finish() removes the listener and freezes the record before publication.
+const visibilityRecorder = recordVisibility(document, () => document.visibilityState, now);
 
 const pkg = JSON.parse(packageText) as { name: string; version: string; devDependencies: Record<string, string> };
 const source = { package: { name: pkg.name, version: pkg.version }, git: __COMPARISON_BUILD__,
@@ -42,8 +44,9 @@ const environment: Record<string, unknown> = {
     : unavailable('navigator.userAgentData not exposed'),
   runtime: null, platform: null, cpu: null, adapter: unavailable('not acquired'),
   backend: unavailable('browsers do not expose the native backend (Metal/D3D/Vulkan); add an operator note'),
-  limits: unavailable('no device'), viewport: unavailable('renderer not initialized'), visibility,
+  limits: unavailable('no device'), viewport: unavailable('renderer not initialized'), visibility: visibilityRecorder.snapshot(),
   crossOriginIsolated: typeof crossOriginIsolated === 'boolean' ? crossOriginIsolated : null,
+  preloadSdf: { requested: preloadSdf, importMs: unavailable(preloadSdf ? 'not reached' : 'not requested') },
   observedTimerStepMs: observeTimerStep(now), serving: import.meta.env.DEV ? 'vite-dev' : 'other',
 };
 const run = { label, navigationType: nav?.type ?? null, loadIndexInTab, orderInSequence: null, operatorNote: params.get('note') ? sanitizeLabel(params.get('note')) : null, cacheState: 'unknown' as const };
@@ -67,7 +70,8 @@ function report(state: StartupReport['status'], extra: Partial<StartupReport> = 
     environment: { ...environment, navigation: navigationRecord(), assets: assetsRecord(), acquisitionMs: timings, rendererInitDeviceCalls: rendererInitCalls },
     settings: probeSettings(null, cycles, instrument), run, cycles: [], uncapturedGpuErrors: gpuErrors.map(m => sanitizeMessage(m)), deviceLost,
     instrumentation: { requested: instrument, available: false, reason: instrument ? 'not installed' : 'disabled (?instrument=0)' },
-    limits: [...STARTUP_LIMITS, 'Served by a Vite dev server: asset timings are not representative of a production build'], ...extra };
+    limits: [...STARTUP_LIMITS, 'Served by a Vite dev server: asset timings are not representative of a production build',
+      ...(preloadSdf ? ['preloadSdf=1: the SDF bridge module graph was imported before model creation, outside every cycle window; this moves import work, it is not an end-to-end, cold-cache or faster-startup measurement'] : [])], ...extra };
 }
 function publish(value: StartupReport) {
   const problems = validateStartupReport(value);
@@ -137,7 +141,12 @@ try {
   const shape = geometry(new THREE.TorusGeometry(INTERLOCKING.majorRadius, INTERLOCKING.minorRadius, 16, 96));
   const rings = [new THREE.Mesh(shape, material(0xe0b15b)), new THREE.Mesh(shape, material(0x67bdd5))]; scene.add(floor, peg, ...rings);
 
-  status.textContent = `Running ${cycles} cycle(s), label ${label}${instrument ? '' : ', uninstrumented'}…`;
+  status.textContent = `Running ${cycles} cycle(s), label ${label}${instrument ? '' : ', uninstrumented'}${preloadSdf ? ', SDF preloaded' : ''}…`;
+  if (preloadSdf) { // before model creation; the library is untouched and the import is the one World makes lazily
+    const t0 = now();
+    try { await import('../src/avbd3d/gpu/sdf-bridge.ts'); environment.preloadSdf = { requested: true, importMs: { value: now() - t0 } }; }
+    catch (e) { environment.preloadSdf = { requested: true, importMs: unavailable(`import failed: ${sanitizeMessage(e)}`) }; }
+  }
   let metadata: Record<string, unknown> | null = null;
   const records = await profileSequence(cycles, {
     now, drain: () => device.queue.onSubmittedWorkDone(), instrumentation,
@@ -169,13 +178,16 @@ try {
 } finally {
   // Every model was disposed inside its cycle; then renderer, instrumentation, device (reverse acquisition).
   const errors = await scope.dispose();
+  const finalVisibility = visibilityRecorder.finish();
+  environment.visibility = finalVisibility;
   errors.forEach(error => console.error('Teardown step failed', error));
   running = false;
   pendingReport ??= report('failed', { error: { phase: 'acquire', message: 'Probe produced no result' } });
+  pendingReport.environment = { ...pendingReport.environment, visibility: finalVisibility, preloadSdf: environment.preloadSdf };
   pendingReport.uncapturedGpuErrors = gpuErrors.map(m => sanitizeMessage(m));
   pendingReport.deviceLost = deviceLost;
   pendingReport.teardownErrors = errors.map(error => sanitizeMessage(error));
   if (errors.length || gpuErrors.length || deviceLost) pendingReport.status = 'failed';
   const out = publish(pendingReport);
-  status.textContent = `${out.status}${out.error ? ` in ${out.error.phase}: ${out.error.message}` : ''}${visibility.changed ? ' · tab visibility changed during the run' : ''}. Report in window.__startupProfile.`;
+  status.textContent = `${out.status}${out.error ? ` in ${out.error.phase}: ${out.error.message}` : ''}${finalVisibility.changed ? ' · tab visibility changed during the run' : ''}. Report in window.__startupProfile.`;
 }
