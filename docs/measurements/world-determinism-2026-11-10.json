@@ -1,0 +1,159 @@
+{
+  "schema": "three-avbd.dated-probe-evidence/1",
+  "date": "2026-11-10",
+  "librarySourceCommit": "0b48ebf3a3829e64da3feb44815f9aee1b0a8650",
+  "sourceMethod": "git archive of committed src/package/lock/provenance, plus reviewed F1-only overlay; separate artifact snapshot, not a Git checkout/worktree",
+  "archiveSha256": "29b2ce0be127fc1928e7f1508c8e97fd8f6ba548f1324ef4c7caf78a0e7f1cd3",
+  "probeOverlaySha256": {
+    "tools/world-determinism-core.ts": "179976367207abf8973a254c78bdd228071aaceab67809059e9b6dda7f46684c",
+    "tools/world-determinism.ts": "c4790a023df9fe20433e971f79ac525dc8dd048265b7e27fe382cf079ff8b50a",
+    "tests/world-determinism.test.ts": "42ee7c15f6796fbb23139479c1389dfadc7cf3bc3e43bc1f79d0cbc63920a7f3",
+    "docs/WORLD_DETERMINISM.md": "6d4be4e97e7d0f35392ccbbe559c5f55dde2146e23023b877c44d504b2364cce"
+  },
+  "snapshotManifestSha256": "a77f27d92ede51055362cc6b6505561a13e4bdf875f942d25b84d863107d6a71",
+  "runtime": "Node25.2.1 / Dawn webgpu0.6.1 / macOS26.6.2",
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "apple-m4-max",
+    "description": "Metal driver on macOS Version 26.6.2 (Build 25G83)",
+    "isFallbackAdapter": false
+  },
+  "config": {
+    "dt": 0.016666666666666666,
+    "iterations": 10,
+    "gravity": [
+      0,
+      -9.81,
+      0
+    ],
+    "storage": "fixed",
+    "readbackEvery": 0
+  },
+  "trials": [
+    {
+      "pacing": "sync",
+      "process": 1,
+      "generatedAt": "2026-11-10T20:13:49.909Z",
+      "steps": 60,
+      "dynamicBodies": 16,
+      "totalBodies": 17,
+      "status": "matched",
+      "digests": [
+        "42a16c51",
+        "42a16c51"
+      ],
+      "comparison": {
+        "status": "identical",
+        "bodiesCompared": 17,
+        "bytesCompared": 884,
+        "differingWords": 0,
+        "differingBodies": 0,
+        "first": null,
+        "maxPositionGap": null
+      },
+      "rawReportSha256": "5556788399d9a894153d3cb6cfdf9a278996178a8cf234c35f9ac931bc23127b",
+      "rawGitProvenance": {
+        "source": "unknown",
+        "head": null,
+        "dirty": null,
+        "reason": "git metadata unreadable"
+      }
+    },
+    {
+      "pacing": "sync",
+      "process": 2,
+      "generatedAt": "2026-11-10T20:13:50.280Z",
+      "steps": 60,
+      "dynamicBodies": 16,
+      "totalBodies": 17,
+      "status": "matched",
+      "digests": [
+        "42a16c51",
+        "42a16c51"
+      ],
+      "comparison": {
+        "status": "identical",
+        "bodiesCompared": 17,
+        "bytesCompared": 884,
+        "differingWords": 0,
+        "differingBodies": 0,
+        "first": null,
+        "maxPositionGap": null
+      },
+      "rawReportSha256": "ba3f4d05dad1bc8276a144bf7afccdb8d4e5c8206a71fc3ed2f818d2cb33ed9d",
+      "rawGitProvenance": {
+        "source": "unknown",
+        "head": null,
+        "dirty": null,
+        "reason": "git metadata unreadable"
+      }
+    },
+    {
+      "pacing": "yield",
+      "process": 1,
+      "generatedAt": "2026-11-10T20:13:50.616Z",
+      "steps": 60,
+      "dynamicBodies": 16,
+      "totalBodies": 17,
+      "status": "matched",
+      "digests": [
+        "42a16c51",
+        "42a16c51"
+      ],
+      "comparison": {
+        "status": "identical",
+        "bodiesCompared": 17,
+        "bytesCompared": 884,
+        "differingWords": 0,
+        "differingBodies": 0,
+        "first": null,
+        "maxPositionGap": null
+      },
+      "rawReportSha256": "3d5b4f8a18eff759483715e68b06244f1e1bcb7a42b27a12573e2968a9283a17",
+      "rawGitProvenance": {
+        "source": "unknown",
+        "head": null,
+        "dirty": null,
+        "reason": "git metadata unreadable"
+      }
+    },
+    {
+      "pacing": "yield",
+      "process": 2,
+      "generatedAt": "2026-11-10T20:13:50.954Z",
+      "steps": 60,
+      "dynamicBodies": 16,
+      "totalBodies": 17,
+      "status": "matched",
+      "digests": [
+        "42a16c51",
+        "42a16c51"
+      ],
+      "comparison": {
+        "status": "identical",
+        "bodiesCompared": 17,
+        "bytesCompared": 884,
+        "differingWords": 0,
+        "differingBodies": 0,
+        "first": null,
+        "maxPositionGap": null
+      },
+      "rawReportSha256": "bb340658faf9212c0f80e90d99c421644adb90e2563fcfbcaeb2a93ccdc90cbd",
+      "rawGitProvenance": {
+        "source": "unknown",
+        "head": null,
+        "dirty": null,
+        "reason": "git metadata unreadable"
+      }
+    }
+  ],
+  "limits": [
+    "Only final public position/rotation/velocity/angularVelocity float32 words compared;884bytes for17bodies per pair",
+    "Counter readbacks/adaptation remain enabled internally; no evidence of identical hidden state",
+    "No intermediate-step/overflow/checkpoint/replay/cross-device/long-run/physics/performance/renderer qualification",
+    "Archive source Git metadata unavailable and preserved; exact base and overlay established by separate source manifest",
+    "Frozen committed source avoids observing an in-flight gravityScale implementation; reused local dependencies, no install",
+    "Raw reports/logs/private source snapshot preserved locally; this summary contains no local paths"
+  ]
+}
