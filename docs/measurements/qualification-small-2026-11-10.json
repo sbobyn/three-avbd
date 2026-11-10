@@ -1,0 +1,2684 @@
+{
+  "schema": "three-avbd.qualification-observation/0",
+  "date": "2026-11-10",
+  "source": {
+    "package": {
+      "name": "three-avbd",
+      "version": "0.4.0"
+    },
+    "git": {
+      "source": "git",
+      "head": "80d355c54ce4e4264cc3e4bf2d87943a31bd044f",
+      "dirty": false,
+      "changes": {
+        "entries": 0,
+        "tracked": 0,
+        "untracked": 0,
+        "staged": 0,
+        "unstaged": 0,
+        "renamed": 0,
+        "conflicted": 0
+      }
+    },
+    "declaredDependencies": {
+      "three": "0.187.0",
+      "typescript": "^5.9.3",
+      "webgpu": "0.6.1",
+      "@dimforge/rapier3d-compat": "0.21.0"
+    }
+  },
+  "predeclaredProtocolCommit": "6d1fb005ef87b2bab848286dae762c302d330ccd",
+  "environment": {
+    "runtime": "v25.2.1",
+    "platform": "darwin",
+    "osRelease": "25.6.0",
+    "arch": "arm64",
+    "cpu": "Apple M4 Max",
+    "backend": "Node + Dawn (webgpu binding) for AVBD; no browser, no rendering",
+    "webgpu": "0.6.1",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "apple-m4-max",
+      "description": "Metal driver on macOS Version 26.6.2 (Build 25G83)",
+      "isFallbackAdapter": false
+    },
+    "requiredFeatures": [],
+    "requiredLimits": {
+      "maxStorageBufferBindingSize": 4294967292,
+      "maxBufferSize": 4294967295,
+      "maxStorageBuffersPerShaderStage": 10
+    }
+  },
+  "sequence": "Rapier CPU-only first, then six AVBD runs serially on one owned hardware device. Each run uses timed pass plus independent per-step validation replay. No renderer.",
+  "rawEvidence": [
+    {
+      "file": "rapier.json",
+      "sha256": "92d7ede69a7d82401bc4f2f20ec2d8927e9612c77521545e866d0bd4aeda0995",
+      "bytes": 545331,
+      "generatedAt": "2026-11-10T21:43:19.980Z",
+      "executionStatus": "completed"
+    },
+    {
+      "file": "avbd.json",
+      "sha256": "46bdb05b741f2c31a36c1adf61d79cac27ade1a72c4ec87091972672e65323a7",
+      "bytes": 1108793,
+      "generatedAt": "2026-11-10T21:43:27.755Z",
+      "executionStatus": "completed"
+    }
+  ],
+  "rawRetention": "Raw JSON and CLI logs preserved in lead-local Git recovery evidence, not bundled. This summary omits all timer arrays and legacy means; no timing comparison is qualified.",
+  "rows": [
+    {
+      "runId": "Q1:rapier:R",
+      "scene": "rest-grid-100",
+      "declared": {
+        "hash": "a978ed4e",
+        "bodies": 101,
+        "dynamicBodies": 100,
+        "joints": 0
+      },
+      "engine": "rapier",
+      "config": {
+        "id": "R",
+        "label": "Rapier 0.21.0 reference: 10 solver iterations, 1 PGS, sleeping off, CCD off; one run serves every selected AVBD configuration",
+        "appliesToConfigs": [
+          "A",
+          "B"
+        ],
+        "mapping": "A and B differ only in AVBD contactMargin, which Rapier does not have",
+        "resolvedSettings": {
+          "version": "0.21.0",
+          "package": "@dimforge/rapier3d-compat",
+          "sleeping": false,
+          "dt": 0.01666666753590107,
+          "iterations": 10,
+          "internalPgsIterations": 1,
+          "maxCcdSubsteps": 1,
+          "ccdRequested": false,
+          "contactErp": 0.135755255818367,
+          "allowedLinearError": 0.004999999888241291,
+          "predictionDistance": 0.019999999552965164,
+          "restitution": 0,
+          "friction": "sqrt(input) with Multiply",
+          "otherSettings": "pinned package defaults"
+        },
+        "declared": {
+          "dt": 0.016666666666666666,
+          "iterations": 10,
+          "internalPgsIterations": 1,
+          "sleeping": false,
+          "ccd": false,
+          "ccdSubsteps": 1,
+          "lead": 0,
+          "steps": 120,
+          "batchSize": 10,
+          "repeats": 1,
+          "finalWindow": 60,
+          "timeoutMs": 300000
+        }
+      },
+      "execution": {
+        "status": "completed",
+        "failure": null,
+        "notRunReason": null,
+        "cleanupErrors": [],
+        "gpuErrors": []
+      },
+      "rowVerdict": "unknown",
+      "timingReportable": false,
+      "timingReportableReason": "Harness v0 never unlocks timing: R3 (10 s resting) cannot be decided in a 120-step window, no matched Rapier configuration is established, and there is one repeat per engine and configuration. Legacy runOne means and quantiles in `run` are combined step-encode plus queue-wait batch averages kept as raw evidence only.",
+      "criteria": [
+        {
+          "id": "V1",
+          "title": "Finite state, quaternion norm",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each of the replay steps, plus initial and timed-final state",
+          "source": "quality (tolerance 1e-4)",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V2",
+          "title": "Capacity and colouring counters",
+          "required": false,
+          "state": "notObservable",
+          "value": null,
+          "unit": "count",
+          "threshold": null,
+          "verdict": null,
+          "reason": "Rapier has no GPU counters",
+          "cadence": "each replay step (AVBD)",
+          "source": "Adapter.inspect overflow, clashes"
+        },
+        {
+          "id": "V3",
+          "title": "Timed final state equals replay final state",
+          "required": true,
+          "state": "measured",
+          "value": true,
+          "unit": null,
+          "threshold": {
+            "op": "bitwise-equal",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once, bitwise",
+          "source": "runOne replayMatches"
+        },
+        {
+          "id": "V4",
+          "title": "Manifest hash and body counts match the declaration",
+          "required": true,
+          "state": "measured",
+          "value": "a978ed4e",
+          "unit": null,
+          "threshold": {
+            "op": "==",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once",
+          "source": "sceneHash, makeScene",
+          "detail": {
+            "declared": {
+              "hash": "a978ed4e",
+              "bodies": 101,
+              "dynamicBodies": 100,
+              "joints": 0
+            },
+            "observed": {
+              "hash": "a978ed4e",
+              "bodies": 101,
+              "dynamicBodies": 100,
+              "joints": 0
+            }
+          }
+        },
+        {
+          "id": "C1",
+          "title": "Floor coverage",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "quality outsideFloorBodies",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C2",
+          "title": "Floor depth / smallest body dimension",
+          "required": true,
+          "state": "measured",
+          "value": 0.0007990562571306148,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C3",
+          "title": "Body-pair depth / smallest dimension of the pair",
+          "required": true,
+          "state": "measured",
+          "value": 0.005466587744578422,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET via contactQuality",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "R1",
+          "title": "Final-window max linear speed",
+          "required": true,
+          "state": "measured",
+          "value": 0.03288265052759545,
+          "unit": "m/s",
+          "threshold": {
+            "op": "<=",
+            "value": 0.05
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "last 60 replay steps",
+          "source": "SETTLED_MAX_SPEED",
+          "coverage": {
+            "expected": 60,
+            "observed": 60
+          }
+        },
+        {
+          "id": "R2",
+          "title": "Fraction of dynamic bodies below the rest speed",
+          "required": false,
+          "state": "measured",
+          "value": 0.8,
+          "unit": "fraction",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "REST_SPEED"
+        },
+        {
+          "id": "R3",
+          "title": "Centre drift / smallest dimension over at least 10 s",
+          "required": true,
+          "state": "unknown",
+          "value": null,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "unknown",
+          "reason": "needs at least 10 measured seconds; this window is 2 s",
+          "cadence": "whole measured window",
+          "source": "runOne restingTargetMet",
+          "detail": {
+            "measuredSeconds": 2
+          }
+        },
+        {
+          "id": "E1",
+          "title": "Energy and momentum change",
+          "required": false,
+          "state": "measured",
+          "value": -16.725188326805437,
+          "unit": "J",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "physicalQuality (diagnostic, not a conservation error)",
+          "detail": {
+            "energyChange": -16.725188326805437,
+            "relativeEnergyChange": -0.003040943332146443,
+            "momentumChange": 0.5382095347471001,
+            "relativeMomentumChange": null,
+            "note": "diagnostics at the last replay step, not conservation errors"
+          }
+        }
+      ]
+    },
+    {
+      "runId": "Q2:rapier:R",
+      "scene": "sphere-pile-hcp-100",
+      "declared": {
+        "hash": "232dff17",
+        "bodies": 104,
+        "dynamicBodies": 100,
+        "joints": 0
+      },
+      "engine": "rapier",
+      "config": {
+        "id": "R",
+        "label": "Rapier 0.21.0 reference: 10 solver iterations, 1 PGS, sleeping off, CCD off; one run serves every selected AVBD configuration",
+        "appliesToConfigs": [
+          "A",
+          "B"
+        ],
+        "mapping": "A and B differ only in AVBD contactMargin, which Rapier does not have",
+        "resolvedSettings": {
+          "version": "0.21.0",
+          "package": "@dimforge/rapier3d-compat",
+          "sleeping": false,
+          "dt": 0.01666666753590107,
+          "iterations": 10,
+          "internalPgsIterations": 1,
+          "maxCcdSubsteps": 1,
+          "ccdRequested": false,
+          "contactErp": 0.135755255818367,
+          "allowedLinearError": 0.004999999888241291,
+          "predictionDistance": 0.019999999552965164,
+          "restitution": 0,
+          "friction": "sqrt(input) with Multiply",
+          "otherSettings": "pinned package defaults"
+        },
+        "declared": {
+          "dt": 0.016666666666666666,
+          "iterations": 10,
+          "internalPgsIterations": 1,
+          "sleeping": false,
+          "ccd": false,
+          "ccdSubsteps": 1,
+          "lead": 0,
+          "steps": 120,
+          "batchSize": 10,
+          "repeats": 1,
+          "finalWindow": 60,
+          "timeoutMs": 300000
+        }
+      },
+      "execution": {
+        "status": "completed",
+        "failure": null,
+        "notRunReason": null,
+        "cleanupErrors": [],
+        "gpuErrors": []
+      },
+      "rowVerdict": "pass",
+      "timingReportable": false,
+      "timingReportableReason": "Harness v0 never unlocks timing: R3 (10 s resting) cannot be decided in a 120-step window, no matched Rapier configuration is established, and there is one repeat per engine and configuration. Legacy runOne means and quantiles in `run` are combined step-encode plus queue-wait batch averages kept as raw evidence only.",
+      "criteria": [
+        {
+          "id": "V1",
+          "title": "Finite state, quaternion norm",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each of the replay steps, plus initial and timed-final state",
+          "source": "quality (tolerance 1e-4)",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V2",
+          "title": "Capacity and colouring counters",
+          "required": false,
+          "state": "notObservable",
+          "value": null,
+          "unit": "count",
+          "threshold": null,
+          "verdict": null,
+          "reason": "Rapier has no GPU counters",
+          "cadence": "each replay step (AVBD)",
+          "source": "Adapter.inspect overflow, clashes"
+        },
+        {
+          "id": "V3",
+          "title": "Timed final state equals replay final state",
+          "required": true,
+          "state": "measured",
+          "value": true,
+          "unit": null,
+          "threshold": {
+            "op": "bitwise-equal",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once, bitwise",
+          "source": "runOne replayMatches"
+        },
+        {
+          "id": "V4",
+          "title": "Manifest hash and body counts match the declaration",
+          "required": true,
+          "state": "measured",
+          "value": "232dff17",
+          "unit": null,
+          "threshold": {
+            "op": "==",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once",
+          "source": "sceneHash, makeScene",
+          "detail": {
+            "declared": {
+              "hash": "232dff17",
+              "bodies": 104,
+              "dynamicBodies": 100,
+              "joints": 0
+            },
+            "observed": {
+              "hash": "232dff17",
+              "bodies": 104,
+              "dynamicBodies": 100,
+              "joints": 0
+            }
+          }
+        },
+        {
+          "id": "C1",
+          "title": "Floor coverage",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "quality outsideFloorBodies",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C2",
+          "title": "Floor depth / smallest body dimension",
+          "required": true,
+          "state": "measured",
+          "value": 0.00027048587799072266,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C3",
+          "title": "Body-pair depth / smallest dimension of the pair",
+          "required": true,
+          "state": "measured",
+          "value": 0.0007210556297119197,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET via contactQuality",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "R1",
+          "title": "Final-window max linear speed",
+          "required": true,
+          "state": "measured",
+          "value": 0.00015354519769239844,
+          "unit": "m/s",
+          "threshold": {
+            "op": "<=",
+            "value": 0.05
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "last 60 replay steps",
+          "source": "SETTLED_MAX_SPEED",
+          "coverage": {
+            "expected": 60,
+            "observed": 60
+          }
+        },
+        {
+          "id": "R2",
+          "title": "Fraction of dynamic bodies below the rest speed",
+          "required": false,
+          "state": "measured",
+          "value": 1,
+          "unit": "fraction",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "REST_SPEED"
+        },
+        {
+          "id": "R3",
+          "title": "Centre drift / smallest dimension over at least 10 s",
+          "required": false,
+          "state": "notObservable",
+          "value": null,
+          "unit": "ratio of body size",
+          "threshold": null,
+          "verdict": null,
+          "reason": "not defined for this scene",
+          "cadence": "whole measured window",
+          "source": "runOne restingTargetMet"
+        },
+        {
+          "id": "E1",
+          "title": "Energy and momentum change",
+          "required": false,
+          "state": "measured",
+          "value": -0.46802077478548654,
+          "unit": "J",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "physicalQuality (diagnostic, not a conservation error)",
+          "detail": {
+            "energyChange": -0.46802077478548654,
+            "relativeEnergyChange": -0.0004609938932509822,
+            "momentumChange": 0.001292055074692511,
+            "relativeMomentumChange": null,
+            "note": "diagnostics at the last replay step, not conservation errors"
+          }
+        }
+      ]
+    },
+    {
+      "runId": "Q3:rapier:R",
+      "scene": "chain-20",
+      "declared": {
+        "hash": "1c3dd1b4",
+        "bodies": 22,
+        "dynamicBodies": 20,
+        "joints": 20
+      },
+      "engine": "rapier",
+      "config": {
+        "id": "R",
+        "label": "Rapier 0.21.0 reference: 10 solver iterations, 1 PGS, sleeping off, CCD off; one run serves every selected AVBD configuration",
+        "appliesToConfigs": [
+          "A",
+          "B"
+        ],
+        "mapping": "A and B differ only in AVBD contactMargin, which Rapier does not have",
+        "resolvedSettings": {
+          "version": "0.21.0",
+          "package": "@dimforge/rapier3d-compat",
+          "sleeping": false,
+          "dt": 0.01666666753590107,
+          "iterations": 10,
+          "internalPgsIterations": 1,
+          "maxCcdSubsteps": 1,
+          "ccdRequested": false,
+          "contactErp": 0.135755255818367,
+          "allowedLinearError": 0.004999999888241291,
+          "predictionDistance": 0.019999999552965164,
+          "restitution": 0,
+          "friction": "sqrt(input) with Multiply",
+          "otherSettings": "pinned package defaults"
+        },
+        "declared": {
+          "dt": 0.016666666666666666,
+          "iterations": 10,
+          "internalPgsIterations": 1,
+          "sleeping": false,
+          "ccd": false,
+          "ccdSubsteps": 1,
+          "lead": 0,
+          "steps": 120,
+          "batchSize": 10,
+          "repeats": 1,
+          "finalWindow": 60,
+          "timeoutMs": 300000
+        }
+      },
+      "execution": {
+        "status": "completed",
+        "failure": null,
+        "notRunReason": null,
+        "cleanupErrors": [],
+        "gpuErrors": []
+      },
+      "rowVerdict": "pass",
+      "timingReportable": false,
+      "timingReportableReason": "Harness v0 never unlocks timing: R3 (10 s resting) cannot be decided in a 120-step window, no matched Rapier configuration is established, and there is one repeat per engine and configuration. Legacy runOne means and quantiles in `run` are combined step-encode plus queue-wait batch averages kept as raw evidence only.",
+      "criteria": [
+        {
+          "id": "V1",
+          "title": "Finite state, quaternion norm",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each of the replay steps, plus initial and timed-final state",
+          "source": "quality (tolerance 1e-4)",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V2",
+          "title": "Capacity and colouring counters",
+          "required": false,
+          "state": "notObservable",
+          "value": null,
+          "unit": "count",
+          "threshold": null,
+          "verdict": null,
+          "reason": "Rapier has no GPU counters",
+          "cadence": "each replay step (AVBD)",
+          "source": "Adapter.inspect overflow, clashes"
+        },
+        {
+          "id": "V3",
+          "title": "Timed final state equals replay final state",
+          "required": true,
+          "state": "measured",
+          "value": true,
+          "unit": null,
+          "threshold": {
+            "op": "bitwise-equal",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once, bitwise",
+          "source": "runOne replayMatches"
+        },
+        {
+          "id": "V4",
+          "title": "Manifest hash and body counts match the declaration",
+          "required": true,
+          "state": "measured",
+          "value": "1c3dd1b4",
+          "unit": null,
+          "threshold": {
+            "op": "==",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once",
+          "source": "sceneHash, makeScene",
+          "detail": {
+            "declared": {
+              "hash": "1c3dd1b4",
+              "bodies": 22,
+              "dynamicBodies": 20,
+              "joints": 20
+            },
+            "observed": {
+              "hash": "1c3dd1b4",
+              "bodies": 22,
+              "dynamicBodies": 20,
+              "joints": 20
+            }
+          }
+        },
+        {
+          "id": "C1",
+          "title": "Floor coverage",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "quality outsideFloorBodies",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C2",
+          "title": "Floor depth / smallest body dimension",
+          "required": false,
+          "state": "measured",
+          "value": 0,
+          "unit": "ratio of body size",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C3",
+          "title": "Body-pair depth / smallest dimension of the pair",
+          "required": false,
+          "state": "notObservable",
+          "value": null,
+          "unit": "ratio of body size",
+          "threshold": null,
+          "verdict": null,
+          "reason": "contactQuality does not know that jointed pairs ignore collision, so neighbouring-link depth is not a contact result",
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET via contactQuality",
+          "detail": {
+            "rawMaxRelativeDepth": 9.5367431640625e-06,
+            "rawMaxDepth": 1.9073486328125e-06,
+            "unjudged": true,
+            "samples": 120
+          }
+        },
+        {
+          "id": "R1",
+          "title": "Final-window max linear speed",
+          "required": false,
+          "state": "measured",
+          "value": 0.006064102053642273,
+          "unit": "m/s",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last 60 replay steps",
+          "source": "SETTLED_MAX_SPEED",
+          "coverage": {
+            "expected": 60,
+            "observed": 60
+          }
+        },
+        {
+          "id": "R2",
+          "title": "Fraction of dynamic bodies below the rest speed",
+          "required": false,
+          "state": "measured",
+          "value": 1,
+          "unit": "fraction",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "REST_SPEED"
+        },
+        {
+          "id": "R3",
+          "title": "Centre drift / smallest dimension over at least 10 s",
+          "required": false,
+          "state": "notObservable",
+          "value": null,
+          "unit": "ratio of body size",
+          "threshold": null,
+          "verdict": null,
+          "reason": "not defined for this scene",
+          "cadence": "whole measured window",
+          "source": "runOne restingTargetMet"
+        },
+        {
+          "id": "J1",
+          "title": "Max joint anchor separation",
+          "required": true,
+          "state": "measured",
+          "value": 0.001766204833984375,
+          "unit": "m",
+          "threshold": {
+            "op": "<=",
+            "value": 0.05
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "lead-adopted coarse regression guard; physicalQuality maxJointError",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "E1",
+          "title": "Energy and momentum change",
+          "required": false,
+          "state": "measured",
+          "value": -0.02955393531954087,
+          "unit": "J",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "physicalQuality (diagnostic, not a conservation error)",
+          "detail": {
+            "energyChange": -0.02955393531954087,
+            "relativeEnergyChange": -9.235604787356521e-05,
+            "momentumChange": 0.00021545745432376866,
+            "relativeMomentumChange": null,
+            "note": "diagnostics at the last replay step, not conservation errors"
+          }
+        }
+      ]
+    },
+    {
+      "runId": "Q1:avbd:A",
+      "scene": "rest-grid-100",
+      "declared": {
+        "hash": "a978ed4e",
+        "bodies": 101,
+        "dynamicBodies": 100,
+        "joints": 0
+      },
+      "engine": "avbd",
+      "config": {
+        "id": "A",
+        "label": "shipped default: 10 iterations, contactMargin 0.01",
+        "appliesToConfigs": [
+          "A"
+        ],
+        "resolvedSettings": {
+          "params": {
+            "dt": 0.016666666666666666,
+            "gravity": -10,
+            "iterations": 10,
+            "betaLin": 10000,
+            "betaAng": 100,
+            "alpha": 0.99,
+            "gamma": 0.999,
+            "matchNearest": true,
+            "faceBias": true,
+            "reuseContacts": true,
+            "startAtRest": true,
+            "massPenalty": true,
+            "contactMargin": 0.01,
+            "windSpeed": 0,
+            "windAngle": 0,
+            "windGust": 0.4,
+            "windPressure": 0.72,
+            "up": [
+              0,
+              0,
+              1
+            ]
+          },
+          "capacity": {
+            "contacts": 3232,
+            "manifolds": 808,
+            "pairs": 3232,
+            "colors": 32
+          },
+          "adapt": false,
+          "sleeping": false
+        },
+        "declared": {
+          "dt": 0.016666666666666666,
+          "iterations": 10,
+          "contactMargin": 0.01,
+          "lead": 0,
+          "steps": 120,
+          "batchSize": 10,
+          "repeats": 1,
+          "finalWindow": 60,
+          "jitter": 0,
+          "impactPhase": 0,
+          "timeoutMs": 300000,
+          "sleeping": false,
+          "adapt": false
+        }
+      },
+      "execution": {
+        "status": "completed",
+        "failure": null,
+        "notRunReason": null,
+        "cleanupErrors": [],
+        "gpuErrors": []
+      },
+      "rowVerdict": "unknown",
+      "timingReportable": false,
+      "timingReportableReason": "Harness v0 never unlocks timing: R3 (10 s resting) cannot be decided in a 120-step window, no matched Rapier configuration is established, and there is one repeat per engine and configuration. Legacy runOne means and quantiles in `run` are combined step-encode plus queue-wait batch averages kept as raw evidence only.",
+      "criteria": [
+        {
+          "id": "V1",
+          "title": "Finite state, quaternion norm",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each of the replay steps, plus initial and timed-final state",
+          "source": "quality (tolerance 1e-4)",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V2",
+          "title": "Capacity and colouring counters",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "count",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step (AVBD)",
+          "source": "Adapter.inspect overflow, clashes",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V3",
+          "title": "Timed final state equals replay final state",
+          "required": true,
+          "state": "measured",
+          "value": true,
+          "unit": null,
+          "threshold": {
+            "op": "bitwise-equal",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once, bitwise",
+          "source": "runOne replayMatches"
+        },
+        {
+          "id": "V4",
+          "title": "Manifest hash and body counts match the declaration",
+          "required": true,
+          "state": "measured",
+          "value": "a978ed4e",
+          "unit": null,
+          "threshold": {
+            "op": "==",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once",
+          "source": "sceneHash, makeScene",
+          "detail": {
+            "declared": {
+              "hash": "a978ed4e",
+              "bodies": 101,
+              "dynamicBodies": 100,
+              "joints": 0
+            },
+            "observed": {
+              "hash": "a978ed4e",
+              "bodies": 101,
+              "dynamicBodies": 100,
+              "joints": 0
+            }
+          }
+        },
+        {
+          "id": "C1",
+          "title": "Floor coverage",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "quality outsideFloorBodies",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C2",
+          "title": "Floor depth / smallest body dimension",
+          "required": true,
+          "state": "measured",
+          "value": 0.008874118328094482,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C3",
+          "title": "Body-pair depth / smallest dimension of the pair",
+          "required": true,
+          "state": "measured",
+          "value": 0.008788347244262695,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET via contactQuality",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "R1",
+          "title": "Final-window max linear speed",
+          "required": true,
+          "state": "measured",
+          "value": 0.03610610589385033,
+          "unit": "m/s",
+          "threshold": {
+            "op": "<=",
+            "value": 0.05
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "last 60 replay steps",
+          "source": "SETTLED_MAX_SPEED",
+          "coverage": {
+            "expected": 60,
+            "observed": 60
+          }
+        },
+        {
+          "id": "R2",
+          "title": "Fraction of dynamic bodies below the rest speed",
+          "required": false,
+          "state": "measured",
+          "value": 0.6,
+          "unit": "fraction",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "REST_SPEED"
+        },
+        {
+          "id": "R3",
+          "title": "Centre drift / smallest dimension over at least 10 s",
+          "required": true,
+          "state": "unknown",
+          "value": null,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "unknown",
+          "reason": "needs at least 10 measured seconds; this window is 2 s",
+          "cadence": "whole measured window",
+          "source": "runOne restingTargetMet",
+          "detail": {
+            "measuredSeconds": 2
+          }
+        },
+        {
+          "id": "E1",
+          "title": "Energy and momentum change",
+          "required": false,
+          "state": "measured",
+          "value": -46.172785460890736,
+          "unit": "J",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "physicalQuality (diagnostic, not a conservation error)",
+          "detail": {
+            "energyChange": -46.172785460890736,
+            "relativeEnergyChange": -0.008395051901980134,
+            "momentumChange": 0.9136103803757578,
+            "relativeMomentumChange": null,
+            "note": "diagnostics at the last replay step, not conservation errors"
+          }
+        }
+      ]
+    },
+    {
+      "runId": "Q1:avbd:B",
+      "scene": "rest-grid-100",
+      "declared": {
+        "hash": "a978ed4e",
+        "bodies": 101,
+        "dynamicBodies": 100,
+        "joints": 0
+      },
+      "engine": "avbd",
+      "config": {
+        "id": "B",
+        "label": "documented resting setting: 10 iterations, contactMargin 0.001",
+        "appliesToConfigs": [
+          "B"
+        ],
+        "resolvedSettings": {
+          "params": {
+            "dt": 0.016666666666666666,
+            "gravity": -10,
+            "iterations": 10,
+            "betaLin": 10000,
+            "betaAng": 100,
+            "alpha": 0.99,
+            "gamma": 0.999,
+            "matchNearest": true,
+            "faceBias": true,
+            "reuseContacts": true,
+            "startAtRest": true,
+            "massPenalty": true,
+            "contactMargin": 0.001,
+            "windSpeed": 0,
+            "windAngle": 0,
+            "windGust": 0.4,
+            "windPressure": 0.72,
+            "up": [
+              0,
+              0,
+              1
+            ]
+          },
+          "capacity": {
+            "contacts": 3232,
+            "manifolds": 808,
+            "pairs": 3232,
+            "colors": 32
+          },
+          "adapt": false,
+          "sleeping": false
+        },
+        "declared": {
+          "dt": 0.016666666666666666,
+          "iterations": 10,
+          "contactMargin": 0.001,
+          "lead": 0,
+          "steps": 120,
+          "batchSize": 10,
+          "repeats": 1,
+          "finalWindow": 60,
+          "jitter": 0,
+          "impactPhase": 0,
+          "timeoutMs": 300000,
+          "sleeping": false,
+          "adapt": false
+        }
+      },
+      "execution": {
+        "status": "completed",
+        "failure": null,
+        "notRunReason": null,
+        "cleanupErrors": [],
+        "gpuErrors": []
+      },
+      "rowVerdict": "unknown",
+      "timingReportable": false,
+      "timingReportableReason": "Harness v0 never unlocks timing: R3 (10 s resting) cannot be decided in a 120-step window, no matched Rapier configuration is established, and there is one repeat per engine and configuration. Legacy runOne means and quantiles in `run` are combined step-encode plus queue-wait batch averages kept as raw evidence only.",
+      "criteria": [
+        {
+          "id": "V1",
+          "title": "Finite state, quaternion norm",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each of the replay steps, plus initial and timed-final state",
+          "source": "quality (tolerance 1e-4)",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V2",
+          "title": "Capacity and colouring counters",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "count",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step (AVBD)",
+          "source": "Adapter.inspect overflow, clashes",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V3",
+          "title": "Timed final state equals replay final state",
+          "required": true,
+          "state": "measured",
+          "value": true,
+          "unit": null,
+          "threshold": {
+            "op": "bitwise-equal",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once, bitwise",
+          "source": "runOne replayMatches"
+        },
+        {
+          "id": "V4",
+          "title": "Manifest hash and body counts match the declaration",
+          "required": true,
+          "state": "measured",
+          "value": "a978ed4e",
+          "unit": null,
+          "threshold": {
+            "op": "==",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once",
+          "source": "sceneHash, makeScene",
+          "detail": {
+            "declared": {
+              "hash": "a978ed4e",
+              "bodies": 101,
+              "dynamicBodies": 100,
+              "joints": 0
+            },
+            "observed": {
+              "hash": "a978ed4e",
+              "bodies": 101,
+              "dynamicBodies": 100,
+              "joints": 0
+            }
+          }
+        },
+        {
+          "id": "C1",
+          "title": "Floor coverage",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "quality outsideFloorBodies",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C2",
+          "title": "Floor depth / smallest body dimension",
+          "required": true,
+          "state": "measured",
+          "value": 0.0013617277145385742,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C3",
+          "title": "Body-pair depth / smallest dimension of the pair",
+          "required": true,
+          "state": "measured",
+          "value": 0.0013422966003417969,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET via contactQuality",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "R1",
+          "title": "Final-window max linear speed",
+          "required": true,
+          "state": "measured",
+          "value": 0.003948211204260588,
+          "unit": "m/s",
+          "threshold": {
+            "op": "<=",
+            "value": 0.05
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "last 60 replay steps",
+          "source": "SETTLED_MAX_SPEED",
+          "coverage": {
+            "expected": 60,
+            "observed": 60
+          }
+        },
+        {
+          "id": "R2",
+          "title": "Fraction of dynamic bodies below the rest speed",
+          "required": false,
+          "state": "measured",
+          "value": 1,
+          "unit": "fraction",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "REST_SPEED"
+        },
+        {
+          "id": "R3",
+          "title": "Centre drift / smallest dimension over at least 10 s",
+          "required": true,
+          "state": "unknown",
+          "value": null,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "unknown",
+          "reason": "needs at least 10 measured seconds; this window is 2 s",
+          "cadence": "whole measured window",
+          "source": "runOne restingTargetMet",
+          "detail": {
+            "measuredSeconds": 2
+          }
+        },
+        {
+          "id": "E1",
+          "title": "Energy and momentum change",
+          "required": false,
+          "state": "measured",
+          "value": -6.701989621938992,
+          "unit": "J",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "physicalQuality (diagnostic, not a conservation error)",
+          "detail": {
+            "energyChange": -6.701989621938992,
+            "relativeEnergyChange": -0.0012185435676252713,
+            "momentumChange": 0.09837268982664682,
+            "relativeMomentumChange": null,
+            "note": "diagnostics at the last replay step, not conservation errors"
+          }
+        }
+      ]
+    },
+    {
+      "runId": "Q2:avbd:A",
+      "scene": "sphere-pile-hcp-100",
+      "declared": {
+        "hash": "232dff17",
+        "bodies": 104,
+        "dynamicBodies": 100,
+        "joints": 0
+      },
+      "engine": "avbd",
+      "config": {
+        "id": "A",
+        "label": "shipped default: 10 iterations, contactMargin 0.01",
+        "appliesToConfigs": [
+          "A"
+        ],
+        "resolvedSettings": {
+          "params": {
+            "dt": 0.016666666666666666,
+            "gravity": -10,
+            "iterations": 10,
+            "betaLin": 10000,
+            "betaAng": 100,
+            "alpha": 0.99,
+            "gamma": 0.999,
+            "matchNearest": true,
+            "faceBias": true,
+            "reuseContacts": true,
+            "startAtRest": true,
+            "massPenalty": true,
+            "contactMargin": 0.01,
+            "windSpeed": 0,
+            "windAngle": 0,
+            "windGust": 0.4,
+            "windPressure": 0.72,
+            "up": [
+              0,
+              0,
+              1
+            ]
+          },
+          "capacity": {
+            "contacts": 3328,
+            "manifolds": 832,
+            "pairs": 3328,
+            "colors": 32
+          },
+          "adapt": false,
+          "sleeping": false
+        },
+        "declared": {
+          "dt": 0.016666666666666666,
+          "iterations": 10,
+          "contactMargin": 0.01,
+          "lead": 0,
+          "steps": 120,
+          "batchSize": 10,
+          "repeats": 1,
+          "finalWindow": 60,
+          "jitter": 0,
+          "impactPhase": 0,
+          "timeoutMs": 300000,
+          "sleeping": false,
+          "adapt": false
+        }
+      },
+      "execution": {
+        "status": "completed",
+        "failure": null,
+        "notRunReason": null,
+        "cleanupErrors": [],
+        "gpuErrors": []
+      },
+      "rowVerdict": "fail",
+      "timingReportable": false,
+      "timingReportableReason": "Harness v0 never unlocks timing: R3 (10 s resting) cannot be decided in a 120-step window, no matched Rapier configuration is established, and there is one repeat per engine and configuration. Legacy runOne means and quantiles in `run` are combined step-encode plus queue-wait batch averages kept as raw evidence only.",
+      "criteria": [
+        {
+          "id": "V1",
+          "title": "Finite state, quaternion norm",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each of the replay steps, plus initial and timed-final state",
+          "source": "quality (tolerance 1e-4)",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V2",
+          "title": "Capacity and colouring counters",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "count",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step (AVBD)",
+          "source": "Adapter.inspect overflow, clashes",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V3",
+          "title": "Timed final state equals replay final state",
+          "required": true,
+          "state": "measured",
+          "value": true,
+          "unit": null,
+          "threshold": {
+            "op": "bitwise-equal",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once, bitwise",
+          "source": "runOne replayMatches"
+        },
+        {
+          "id": "V4",
+          "title": "Manifest hash and body counts match the declaration",
+          "required": true,
+          "state": "measured",
+          "value": "232dff17",
+          "unit": null,
+          "threshold": {
+            "op": "==",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once",
+          "source": "sceneHash, makeScene",
+          "detail": {
+            "declared": {
+              "hash": "232dff17",
+              "bodies": 104,
+              "dynamicBodies": 100,
+              "joints": 0
+            },
+            "observed": {
+              "hash": "232dff17",
+              "bodies": 104,
+              "dynamicBodies": 100,
+              "joints": 0
+            }
+          }
+        },
+        {
+          "id": "C1",
+          "title": "Floor coverage",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "quality outsideFloorBodies",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C2",
+          "title": "Floor depth / smallest body dimension",
+          "required": true,
+          "state": "measured",
+          "value": 0.008371055126190186,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C3",
+          "title": "Body-pair depth / smallest dimension of the pair",
+          "required": true,
+          "state": "measured",
+          "value": 0.01486035566795163,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "fail",
+          "reason": "relative body-pair depth exceeds the limit",
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET via contactQuality",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "R1",
+          "title": "Final-window max linear speed",
+          "required": true,
+          "state": "measured",
+          "value": 0.02242217656117476,
+          "unit": "m/s",
+          "threshold": {
+            "op": "<=",
+            "value": 0.05
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "last 60 replay steps",
+          "source": "SETTLED_MAX_SPEED",
+          "coverage": {
+            "expected": 60,
+            "observed": 60
+          }
+        },
+        {
+          "id": "R2",
+          "title": "Fraction of dynamic bodies below the rest speed",
+          "required": false,
+          "state": "measured",
+          "value": 0.93,
+          "unit": "fraction",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "REST_SPEED"
+        },
+        {
+          "id": "R3",
+          "title": "Centre drift / smallest dimension over at least 10 s",
+          "required": false,
+          "state": "notObservable",
+          "value": null,
+          "unit": "ratio of body size",
+          "threshold": null,
+          "verdict": null,
+          "reason": "not defined for this scene",
+          "cadence": "whole measured window",
+          "source": "runOne restingTargetMet"
+        },
+        {
+          "id": "E1",
+          "title": "Energy and momentum change",
+          "required": false,
+          "state": "measured",
+          "value": -9.80664180096278,
+          "unit": "J",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "physicalQuality (diagnostic, not a conservation error)",
+          "detail": {
+            "energyChange": -9.80664180096278,
+            "relativeEnergyChange": -0.009659404511724352,
+            "momentumChange": 0.309791643090862,
+            "relativeMomentumChange": null,
+            "note": "diagnostics at the last replay step, not conservation errors"
+          }
+        }
+      ]
+    },
+    {
+      "runId": "Q2:avbd:B",
+      "scene": "sphere-pile-hcp-100",
+      "declared": {
+        "hash": "232dff17",
+        "bodies": 104,
+        "dynamicBodies": 100,
+        "joints": 0
+      },
+      "engine": "avbd",
+      "config": {
+        "id": "B",
+        "label": "documented resting setting: 10 iterations, contactMargin 0.001",
+        "appliesToConfigs": [
+          "B"
+        ],
+        "resolvedSettings": {
+          "params": {
+            "dt": 0.016666666666666666,
+            "gravity": -10,
+            "iterations": 10,
+            "betaLin": 10000,
+            "betaAng": 100,
+            "alpha": 0.99,
+            "gamma": 0.999,
+            "matchNearest": true,
+            "faceBias": true,
+            "reuseContacts": true,
+            "startAtRest": true,
+            "massPenalty": true,
+            "contactMargin": 0.001,
+            "windSpeed": 0,
+            "windAngle": 0,
+            "windGust": 0.4,
+            "windPressure": 0.72,
+            "up": [
+              0,
+              0,
+              1
+            ]
+          },
+          "capacity": {
+            "contacts": 3328,
+            "manifolds": 832,
+            "pairs": 3328,
+            "colors": 32
+          },
+          "adapt": false,
+          "sleeping": false
+        },
+        "declared": {
+          "dt": 0.016666666666666666,
+          "iterations": 10,
+          "contactMargin": 0.001,
+          "lead": 0,
+          "steps": 120,
+          "batchSize": 10,
+          "repeats": 1,
+          "finalWindow": 60,
+          "jitter": 0,
+          "impactPhase": 0,
+          "timeoutMs": 300000,
+          "sleeping": false,
+          "adapt": false
+        }
+      },
+      "execution": {
+        "status": "completed",
+        "failure": null,
+        "notRunReason": null,
+        "cleanupErrors": [],
+        "gpuErrors": []
+      },
+      "rowVerdict": "pass",
+      "timingReportable": false,
+      "timingReportableReason": "Harness v0 never unlocks timing: R3 (10 s resting) cannot be decided in a 120-step window, no matched Rapier configuration is established, and there is one repeat per engine and configuration. Legacy runOne means and quantiles in `run` are combined step-encode plus queue-wait batch averages kept as raw evidence only.",
+      "criteria": [
+        {
+          "id": "V1",
+          "title": "Finite state, quaternion norm",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each of the replay steps, plus initial and timed-final state",
+          "source": "quality (tolerance 1e-4)",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V2",
+          "title": "Capacity and colouring counters",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "count",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step (AVBD)",
+          "source": "Adapter.inspect overflow, clashes",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V3",
+          "title": "Timed final state equals replay final state",
+          "required": true,
+          "state": "measured",
+          "value": true,
+          "unit": null,
+          "threshold": {
+            "op": "bitwise-equal",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once, bitwise",
+          "source": "runOne replayMatches"
+        },
+        {
+          "id": "V4",
+          "title": "Manifest hash and body counts match the declaration",
+          "required": true,
+          "state": "measured",
+          "value": "232dff17",
+          "unit": null,
+          "threshold": {
+            "op": "==",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once",
+          "source": "sceneHash, makeScene",
+          "detail": {
+            "declared": {
+              "hash": "232dff17",
+              "bodies": 104,
+              "dynamicBodies": 100,
+              "joints": 0
+            },
+            "observed": {
+              "hash": "232dff17",
+              "bodies": 104,
+              "dynamicBodies": 100,
+              "joints": 0
+            }
+          }
+        },
+        {
+          "id": "C1",
+          "title": "Floor coverage",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "quality outsideFloorBodies",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C2",
+          "title": "Floor depth / smallest body dimension",
+          "required": true,
+          "state": "measured",
+          "value": 0.0011878609657287598,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C3",
+          "title": "Body-pair depth / smallest dimension of the pair",
+          "required": true,
+          "state": "measured",
+          "value": 0.002643769246259975,
+          "unit": "ratio of body size",
+          "threshold": {
+            "op": "<=",
+            "value": 0.01
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET via contactQuality",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "R1",
+          "title": "Final-window max linear speed",
+          "required": true,
+          "state": "measured",
+          "value": 0.001606990669018687,
+          "unit": "m/s",
+          "threshold": {
+            "op": "<=",
+            "value": 0.05
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "last 60 replay steps",
+          "source": "SETTLED_MAX_SPEED",
+          "coverage": {
+            "expected": 60,
+            "observed": 60
+          }
+        },
+        {
+          "id": "R2",
+          "title": "Fraction of dynamic bodies below the rest speed",
+          "required": false,
+          "state": "measured",
+          "value": 1,
+          "unit": "fraction",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "REST_SPEED"
+        },
+        {
+          "id": "R3",
+          "title": "Centre drift / smallest dimension over at least 10 s",
+          "required": false,
+          "state": "notObservable",
+          "value": null,
+          "unit": "ratio of body size",
+          "threshold": null,
+          "verdict": null,
+          "reason": "not defined for this scene",
+          "cadence": "whole measured window",
+          "source": "runOne restingTargetMet"
+        },
+        {
+          "id": "E1",
+          "title": "Energy and momentum change",
+          "required": false,
+          "state": "measured",
+          "value": -1.4813761056002477,
+          "unit": "J",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "physicalQuality (diagnostic, not a conservation error)",
+          "detail": {
+            "energyChange": -1.4813761056002477,
+            "relativeEnergyChange": -0.001459134668974129,
+            "momentumChange": 0.019670261851275645,
+            "relativeMomentumChange": null,
+            "note": "diagnostics at the last replay step, not conservation errors"
+          }
+        }
+      ]
+    },
+    {
+      "runId": "Q3:avbd:A",
+      "scene": "chain-20",
+      "declared": {
+        "hash": "1c3dd1b4",
+        "bodies": 22,
+        "dynamicBodies": 20,
+        "joints": 20
+      },
+      "engine": "avbd",
+      "config": {
+        "id": "A",
+        "label": "shipped default: 10 iterations, contactMargin 0.01",
+        "appliesToConfigs": [
+          "A"
+        ],
+        "resolvedSettings": {
+          "params": {
+            "dt": 0.016666666666666666,
+            "gravity": -10,
+            "iterations": 10,
+            "betaLin": 10000,
+            "betaAng": 100,
+            "alpha": 0.99,
+            "gamma": 0.999,
+            "matchNearest": true,
+            "faceBias": true,
+            "reuseContacts": true,
+            "startAtRest": true,
+            "massPenalty": true,
+            "contactMargin": 0.01,
+            "windSpeed": 0,
+            "windAngle": 0,
+            "windGust": 0.4,
+            "windPressure": 0.72,
+            "up": [
+              0,
+              0,
+              1
+            ]
+          },
+          "capacity": {
+            "contacts": 704,
+            "manifolds": 176,
+            "pairs": 704,
+            "colors": 32
+          },
+          "adapt": false,
+          "sleeping": false
+        },
+        "declared": {
+          "dt": 0.016666666666666666,
+          "iterations": 10,
+          "contactMargin": 0.01,
+          "lead": 0,
+          "steps": 120,
+          "batchSize": 10,
+          "repeats": 1,
+          "finalWindow": 60,
+          "jitter": 0,
+          "impactPhase": 0,
+          "timeoutMs": 300000,
+          "sleeping": false,
+          "adapt": false
+        }
+      },
+      "execution": {
+        "status": "completed",
+        "failure": null,
+        "notRunReason": null,
+        "cleanupErrors": [],
+        "gpuErrors": []
+      },
+      "rowVerdict": "pass",
+      "timingReportable": false,
+      "timingReportableReason": "Harness v0 never unlocks timing: R3 (10 s resting) cannot be decided in a 120-step window, no matched Rapier configuration is established, and there is one repeat per engine and configuration. Legacy runOne means and quantiles in `run` are combined step-encode plus queue-wait batch averages kept as raw evidence only.",
+      "criteria": [
+        {
+          "id": "V1",
+          "title": "Finite state, quaternion norm",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each of the replay steps, plus initial and timed-final state",
+          "source": "quality (tolerance 1e-4)",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V2",
+          "title": "Capacity and colouring counters",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "count",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step (AVBD)",
+          "source": "Adapter.inspect overflow, clashes",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V3",
+          "title": "Timed final state equals replay final state",
+          "required": true,
+          "state": "measured",
+          "value": true,
+          "unit": null,
+          "threshold": {
+            "op": "bitwise-equal",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once, bitwise",
+          "source": "runOne replayMatches"
+        },
+        {
+          "id": "V4",
+          "title": "Manifest hash and body counts match the declaration",
+          "required": true,
+          "state": "measured",
+          "value": "1c3dd1b4",
+          "unit": null,
+          "threshold": {
+            "op": "==",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once",
+          "source": "sceneHash, makeScene",
+          "detail": {
+            "declared": {
+              "hash": "1c3dd1b4",
+              "bodies": 22,
+              "dynamicBodies": 20,
+              "joints": 20
+            },
+            "observed": {
+              "hash": "1c3dd1b4",
+              "bodies": 22,
+              "dynamicBodies": 20,
+              "joints": 20
+            }
+          }
+        },
+        {
+          "id": "C1",
+          "title": "Floor coverage",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "quality outsideFloorBodies",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C2",
+          "title": "Floor depth / smallest body dimension",
+          "required": false,
+          "state": "measured",
+          "value": 0,
+          "unit": "ratio of body size",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C3",
+          "title": "Body-pair depth / smallest dimension of the pair",
+          "required": false,
+          "state": "notObservable",
+          "value": null,
+          "unit": "ratio of body size",
+          "threshold": null,
+          "verdict": null,
+          "reason": "contactQuality does not know that jointed pairs ignore collision, so neighbouring-link depth is not a contact result",
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET via contactQuality",
+          "detail": {
+            "rawMaxRelativeDepth": 0,
+            "rawMaxDepth": 0,
+            "unjudged": true,
+            "samples": 120
+          }
+        },
+        {
+          "id": "R1",
+          "title": "Final-window max linear speed",
+          "required": false,
+          "state": "measured",
+          "value": 0.0207138042896986,
+          "unit": "m/s",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last 60 replay steps",
+          "source": "SETTLED_MAX_SPEED",
+          "coverage": {
+            "expected": 60,
+            "observed": 60
+          }
+        },
+        {
+          "id": "R2",
+          "title": "Fraction of dynamic bodies below the rest speed",
+          "required": false,
+          "state": "measured",
+          "value": 1,
+          "unit": "fraction",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "REST_SPEED"
+        },
+        {
+          "id": "R3",
+          "title": "Centre drift / smallest dimension over at least 10 s",
+          "required": false,
+          "state": "notObservable",
+          "value": null,
+          "unit": "ratio of body size",
+          "threshold": null,
+          "verdict": null,
+          "reason": "not defined for this scene",
+          "cadence": "whole measured window",
+          "source": "runOne restingTargetMet"
+        },
+        {
+          "id": "J1",
+          "title": "Max joint anchor separation",
+          "required": true,
+          "state": "measured",
+          "value": 0.005306243896484375,
+          "unit": "m",
+          "threshold": {
+            "op": "<=",
+            "value": 0.05
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "lead-adopted coarse regression guard; physicalQuality maxJointError",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "E1",
+          "title": "Energy and momentum change",
+          "required": false,
+          "state": "measured",
+          "value": -0.10434945947173446,
+          "unit": "J",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "physicalQuality (diagnostic, not a conservation error)",
+          "detail": {
+            "energyChange": -0.10434945947173446,
+            "relativeEnergyChange": -0.0003260920608491702,
+            "momentumChange": 0.004408263780060225,
+            "relativeMomentumChange": null,
+            "note": "diagnostics at the last replay step, not conservation errors"
+          }
+        }
+      ]
+    },
+    {
+      "runId": "Q3:avbd:B",
+      "scene": "chain-20",
+      "declared": {
+        "hash": "1c3dd1b4",
+        "bodies": 22,
+        "dynamicBodies": 20,
+        "joints": 20
+      },
+      "engine": "avbd",
+      "config": {
+        "id": "B",
+        "label": "documented resting setting: 10 iterations, contactMargin 0.001",
+        "appliesToConfigs": [
+          "B"
+        ],
+        "resolvedSettings": {
+          "params": {
+            "dt": 0.016666666666666666,
+            "gravity": -10,
+            "iterations": 10,
+            "betaLin": 10000,
+            "betaAng": 100,
+            "alpha": 0.99,
+            "gamma": 0.999,
+            "matchNearest": true,
+            "faceBias": true,
+            "reuseContacts": true,
+            "startAtRest": true,
+            "massPenalty": true,
+            "contactMargin": 0.001,
+            "windSpeed": 0,
+            "windAngle": 0,
+            "windGust": 0.4,
+            "windPressure": 0.72,
+            "up": [
+              0,
+              0,
+              1
+            ]
+          },
+          "capacity": {
+            "contacts": 704,
+            "manifolds": 176,
+            "pairs": 704,
+            "colors": 32
+          },
+          "adapt": false,
+          "sleeping": false
+        },
+        "declared": {
+          "dt": 0.016666666666666666,
+          "iterations": 10,
+          "contactMargin": 0.001,
+          "lead": 0,
+          "steps": 120,
+          "batchSize": 10,
+          "repeats": 1,
+          "finalWindow": 60,
+          "jitter": 0,
+          "impactPhase": 0,
+          "timeoutMs": 300000,
+          "sleeping": false,
+          "adapt": false
+        }
+      },
+      "execution": {
+        "status": "completed",
+        "failure": null,
+        "notRunReason": null,
+        "cleanupErrors": [],
+        "gpuErrors": []
+      },
+      "rowVerdict": "pass",
+      "timingReportable": false,
+      "timingReportableReason": "Harness v0 never unlocks timing: R3 (10 s resting) cannot be decided in a 120-step window, no matched Rapier configuration is established, and there is one repeat per engine and configuration. Legacy runOne means and quantiles in `run` are combined step-encode plus queue-wait batch averages kept as raw evidence only.",
+      "criteria": [
+        {
+          "id": "V1",
+          "title": "Finite state, quaternion norm",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each of the replay steps, plus initial and timed-final state",
+          "source": "quality (tolerance 1e-4)",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V2",
+          "title": "Capacity and colouring counters",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "count",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step (AVBD)",
+          "source": "Adapter.inspect overflow, clashes",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "V3",
+          "title": "Timed final state equals replay final state",
+          "required": true,
+          "state": "measured",
+          "value": true,
+          "unit": null,
+          "threshold": {
+            "op": "bitwise-equal",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once, bitwise",
+          "source": "runOne replayMatches"
+        },
+        {
+          "id": "V4",
+          "title": "Manifest hash and body counts match the declaration",
+          "required": true,
+          "state": "measured",
+          "value": "1c3dd1b4",
+          "unit": null,
+          "threshold": {
+            "op": "==",
+            "value": true
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "once",
+          "source": "sceneHash, makeScene",
+          "detail": {
+            "declared": {
+              "hash": "1c3dd1b4",
+              "bodies": 22,
+              "dynamicBodies": 20,
+              "joints": 20
+            },
+            "observed": {
+              "hash": "1c3dd1b4",
+              "bodies": 22,
+              "dynamicBodies": 20,
+              "joints": 20
+            }
+          }
+        },
+        {
+          "id": "C1",
+          "title": "Floor coverage",
+          "required": true,
+          "state": "measured",
+          "value": 0,
+          "unit": "bodies",
+          "threshold": {
+            "op": "==",
+            "value": 0
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "quality outsideFloorBodies",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C2",
+          "title": "Floor depth / smallest body dimension",
+          "required": false,
+          "state": "measured",
+          "value": 0,
+          "unit": "ratio of body size",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "C3",
+          "title": "Body-pair depth / smallest dimension of the pair",
+          "required": false,
+          "state": "notObservable",
+          "value": null,
+          "unit": "ratio of body size",
+          "threshold": null,
+          "verdict": null,
+          "reason": "contactQuality does not know that jointed pairs ignore collision, so neighbouring-link depth is not a contact result",
+          "cadence": "each replay step",
+          "source": "FLOOR_TARGET via contactQuality",
+          "detail": {
+            "rawMaxRelativeDepth": 0,
+            "rawMaxDepth": 0,
+            "unjudged": true,
+            "samples": 120
+          }
+        },
+        {
+          "id": "R1",
+          "title": "Final-window max linear speed",
+          "required": false,
+          "state": "measured",
+          "value": 0.0207138042896986,
+          "unit": "m/s",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last 60 replay steps",
+          "source": "SETTLED_MAX_SPEED",
+          "coverage": {
+            "expected": 60,
+            "observed": 60
+          }
+        },
+        {
+          "id": "R2",
+          "title": "Fraction of dynamic bodies below the rest speed",
+          "required": false,
+          "state": "measured",
+          "value": 1,
+          "unit": "fraction",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "REST_SPEED"
+        },
+        {
+          "id": "R3",
+          "title": "Centre drift / smallest dimension over at least 10 s",
+          "required": false,
+          "state": "notObservable",
+          "value": null,
+          "unit": "ratio of body size",
+          "threshold": null,
+          "verdict": null,
+          "reason": "not defined for this scene",
+          "cadence": "whole measured window",
+          "source": "runOne restingTargetMet"
+        },
+        {
+          "id": "J1",
+          "title": "Max joint anchor separation",
+          "required": true,
+          "state": "measured",
+          "value": 0.005306243896484375,
+          "unit": "m",
+          "threshold": {
+            "op": "<=",
+            "value": 0.05
+          },
+          "verdict": "pass",
+          "reason": null,
+          "cadence": "each replay step",
+          "source": "lead-adopted coarse regression guard; physicalQuality maxJointError",
+          "coverage": {
+            "expected": 120,
+            "observed": 120
+          }
+        },
+        {
+          "id": "E1",
+          "title": "Energy and momentum change",
+          "required": false,
+          "state": "measured",
+          "value": -0.10434945947173446,
+          "unit": "J",
+          "threshold": null,
+          "verdict": null,
+          "reason": null,
+          "cadence": "last replay step",
+          "source": "physicalQuality (diagnostic, not a conservation error)",
+          "detail": {
+            "energyChange": -0.10434945947173446,
+            "relativeEnergyChange": -0.0003260920608491702,
+            "momentumChange": 0.004408263780060225,
+            "relativeMomentumChange": null,
+            "note": "diagnostics at the last replay step, not conservation errors"
+          }
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "One process per engine, one trial per configuration/scene, two-second fixed-step window, at most104bodies. No broad scale, performance, physical correctness, energy-conservation, World, browser, SDF or M1/GTX1080 qualification.",
+    "All three Q1 rows remain unknown because the required resting window is ten seconds.",
+    "AVBD Q2 configA fails C3: maxRelativeDepth0.01486035566795163 >0.01. ConfigB is a separate result, never a replacement. Defaults/thresholds unchanged.",
+    "Q3 J1 limit0.05m is only a coarse regression guard. Jointed-pair depth remains unjudged.",
+    "All native AVBD capacity/colour counts inspected each replay step were zero; finite/rotation/replay criteria passed. No uncaptured or teardown errors."
+  ]
+}

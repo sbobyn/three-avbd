@@ -529,3 +529,14 @@ table (section 3) and a small debug-lines helper. The live side-by-side page
 colliders, triangle-mesh and heightfield collision, snapshots, a character controller. The
 settling investigation and its hypotheses are tracked in
 [RAPIER_COMPARISON.md](RAPIER_COMPARISON.md#settling-status-2026-11-02).
+
+
+### Small predeclared qualification rows — 2026-11-10
+
+The [bounded protocol](QUALIFICATION_MATRIX.md) and
+[source-qualified record](measurements/qualification-small-2026-11-10.json) add three existing
+scenes at clean source `80d355c`, 120 steps, ten iterations: rest-grid-100, sphere-pile-hcp-100
+and chain-20. Default-margin AVBD failed the sphere pile's declared relative pair-depth target;
+the predeclared smaller-margin configuration is a separate pass, not a replacement. Rest-grid
+verdicts remain unknown at this short window. Chain passes only a coarse joint guard. No timing
+comparison, public-World, large-scene, target-device or physical qualification follows.

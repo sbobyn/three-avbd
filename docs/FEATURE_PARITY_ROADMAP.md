@@ -873,3 +873,10 @@ G1's first gravity-scale slice include115affected real-adapterGPU checks, focuse
 and public guidance. G1 remains open for damping; dropped-time reporting has a separate bounded implementation. B1 has a reviewed/fixed internal draft codec and corruption/recovery fixtures. It is not a
 package export, recorder or stable cache contract; v1/export/consumer acceptance remains open.
 Tracking, implemented features, consumer adoption, cleanup and release acceptance are separate.
+
+
+S1's [predeclared three-row protocol](QUALIFICATION_MATRIX.md) now has a thin direct-solver
+runner and a [dated bounded observation](measurements/qualification-small-2026-11-10.json).
+One default-margin sphere-pile contact-depth failure is retained under G7/STE-3334; all rest-grid
+verdicts remain unknown because the window is short. S1 remains partial: broad qualification,
+World-level paths and target devices are not covered. No default or performance claim changed.
