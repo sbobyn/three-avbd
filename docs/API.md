@@ -111,6 +111,9 @@ The optional [bounded runner](../src/comparison/interlocking-trial.ts), invoked 
 queue drain/readback and snapshot observers. It owns its model; the CLI owns any Dawn device.
 JSON reports keep these wall spans separate and rendering unmeasured; they do not certify a
 performance comparison or alter the running demo/library API.
+At those snapshots only, the Rapier adapter also queries its actual attached colliders through
+[`interlocking-native-contacts.ts`](../src/comparison/interlocking-native-contacts.ts) (read-only
+`floor`/`peg` handles from the Rapier model; 2026-11-10, STE-3282); AVBD records that no equivalent exists.
 The diagnostic [startup probe](../src/comparison/startup-profile.ts) (2026-11-10, STE-3003,
 [contract](STARTUP_PROFILING.md)) times one first-on-device and up to three same-device recreate
 cycles of the AVBD interlocking model through its public `step`/`readPoses`/`dispose` and

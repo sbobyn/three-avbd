@@ -194,6 +194,40 @@ excludes dispose); dispose. Raw per-step intervals are kept. A not-run or unavai
 `null`. Rendering is `measured:false`/`null`: no renderer and no GPU-resident `BodyMesh`
 comparison. These are single-run wall readings, not warmed, repeated or alternated measurements.
 
+**Native-collider contact observations** (2026-11-10, STE-3282, additive `nativeContacts` per
+snapshot; [`interlocking-native-contacts.ts`](../src/comparison/interlocking-native-contacts.ts)).
+The analytic evaluator cannot certify Rapier convex compounds, so at the same snapshots only (never
+per step) the Rapier adapter queries its actual attached colliders with the installed public
+`Collider.contactCollider(other, prediction = 0)` at their current stored poses (not the cached
+narrowphase manifolds). Pairs: ring-ring (pieces² sector pairs) and each ring vs peg and floor
+(pieces each); same-body and fixed-fixed (peg-floor) pairs are excluded and recorded as such.
+Each pair's enumeration is refused (`error`, zero queries for that pair) unless its rings have
+the authored 16/32/64 colliders and its peg/floor one; other valid pairs remain observable.
+A snapshot runs at most 64² + 4·64 queries. Each pair records
+coverage (`expectedQueries`/`queries`), `returnedContacts`, `penetratingContacts` (signed distance
+< 0), the minimum finite returned signed distance (`null` without a finite result) and deepest
+observed penetration (`null` without a negative result), and `result`: `contact-returned`,
+`no-returned-contact` or `unknown`. Rapier may return a
+contact with a tiny positive distance at prediction 0; it is recorded, not reclassified. A
+non-finite distance makes the pair `invalid`, a throwing query `error` (partial counts kept,
+result `unknown`); a failing hook leaves the analytic trial outcome and cleanup unchanged. The
+query neither steps nor mutates the world (tested: identical poses, mass and 60-step trajectory).
+Its wall time is `timing.nativeContacts`, separate from observer, readback and CPU step.
+
+Limits: per-component diagnostic of actual pairs, not a global compound minimum translation
+distance, physical-correctness proof or continuous no-pass-through check; `no-returned-contact` is
+never a pass; criteria, verdicts, summaries and `qualification: 'gated'` are unchanged. AVBD has no
+native-collider equivalent for its analytic fields: its snapshots record `available: false` with that
+reason, and no missing value is compared with Rapier.
+
+First bounded CLI observation (2026-11-10, clean source `81110bcc5d073873eead1a3f07e9d1a5b8071ddc`,
+Node 25.2.1 / Rapier 0.21.0): 32 sectors, 240 steps, snapshots 0/60/120/180/240,
+1,152 queries per snapshot, complete coverage and successful disposal. All five sampled poses
+exactly match the preserved earlier 32-sector baseline. The deepest returned ring-ring contact
+was about 6.01 mm after the push; this is an engine-query observation, not an accepted quality
+threshold or an AVBD comparison. Raw report and baseline comparison remain in private recovery
+evidence. Analytic compound verdicts remain unknown and qualification remains gated.
+
 ## Fix-and-retest loop
 
 Keep raw observations with engine/source/settings and distinguish application mistake, docs/API
