@@ -30,6 +30,21 @@ export const BODY_LIFECYCLE_WGSL = /* wgsl */ `
 fn bodyEnabled(i: u32) -> bool { return (lifecycleBits(bodies[i].initialPos.w) & 2u) == 0u; }
 fn bodyCold(i: u32) -> bool { return (lifecycleBits(bodies[i].initialPos.w) & 4u) != 0u; }
 `;
+/**
+ * @internal Per-body auxiliary record (docs/BODY_AUX_DESIGN.md): one vec4f per body slot in its
+ * own buffer, bound only by warmStartBodies (binding 9 of the small integrate layout). x: gravity
+ * scale (default 1), y, z: reserved for damping (written 0, unread), w: reserved (0). Not exported
+ * from three-avbd/advanced: the record may widen before restitution, sensors and CCD settle.
+ */
+export const BODY_AUX_FLOATS = 4;
+export const A_GRAVITY_SCALE = 0;
+export const A_LINEAR_DAMPING = 1;
+export const A_ANGULAR_DAMPING = 2;
+export const BODY_AUX_ABI_VERSION = 1;
+/** The record every slot holds until told otherwise: gravity scale 1, no damping. */
+export const BODY_AUX_DEFAULT: readonly [number, number, number, number] = Object.freeze([1, 0, 0, 0]) as readonly [number, number, number, number];
+/** Binding of the aux buffer in solveWGSL's group 0 (and the integrate layout). */
+export const BODY_AUX_BINDING = 9;
 export const B_POS = 0;
 export const B_ROT = 4;
 export const B_INITIAL_POS = 8;

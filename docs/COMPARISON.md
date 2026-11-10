@@ -34,7 +34,8 @@ out of frame budget.
 | Kinematic bodies | position- and velocity-based | partial: a fixed body's `moveTo` slides it to a target over the next steps, carrying what it touches; a fixed body given `set({ velocity })` keeps moving (conveyor, turntable; `src/lib/world.ts`, `Body.moveTo`) | 0.4; doc |
 | Forces, impulses, torques | has | has (queued for the next step; persistent forces until `clearForces()`) | 0.4 |
 | Mass / inertia override | has, incl. centre-of-mass offset | partial: `massProperties: { mass, moments }` (principal moments only; the body frame must be the principal frame) | 0.4 |
-| Linear/angular damping, gravity scale | has | missing (world gravity only) | 0.5 |
+| Linear/angular damping | has | missing | STE-3328 |
+| Per-body gravity scale | has | current candidate source: option/getter/setter, standard/SDF built-in integrator; bounded M4 Max checks | candidate0.4, STE-3328 partial |
 | Axis locks | has | missing | later |
 | Restitution | has, with combine rules | missing: contacts are inelastic | 0.5 if time |
 | Friction | coefficient + combine rules | partial: coefficient, cone friction, combined by geometric mean (not configurable) | doc |
@@ -512,15 +513,15 @@ a tracked read), or `three-avbd/queries` overlaps against static meshes. Using a
 
 **Determinism on one machine → fixed storage.** `storage: { growth: 'fixed', ... }` (as in the
 pool example) never grows buffers through readbacks, which is what broke repeatability in the
-solver measurements; repeatability through `World` itself is **unverified**.
+solver measurements; a [bounded public-World probe](WORLD_DETERMINISM.md) matched final body fields for17bodies/60steps in two pacing modes on M4 Max. Broader/hidden-state replay remains unverified.
 
-**No real workaround yet:** restitution, damping and gravity scale (an impulse from last frame's
+**No real workaround yet:** restitution and damping (an impulse from last frame's
 read velocity is a crude, stale damper), triangle-mesh levels in the solver, cross-machine
 determinism, snapshots, character controllers, running without WebGPU.
 
 ## 8. Roadmap
 
-Planned for **0.5** (not committed): per-body damping and gravity scale, spring damping,
+Current native-support tracking is in [the staged roadmap](FEATURE_PARITY_ROADMAP.md); stage labels are not promised versions. Per-body gravity scale is implemented in current candidate source. Remaining proposals include damping, spring damping,
 restitution, sensors, capsules, a hinge joint, queries against dynamic bodies, sphere contact
 anchoring and the settling fixes the GPU runs point to, a quality-matched performance
 table (section 3) and a small debug-lines helper. The live side-by-side page

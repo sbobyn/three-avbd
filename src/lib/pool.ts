@@ -7,6 +7,7 @@
 import { Body, World, type BodyOptions, type BodyState, type BoxOptions, type Quat, type Reservation, type SphereOptions, type Vec3 } from './world.ts';
 import { BodyLifecycleError } from './lifecycle.ts';
 import { MAX_HULL_VERTICES, type HullShape } from '../avbd3d/hull.ts';
+import { checkGravityScale } from './world-validation.ts';
 
 type TemplateOptions<T> = Omit<T, keyof BodyState | 'enabled'>;
 
@@ -64,6 +65,7 @@ function checkOptions(options: Record<string, unknown>): BodyOptions {
   for (const key of ['fixed', 'reportContacts'] as const) if (options[key] !== undefined && typeof options[key] !== 'boolean') throw new TypeError(`BodyPool template: ${key} must be boolean`);
   mask(options.group, 'BodyPool template: group');
   mask(options.collidesWith, 'BodyPool template: collidesWith');
+  if (options.gravityScale !== undefined) checkGravityScale(options.gravityScale, 'BodyPool template');
   const copy = { ...options } as BodyOptions & Record<string, unknown>;
   if (options.massProperties !== undefined) {
     const m = options.massProperties as { mass: unknown; moments: unknown };
@@ -156,7 +158,8 @@ export class BodyPool {
     const capacity = options?.capacity;
     if (!Number.isSafeInteger(capacity) || capacity < 1) throw new RangeError('BodyPool.create: capacity must be a positive safe integer');
     const template = resolve(options.template);
-    const reservation = world.reserveBodies(capacity, template.hull);
+    // (The template's scale times the World's gravity is checked there, before anything is reserved)
+    const reservation = world.reserveBodies(capacity, template.hull, template.options.gravityScale ?? 1);
     if (typeof reservation === 'string') return { ok: false, reason: reservation };
     try {
       await world.prewarmReservation(reservation);

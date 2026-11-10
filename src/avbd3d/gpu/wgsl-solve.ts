@@ -5,7 +5,8 @@
 
 import { BODY_LIFECYCLE_WGSL, PRELUDE_3D, PRIMAL_LANES_WGSL } from './layout.ts';
 
-export const solveWGSL = /* wgsl */ `
+function makeSolveWGSL(bodyAux: boolean): string {
+  return /* wgsl */ `
 ${PRELUDE_3D}
 ${PRIMAL_LANES_WGSL}
 ${BODY_LIFECYCLE_WGSL}
@@ -27,7 +28,7 @@ struct PassConstants {
 @group(0) @binding(5) var<storage, read> adj: array<u32>;
 @group(0) @binding(6) var<storage, read> color: array<u32>;
 @group(0) @binding(7) var<storage, read> counters: array<u32>;
-@group(1) @binding(0) var<uniform> pc: PassConstants;
+${bodyAux ? '// Per-body gravity scale, internal built-in integrator only.\n@group(0) @binding(9) var<storage, read> bodyAux: array<vec4f>;\n' : ''}@group(1) @binding(0) var<uniform> pc: PassConstants;
 
 fn manifoldCount() -> u32 {
   return min(counters[C_MANIFOLDS], params.manifoldCapacity);
@@ -285,7 +286,7 @@ fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
   let vel = bodies[i].vel;
   let angVel = bodies[i].angVel.xyz;
   let dt = params.dt;
-  let g = params.gravity;
+  let g = params.gravity${bodyAux ? ' * bodyAux[i].x' : ''};
   let dynamic = bodies[i].size.w > 0.0;
 
   // Inertial target (Eq. 2), with the wind's push on sails as a second external force
@@ -662,3 +663,9 @@ fn updateVelocities(@builtin(global_invocation_id) gid: vec3u) {
   }
 }
 `;
+}
+
+/** Advanced custom-solve source: retain the established body/filter binding contract. */
+export const solveWGSL = makeSolveWGSL(false);
+/** @internal Built-in integrator variant; only warmStartBodies uses the aux binding. */
+export const solveBodyAuxWGSL = makeSolveWGSL(true);

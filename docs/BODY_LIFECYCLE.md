@@ -35,7 +35,7 @@ and adaptive history, preserves omitted GPU position/rotation, and synchronizes
 the starting/inertial pose mirrors. Last explicit assignment wins per field:
 `set({position}); reset({velocity})` preserves both assignments, while
 `reset({velocity}); set({velocity})` uses the later velocity. Reset never changes
-identity, filters, shape, mass, enabled state or joint anchors/rest.
+identity, filters, shape, mass, gravityScale, enabled state or joint anchors/rest.
 
 `flushCommands()` submits topology, absolute assignments and lifecycle commands.
 It does not step, consume targets, apply impulses or accrue force time. Reads,
@@ -137,7 +137,7 @@ never take reserved slots), pins a hull template's geometry once, submits its va
 rejects and invalidates the World (`world.error`): submitted work can't be rolled back.
 
 Templates are copied and validated once: shape (`box` size, `sphere` radius, or a cooked
-`hull` shape from `convexHull`), density or `massProperties`, friction, `fixed`, filters and
+`hull` shape from `convexHull`), density or `massProperties`, friction, `gravityScale`, `fixed`, filters and
 `reportContacts`. Pose, velocity and `enabled` are per spawn and rejected in a template.
 Later changes to the objects passed in don't affect the pool.
 

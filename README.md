@@ -85,6 +85,7 @@ Those studies are proposals; the gallery lists implemented demos only.
 
 ## Learn and integrate
 
+- [Per-body gravity scale](docs/USER_GUIDE.md#per-body-gravity-scale): current candidate option and setter for floatier/reversed-gravity mechanics; ordinary stepping/rendering stays the same.
 - [Core concepts, APIs, demos and configuration](docs/USER_GUIDE.md): units, fixed stepping,
  bodies, materials, forces, joints, async readback, expected behavior and limitations.
 - [Fresh project, packaging, persistence and deliberate updates](docs/SETUP.md).

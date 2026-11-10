@@ -143,6 +143,41 @@ flowchart LR
   Host --> Teardown["Dispose model, renderer and hooks, then device; finalize report"]
 ```
 
+### Per-body gravity scale
+
+Source qualification: 2026-11-10, STE-3328 / F2 STE-3327.
+
+Current candidate source adds `BodyOptions.gravityScale`, `body.gravityScale` and
+`body.setGravityScale(scale)`. Default1 preserves ordinary gravity;0 disables gravity for that
+body; negative values reverse it. The value is rounded to f32 on upload and must be finite
+within[-1000,1000] as f32. Body changes and `world.gravity` changes refuse an overflowing effective
+f32 gravity product before mutation. This bound is not a stability or physical-accuracy claim.
+
+[`world.ts`](../src/lib/world.ts) keeps the authored configuration and queues slot updates;
+[`solver.ts`](../src/avbd3d/gpu/solver.ts) mirrors it in a capacity-bounded internal16B record
+per slot. Only the built-in `warmStartBodies` pipeline uses the small integrate layout with
+params/bodies/aux; all other solve entries retain their full layout. Body40float/filter8B
+strides and exported custom-solver `solveWGSL` text remain unchanged. Custom solve shaders
+retain their existing layout and refuse aux writes; their support is not inferred from a regex.
+Gravity-scale capability follows the built-in integrator independently of collision geometry.
+The default8-buffer device still works; native hulls still need9. Fixed-plan totals include
+`buffers.bodyAux`; construction/destruction owns the new buffer.
+
+```mermaid
+flowchart LR
+  Author["Body option / setGravityScale"] --> Check["Validate scale and effective gravity"]
+  Check --> Queue["World: authored config + queued slot updates"]
+  Queue --> Aux["Internal aux buffer: 16B per slot"]
+  Aux --> Predict["Built-in warmStartBodies: small integrate layout"]
+  Predict --> Solve["Existing solve entries and body buffer"]
+```
+
+[Reviewed design and compatibility decisions](BODY_AUX_DESIGN.md). M4 Max focused hardware
+checks cover standard/SDF free fall, default8-buffer limits, setter, pool reuse, reset/disable,
+custom shader compatibility and existing default-scene envelopes. This does not qualify
+other hardware, extreme settings, performance or broad physical accuracy. Damping and the
+dropped-time counter remain open under STE-3328.
+
 ### Public-World repeatability diagnostic — 2026-11-10, STE-3003/F1
 
 [`tools/world-determinism.ts`](../tools/world-determinism.ts) owns a qualified Dawn device;
@@ -454,7 +489,7 @@ surfaces, with at most 256 rays per call. Field rotation maps into the body prin
 
 ### Bodies
 
-- `addBox({ size, position, rotation?, velocity?, angularVelocity?, density?, friction?, fixed? })`
+- `addBox({ size, position, rotation?, velocity?, angularVelocity?, density?, friction?, fixed?, gravityScale? })`
   and `addSphere({ radius, ... })` return a `Body` handle. Inputs are checked before a slot, an
   ID or a hull pin is taken: the initial state as `body.set` checks it (finite as f32, rotation
   nonzero and normalised; `null` is refused, omit the field instead), `size` and `radius`
@@ -513,6 +548,12 @@ surfaces, with at most 256 rays per call. Field rotation maps into the body prin
   the 2026-10-31 fix it returned the read in flight, which might not hold them.)
   `world.track(bodies)` (null: all) points `readbackEvery` at a subset,
   the player and what's near it, say.
+- `body.gravityScale` reads its authored multiplier; `body.setGravityScale(s)` queues it for
+  the next step. It changes gravity only, not forces/wind, mass or fixed-body motion. Reset and
+  disable retain it; each pool lease starts from its template. Removed/reused slots cannot leak
+  a prior body's scale. The [per-body gravity contract](#per-body-gravity-scale)
+  gives validation, capability and device limits.
+
 
 `read()` returns `{ step }`, the submitted simulation step at its copy boundary (not a
 capture of subsequent commands). In-flight reads coalesce only at the same submitted step

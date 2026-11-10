@@ -1,0 +1,116 @@
+{
+  "schema": "three-avbd.dated-feature-evidence/1",
+  "date": "2026-11-10T20:44:50.753857+00:00",
+  "issue": "STE-3328",
+  "designIssue": "STE-3327",
+  "baseCommit": "31bb39bfc1c6f2f575ed779f29a2e12b97e1bfb9",
+  "runtimeSourceSha256": {
+    "src/avbd3d/gpu/layout.ts": "859463daa1fe3db89e28da9c737cf7b2f10f7189384651e26d5674b64176f33c",
+    "src/avbd3d/gpu/solver.ts": "18cc08e03e2b43ce0af929142cb6c521085eab782027b318e9b86789814cdbda",
+    "src/avbd3d/gpu/wgsl-solve.ts": "37d9a46d8313353443668089d8e1301f226eb733fbedf9f5416c30e0d868c493",
+    "src/lib/world.ts": "b87302cae6eac39096b737b2a5fe38104a60fd1a60dbb54a765229470561ce14",
+    "src/lib/world-validation.ts": "88a7d2a5df3f33c4f4c512682d9852d94634f0a3d0a9f5cf7a20a59a7f62b57e",
+    "src/lib/capabilities.ts": "e2e5a976fd68b02a63c8623ae13be13ec3833d4e5107bec8b4a6b77effd2275e",
+    "src/lib/pool.ts": "d7e5948b0251040736e49911c44de094a395cca78f383fe247339edacffcdb5f",
+    "src/lib/storage-budget.ts": "b200fe0e76b864861b93fff6c9a33a86d962f8b25e8fbfb66d5ecb20d0533a8a"
+  },
+  "feature": "per-body gravityScale; damping and dropped-time reporting remain open",
+  "checks": {
+    "typecheck": "passed",
+    "focusedCpu": {
+      "passed": 152,
+      "failed": 0,
+      "skipped": 0,
+      "includes": "gravity/layout/validation/storage/capability/legacy exports/lifecycle/commands/startup/F1/codec/legacy track/fresh-example fakes; not full suite"
+    },
+    "focusedGpu": {
+      "passed": 115,
+      "failed": 0,
+      "skipped": 0,
+      "mode": "default per-file process isolation with test-concurrency1, hardware preflight per process",
+      "milliseconds": 32108.946959,
+      "scope": [
+        "gravity-scale",
+        "step-allocations",
+        "avbd3d-gpu",
+        "lib",
+        "lib-lifecycle",
+        "pool",
+        "body-commands",
+        "hulls",
+        "world-validation"
+      ]
+    },
+    "builds": [
+      "site passed; existing chunk-size warning",
+      "library passed"
+    ],
+    "preservedFailures": [
+      "Initial custom fixture tested Y while reference solver up is Z; fixed projection, unchanged threshold",
+      "Explicit no-process-isolation aggregate:112pass/3instrumentation failures including unchanged2D; corrected to default file isolation, no test/CI weakening",
+      "Codec review regressions initially0pass/2fail; required fixes and extra integrity fixtures pass"
+    ]
+  },
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "apple-m4-max",
+    "description": "Metal driver on macOS Version 26.6.2 (Build 25G83)",
+    "isFallbackAdapter": false
+  },
+  "runtime": "v25.2.1",
+  "three": "0.187.0",
+  "webgpu": "0.6.1",
+  "publicCustomSolveWgslSha256": "f2228d885f039af67798bd759ce25dbfa927d290c9d8d149ae3419cda2ff5df3",
+  "publicShaderUnchangedFromBase": true,
+  "bodyStrideFloats": 40,
+  "filterStrideBytes": 8,
+  "internalAuxBytesPerSlot": 16,
+  "package": {
+    "package": "three-avbd",
+    "version": "0.4.0",
+    "sha256": "324933c58af23ee60e7cbb583bbbbdfc70e465ad1895cf74389416bc6792a38f",
+    "bytes": 384465,
+    "entries": 272,
+    "strictTypes": "passed",
+    "dependencyMethod": "existing installed compatible dependencies reused through local links; no registry install",
+    "source": "reviewed source patch over31bb39b; exact runtime hashes above; unrelated internal codec excluded by package files"
+  },
+  "packedConsumer": {
+    "date": "2026-11-10T20:42:24.305Z",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "apple-m4-max",
+      "description": "Metal driver on macOS Version 26.6.2 (Build 25G83)",
+      "isFallbackAdapter": false
+    },
+    "deviceStorageLimit": 8,
+    "exportCounts": [
+      14,
+      11,
+      53,
+      2,
+      1
+    ],
+    "runtime": "v25.2.1",
+    "rendered": false,
+    "registryInstall": false,
+    "after30": {
+      "floatingY": 2,
+      "fallingY": 0.7328726053237915
+    },
+    "setterAndReset": "passed",
+    "capability": true,
+    "status": "passed",
+    "gpuErrors": []
+  },
+  "limits": [
+    "Source candidate0.4.0, not npm publication",
+    "Local dependency reuse, not fresh registry install",
+    "No renderer/browser/visual, benchmark, physical-correctness or broad scale qualification",
+    "M1/GTX1080 and other runtime/Three/browser versions not tested",
+    "Tiny subnormal effective gravity may flush to zero; numeric API bounds are not stability guarantees",
+    "Raw reports/logs/original worker patches retained locally; this aggregate has no local filesystem paths"
+  ]
+}

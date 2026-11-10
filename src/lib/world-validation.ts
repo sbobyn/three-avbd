@@ -67,3 +67,28 @@ export function checkDelta(seconds: unknown): number {
   if (typeof seconds !== 'number' || !Number.isFinite(seconds)) throw new RangeError(`World.update: seconds must be a finite number, not ${String(seconds)}`);
   return Math.max(0, seconds);
 }
+
+/** The largest |gravityScale| (an API bound for a dimensionless multiplier, not a stability qualification). */
+export const MAX_GRAVITY_SCALE = 1000;
+
+/**
+ * A body's gravity scale: a number, finite as f32 and within ±MAX_GRAVITY_SCALE (0: no gravity,
+ * negative: reversed). Returns it unchanged.
+ */
+export function checkGravityScale(scale: unknown, what: string): number {
+  if (typeof scale !== 'number' || !f32Finite(scale) || Math.abs(Math.fround(scale)) > MAX_GRAVITY_SCALE) {
+    throw new RangeError(`${what}: gravityScale must be a finite number (as f32) within [-${MAX_GRAVITY_SCALE}, ${MAX_GRAVITY_SCALE}], not ${String(scale)}`);
+  }
+  return scale;
+}
+
+/**
+ * The gravity a body falls with, as the solver computes it in f32: the stored gravity size times
+ * its scale. The product of two f32 values is exact in f64, so rounding it once to f32 is the f32
+ * product; it must be finite, which a finite gravity and a finite scale alone do not guarantee.
+ */
+export function checkEffectiveGravity(gravitySize: number, scale: number, what: string): void {
+  if (!Number.isFinite(Math.fround(Math.fround(gravitySize) * Math.fround(scale)))) {
+    throw new RangeError(`${what}: gravity ${String(gravitySize)} m/s² times gravityScale ${String(scale)} is not finite (as f32)`);
+  }
+}

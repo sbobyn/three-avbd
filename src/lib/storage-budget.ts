@@ -7,7 +7,7 @@
 // allocate per call, and driver overhead is not included.
 
 import { ARGS_WORDS, COLOR_WG, COUNTER_WORDS, MAX_COLORS, PASS_STRIDE, WORKGROUP_SIZE } from '../avbd2d/gpu/layout.ts';
-import { BODY_FLOATS, CONTACT_WORDS, JOINT_FLOATS, MANIFOLD_WORDS, PARAM_WORDS } from '../avbd3d/gpu/layout.ts';
+import { BODY_AUX_FLOATS, BODY_FLOATS, CONTACT_WORDS, JOINT_FLOATS, MANIFOLD_WORDS, PARAM_WORDS } from '../avbd3d/gpu/layout.ts';
 
 /** How a World's solver storage behaves: grows on demand (the default), or fixed at creation. */
 export type WorldStorageOptions =
@@ -144,6 +144,7 @@ export function resolveFixedStorage(
   const buffers: Record<string, number> = {
     bodies: N * BODY_FLOATS * 4,
     filters: N * 8,
+    bodyAux: N * BODY_AUX_FLOATS * 4,
     refs: N * 32,
     lifecycle: 0,
     joints: J * JOINT_FLOATS * 4,
