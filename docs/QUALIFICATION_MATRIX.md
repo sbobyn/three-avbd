@@ -294,3 +294,28 @@ Twenty focused fake-CPU tests and typecheck pass. Lead review added regressions/
 mutable nested protocol records and a timed-pass destroy failure not poisoning the session.
 Both failed before the fixes. No solver/default/threshold changed. Actual hardware observations
 will be a separately dated, source-qualified record; until then this is tooling, not evidence.
+
+## 9. Bounded observations — 2026-11-10
+
+[Source-qualified record](measurements/qualification-small-2026-11-10.json): clean commit
+`80d355c54ce4e4264cc3e4bf2d87943a31bd044f`, predeclared protocol `6d1fb00`, Node25.2.1,
+Dawn0.6.1, Rapier0.21.0. AVBD used Apple M4 Max / Metal3, nonfallback, no optional features,
+requesting the adapter's reported limits (10 storage buffers). Rapier CPU runs preceded AVBD.
+No renderer was created. One trial per scene/configuration; each includes its validation replay.
+
+| Row | Rapier R | AVBD A (0.01 m margin) | AVBD B (0.001 m margin) |
+|---|---|---|---|
+| Q1 rest-grid-100 | unknown | unknown | unknown |
+| Q2 sphere-pile-hcp-100 | pass | **fail C3** | pass |
+| Q3 chain-20 | pass | pass | pass |
+
+All nine runs completed; finite/rotation/replay criteria passed and AVBD's inspected overflow
+and clash counts were zero throughout the replay. No GPU/cleanup error was reported. Q2 A's
+maximum relative pair depth was0.0148603557, above the frozen0.01 target; this remains a finding,
+not a reason to retune the run. B is a separate configuration, not a replacement pass. Q1 needs
+a ten-second resting window and remains unknown. Chain passes only its coarse declared guard;
+excluded jointed-pair contact quality is not judged. Raw reports/logs and their hashes are retained.
+
+No timing comparison is eligible. These results do not qualify the public World API, large scenes,
+target hardware, SDF, rendering, physical correctness, a release or Steven's acceptance. S1 and
+G7 remain open for their larger, explicit acceptance. No new default is selected by this record.
