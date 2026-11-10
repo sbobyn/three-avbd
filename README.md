@@ -68,6 +68,10 @@ storage. Physics state is transient: the demos do not save editable worlds.
    should fall onto the ground; **Kick the crate** applies an upward impulse. Change size,
    density/friction and material color separately: visual roughness does not alter physics friction.
 
+For a small mechanic or simulation-art variation, try the documented [per-body gravity scale
+and velocity damping](docs/USER_GUIDE.md#per-body-gravity-scale) in that same consumer. These
+are current-source APIs; follow the local package recipe rather than registry0.3.0.
+
 Your durable result is the consumer's source and pinned dependency files. Reopening reconstructs
 the scene; it does not restore its last simulation frame. [Save/reopen and recovery](docs/SETUP.md#keep-and-reopen-your-first-result).
 

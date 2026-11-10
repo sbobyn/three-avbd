@@ -1,0 +1,151 @@
+{
+  "schema": "three-avbd.damping-observation/0",
+  "recordedAt": "2026-11-10T22:04:58+00:00",
+  "testedSource": {
+    "base": "095117cad423d97d5065306d2f9d30eac6b7dcf2",
+    "dirtyDuringChecks": true,
+    "files": {
+      "src/avbd3d/gpu/layout.ts": "cb27c6a53e0f689fed54ad6a57bd7f4839ebd394c370f85062653817b29625ff",
+      "src/avbd3d/gpu/solver.ts": "3c733376fa980e31de30b02f9ea3476483c9d29bf546439dad21d060e493e308",
+      "src/avbd3d/gpu/wgsl-solve.ts": "493f8b31a0f5b807aca6d11a0886b9679519585c3b27a77c999f803a69cbe50a",
+      "src/lib/capabilities.ts": "6e71f98c4adaea135cabf3a430b87917883c7adc0c4813b4b3a61f4cf55e6d57",
+      "src/lib/index.ts": "90dcdae77ce250234b772d6f3dc28eaf41d108840e298309718652dc55c5a8b2",
+      "src/lib/pool.ts": "0b86a8711106fa76eec5ea2c2efe4f5f60405039440e8e956827d7e81e9fb958",
+      "src/lib/world-validation.ts": "bede660285a88d35c531b3e630a934ef0bb67e81f0d6e62bcfc740c8387dcd3e",
+      "src/lib/world.ts": "855f4e66cd21db1df03e740d2d5f4efc1c93630dc3593b50781d55f28f540fcc",
+      "tests/damping.test.ts": "46de9188cfe612f8a982f9f1f08f1081ae08c55bf73288698c1899ff2e6bc15f",
+      "tests-gpu/damping.gpu.test.ts": "aba6235f64d5c55eb2b2eb4e4723768391dbf3dd538849ffacff9e25460fbd65"
+    },
+    "matchingCommittedSource": "3bcee186db649c0df31d0c78d3958a03a9b32e41",
+    "note": "Checks ran on the base plus hashed implementation overlay before commit; do not relabel the historical run clean. Source/test hashes matched when committed."
+  },
+  "environment": {
+    "node": "v25.2.1",
+    "three": "0.187.0",
+    "typescript": "5.9.3",
+    "dawn": "0.6.1",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "apple-m4-max",
+      "description": "Metal driver on macOS Version 26.6.2 (Build 25G83)",
+      "isFallbackAdapter": false
+    },
+    "gpuTestsRequestedStorageLimit": 10,
+    "packedAndDefaultLimitStorageLimit": 8,
+    "rendered": false
+  },
+  "predeclaredAcceptance": {
+    "ratesPerSecond": 1,
+    "linearStartMetersPerSecond": 2,
+    "angularStartRadiansPerSecond": 0.5,
+    "durationSeconds": 2,
+    "dtSeconds": [
+      0.016666666666666666,
+      0.004166666666666667
+    ],
+    "samplesEverySeconds": 0.5,
+    "analyticRelativeTolerance": 0.01,
+    "crossDtRelativeTolerance": 0.02,
+    "undampedComponentRelativeToControlTolerance": 0.0001,
+    "zeroAndKinematicComparison": "exact with same history"
+  },
+  "checks": {
+    "focusedCpu": {
+      "passed": 118,
+      "failed": 0,
+      "skipped": 0,
+      "note": "Nine explicitly named files, normal process isolation/concurrency1. Worker combined-count discrepancy not reproduced; individual worker evidence superseded by this resolved count."
+    },
+    "newGpu": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    "existingAffectedGpu": {
+      "passed": 115,
+      "failed": 0,
+      "skipped": 0
+    },
+    "typecheck": "passed",
+    "siteBuild": "passed; existing chunk-size warning",
+    "libraryBuild": "passed",
+    "packedStrictTypes": "passed five entries, exported damping types, readonly pair/full setter",
+    "fullSuite": "not repeated; existing daily integration evidence reused for unchanged parts"
+  },
+  "publicCustomSolveWGSL_sha256": "f2228d885f039af67798bd759ce25dbfa927d290c9d8d149ae3419cda2ff5df3",
+  "package": {
+    "package": "three-avbd",
+    "version": "0.4.0",
+    "sha256": "40192ab5130ddebcfc45adc3c4e10a5c4767431300899066e9ca90cd7cc429da",
+    "bytes": 388638,
+    "entries": 272,
+    "strictTypes": "passed five entries, damping types/capability, immutable getter/full setter",
+    "sourceBase": "095117cad423d97d5065306d2f9d30eac6b7dcf2",
+    "overlay": "reviewed local damping source/tests/docs; source-file hashes held separately",
+    "dependencies": "existing compatible local dependencies linked, no registry install/publication"
+  },
+  "packedRuntime": {
+    "date": "2026-11-10T22:03:15.251Z",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "apple-m4-max",
+      "description": "Metal driver on macOS Version 26.6.2 (Build 25G83)",
+      "isFallbackAdapter": false
+    },
+    "storageLimit": 8,
+    "exports": [
+      14,
+      11,
+      53,
+      2,
+      1
+    ],
+    "runtime": "v25.2.1",
+    "rendered": false,
+    "registryInstall": false,
+    "after2s": {
+      "v": 0.2706598937511444,
+      "w": 0.06766440719366074,
+      "linearExpected": 0.2706705664732254,
+      "angularExpected": 0.06766764161830635
+    },
+    "setterReset": "passed",
+    "callerDeviceUsableAfterWorldDestroy": true,
+    "status": "passed",
+    "gpuErrors": []
+  },
+  "rawEvidence": {
+    "focused-cpu.log": {
+      "sha256": "228c279a377b601f0973f409c7875e578e89710ae7098ad93f637be8a7a8c6e6",
+      "bytes": 12762
+    },
+    "hardware-first.log": {
+      "sha256": "ee37572064efad65b3e84a843be07d722d008e679efc911c9c1116e5587da083",
+      "bytes": 1177
+    },
+    "affected-gpu.log": {
+      "sha256": "39dc352e8cab4de4d11de7e0a3194e9e9620affd6e546aa049084a7522633d2b",
+      "bytes": 14953
+    },
+    "typecheck.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "build-lib.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "build-site.log": {
+      "sha256": "73faf771104bb4799dcf5423a57cce5c88e83e4b96b5923cbf96d878a45cabcc",
+      "bytes": 16078
+    }
+  },
+  "limits": [
+    "Focused numerical/lifecycle evidence on one M4 Max device family, not broad physics/contact-quality/performance/renderer/M1/GTX1080/human acceptance.",
+    "Standard and SDF free-body integrators checked; no SDF-contact damping quality claim or spring/fluid damping model.",
+    "Source0.4.0 local tarball, compatible installed peers reused; no registry installation/publication or user-copy modification.",
+    "Old custom solve source and record/layout counts retained. Advanced callers must obey internal finite-exponent requirements; World enforces its accepted API bounds."
+  ]
+}

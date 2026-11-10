@@ -5,6 +5,20 @@
 
 import { BODY_LIFECYCLE_WGSL, PRELUDE_3D, PRIMAL_LANES_WGSL } from './layout.ts';
 
+/**
+ * Built-in aux variant only: a dynamic body's incoming velocities decay by exp(-rate dt) (aux.y
+ * linear, aux.z angular, 1/s) before the inertial target and warm start use them, once per step.
+ * The decayed values are stored so updateVelocities' prevUp (the adaptive warm start's history)
+ * is this step's actual starting velocity. Zero rates take no branch: the undamped arithmetic.
+ */
+const DAMPING_WGSL = `  if (dynamic && (aux.y > 0.0 || aux.z > 0.0)) {
+    vel = vec4f(vel.xyz * exp(-aux.y * dt), vel.w);
+    angVel = angVel * exp(-aux.z * dt);
+    bodies[i].vel = vel;
+    bodies[i].angVel = vec4f(angVel, bodies[i].angVel.w);
+  }
+`;
+
 function makeSolveWGSL(bodyAux: boolean): string {
   return /* wgsl */ `
 ${PRELUDE_3D}
@@ -28,7 +42,7 @@ struct PassConstants {
 @group(0) @binding(5) var<storage, read> adj: array<u32>;
 @group(0) @binding(6) var<storage, read> color: array<u32>;
 @group(0) @binding(7) var<storage, read> counters: array<u32>;
-${bodyAux ? '// Per-body gravity scale, internal built-in integrator only.\n@group(0) @binding(9) var<storage, read> bodyAux: array<vec4f>;\n' : ''}@group(1) @binding(0) var<uniform> pc: PassConstants;
+${bodyAux ? '// Per-body gravity scale and damping rates, internal built-in integrator only.\n@group(0) @binding(9) var<storage, read> bodyAux: array<vec4f>;\n' : ''}@group(1) @binding(0) var<uniform> pc: PassConstants;
 
 fn manifoldCount() -> u32 {
   return min(counters[C_MANIFOLDS], params.manifoldCapacity);
@@ -280,15 +294,15 @@ fn windAccel(i: u32, x: vec3f, rot: vec4f, v: vec3f) -> vec3f {
 fn warmStartBodies(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
   if (i >= params.bodyCount || !bodyEnabled(i)) { return; }
-  // Field-wise loads and stores: only the poses change (whole-record copies moved 320 bytes)
+${bodyAux ? '  let aux = bodyAux[i];\n' : ''}  // Field-wise loads and stores: only the poses change (whole-record copies moved 320 bytes)
   let pos = bodies[i].pos;
   let rot = bodies[i].rot;
-  let vel = bodies[i].vel;
-  let angVel = bodies[i].angVel.xyz;
+  ${bodyAux ? 'var' : 'let'} vel = bodies[i].vel;
+  ${bodyAux ? 'var' : 'let'} angVel = bodies[i].angVel.xyz;
   let dt = params.dt;
-  let g = params.gravity${bodyAux ? ' * bodyAux[i].x' : ''};
+  let g = params.gravity${bodyAux ? ' * aux.x' : ''};
   let dynamic = bodies[i].size.w > 0.0;
-
+${bodyAux ? DAMPING_WGSL : ''}
   // Inertial target (Eq. 2), with the wind's push on sails as a second external force
   var inertialPos = pos.xyz + vel.xyz * dt;
   if (dynamic) { inertialPos += params.up.xyz * (g * (dt * dt)); }

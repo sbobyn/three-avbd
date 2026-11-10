@@ -7,7 +7,7 @@
 import { Body, World, type BodyOptions, type BodyState, type BoxOptions, type Quat, type Reservation, type SphereOptions, type Vec3 } from './world.ts';
 import { BodyLifecycleError } from './lifecycle.ts';
 import { MAX_HULL_VERTICES, type HullShape } from '../avbd3d/hull.ts';
-import { checkGravityScale } from './world-validation.ts';
+import { checkDamping, checkGravityScale } from './world-validation.ts';
 
 type TemplateOptions<T> = Omit<T, keyof BodyState | 'enabled'>;
 
@@ -67,6 +67,8 @@ function checkOptions(options: Record<string, unknown>): BodyOptions {
   mask(options.collidesWith, 'BodyPool template: collidesWith');
   if (options.gravityScale !== undefined) checkGravityScale(options.gravityScale, 'BodyPool template');
   const copy = { ...options } as BodyOptions & Record<string, unknown>;
+  // A frozen copy: later changes to the caller's pair do not reach the template or its leases
+  if (options.damping !== undefined) copy.damping = checkDamping(options.damping, 'BodyPool template');
   if (options.massProperties !== undefined) {
     const m = options.massProperties as { mass: unknown; moments: unknown };
     if (!positive(m?.mass)) throw new RangeError('BodyPool template: massProperties.mass must be finite and positive');
@@ -159,7 +161,9 @@ export class BodyPool {
     if (!Number.isSafeInteger(capacity) || capacity < 1) throw new RangeError('BodyPool.create: capacity must be a positive safe integer');
     const template = resolve(options.template);
     // (The template's scale times the World's gravity is checked there, before anything is reserved)
-    const reservation = world.reserveBodies(capacity, template.hull, template.options.gravityScale ?? 1);
+    // (and its larger damping rate times the World's dt)
+    const damping = template.options.damping;
+    const reservation = world.reserveBodies(capacity, template.hull, template.options.gravityScale ?? 1, Math.max(damping?.linear ?? 0, damping?.angular ?? 0));
     if (typeof reservation === 'string') return { ok: false, reason: reservation };
     try {
       await world.prewarmReservation(reservation);

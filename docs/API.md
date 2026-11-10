@@ -26,6 +26,9 @@ flowchart TD
   App[Consumer or examples] --> World[World / Body / Joint]
   World --> Commands[Masked commands, lifetime identity, capacity checks]
   World --> TimeDebt[CPU time debt / droppedTime; not GPU timing]
+  Commands --> Aux[Private scale and damping record]
+  Aux --> Integrate[Built-in warm-start predictor]
+  Integrate --> Solver
   Commands --> Solver[GpuSolver3D.step]
   Solver --> Collision[Built-in broadphase and narrowphase]
   Mesh[Input triangle mesh or analytic shape] --> Bake[CPU SDF bake / optional worker]
@@ -176,7 +179,37 @@ flowchart LR
 [Reviewed design and compatibility decisions](BODY_AUX_DESIGN.md). M4 Max focused hardware
 checks cover standard/SDF free fall, default8-buffer limits, setter, pool reuse, reset/disable,
 custom shader compatibility and existing default-scene envelopes. This does not qualify
-other hardware, extreme settings, performance or broad physical accuracy. Damping remains open under STE-3328; the CPU dropped-time diagnostic is described below.
+other hardware, extreme settings, performance or broad physical accuracy. Per-body damping is described below; the CPU dropped-time diagnostic remains separate.
+
+### Per-body velocity damping — 2026-11-10, STE-3328
+
+Source: main `095117c` plus the scoped `feat/ste-3328-damping-20261110` patch. The existing
+16 B private auxiliary record now carries `(gravityScale, linearRate, angularRate, 0)`.
+`BodyOptions.damping?: { linear?: number; angular?: number }` defaults each missing rate to 0.
+`body.damping` is an owned frozen `BodyDamping` pair; `body.setDamping({ linear, angular })`
+requires both rates and replaces the pair atomically for the next step. `DampingOptions` and
+`BodyDamping` are main-entry types, with no new runtime export. Unknown keys are rejected.
+
+Rates are nonnegative numbers in 1/s whose f32 representation is finite and at most 1000.
+Their f32 product with `dt` must be finite; changing `world.dt` checks live bodies and active
+pool templates before changing anything. These input bounds are not a stability guarantee.
+Tiny rates may round/flush to zero; the getter preserves the accepted input precision.
+
+Only dynamic bodies' incoming velocities decay by `exp(-rate * dt)`, once in the built-in
+warm-start predictor before its inertial target, rest test and wind evaluation. The decayed
+velocities also become its previous-velocity history. Gravity/constraint responses computed
+after that point are not damped again there. This is phenomenological velocity decay, not a
+fluid/drag model or spring damping. Fixed/kinematic motion is unaffected. Zero rates skip the
+branch. Public `solveWGSL`, body/filter/joint strides, buffer/layout counts and memory budget
+stay unchanged; advanced custom-solve modules refuse aux writes. `capabilities.damping`
+follows the built-in integrator independently of collision shape support.
+
+Reset/disable retain damping; a new pool lease restores its copied template, and removal/slot
+reuse cannot leak rates. As with `setGravityScale`, a setter on a removed handle changes that
+retired handle's configuration but cannot upload to its former slot; destroyed Worlds reject it.
+See [consumer example](USER_GUIDE.md#per-body-velocity-damping) and
+[lifecycle](BODY_LIFECYCLE.md). M4 Max focused numerical/lifecycle checks are feature evidence,
+not a performance, large-scene, target-device or physical-correctness qualification.
 
 ### Bounded qualification tooling — 2026-11-10, STE-3354
 

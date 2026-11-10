@@ -169,3 +169,14 @@ fragmented hull storage (a fragmented fixed World can refuse a hull that would f
 query/read admission limits, and any whole-engine memory or no-GC guarantee.
 
 Device-only example: [body-pool.ts](../examples/body-pool.ts).
+
+
+### Velocity damping configuration — 2026-11-10
+
+Current source adds `BodyOptions.damping`, the frozen owned `body.damping` pair and
+`setDamping({ linear, angular })`. Reset and disable retain these rates; pool reacquisition
+restores the copied template and slot reuse clears old rates. They affect only dynamic-body
+incoming velocity prediction, not fixed/kinematic prescribed motion. See
+[API semantics and limits](API.md#per-body-velocity-damping) and
+[consumer example](USER_GUIDE.md#per-body-velocity-damping). World reconstruction and the
+existing SDF lifecycle restrictions are unchanged.

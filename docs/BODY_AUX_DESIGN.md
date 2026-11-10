@@ -524,3 +524,25 @@ shared instrumentation failures, including unchanged2D; normal isolated files wi
 workers passed. No test threshold/digest was loosened and raw failures are retained. This
 is feature/integration evidence, not full-suite repetition, renderer, timing, other-device
 or broad physical/large-scene acceptance.
+
+
+## 13. Damping implementation — 2026-11-10
+
+G1 uses the existing record's y/z lanes for linear/angular rates in 1/s, leaving x as gravity
+scale and w at zero. No storage, stride, bind-group, pipeline-layout or fixed-budget expansion.
+The built-in warm-start predictor decays incoming dynamic velocities exponentially and stores
+them as its starting-velocity history; zero rates skip that branch. Exported `solveWGSL` remains
+byte-identical. World uploads complete scale/rate records when configuration changes; previous
+advanced/internal callers may still omit rate arrays. Custom solve overrides refuse aux writes.
+
+The public [damping contract](API.md#per-body-velocity-damping) includes copied immutable pairs,
+validation before mutation, atomic effective-rate/dt checks, and pool/slot/reset ownership. The
+removed-handle setter follows gravityScale: metadata only, no former-slot upload. Misspelled keys
+are rejected at this new boundary. This does not add spring damping or a fluid model.
+
+Actual M4 Max / Metal3 nonfallback checks: nine damping GPU cases, including standard/SDF,
+fixed storage/default8-buffer, lifecycle and custom compatibility;115 existing affected GPU
+checks;118 focused CPU checks. The packed consumer also passed strict types/five entries and
+numerical decay/setter/reset/disposal on an8-buffer device. See the
+[dated source-qualified evidence](measurements/damping-2026-11-10.json). No full-suite replay,
+renderer, timing, target-device or broad physical qualification follows.

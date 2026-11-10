@@ -92,3 +92,52 @@ export function checkEffectiveGravity(gravitySize: number, scale: number, what: 
     throw new RangeError(`${what}: gravity ${String(gravitySize)} m/s² times gravityScale ${String(scale)} is not finite (as f32)`);
   }
 }
+
+/** The largest damping rate, 1/s (an API bound, not a stability or physical qualification). */
+export const MAX_DAMPING_RATE = 1000;
+
+/** A body's damping rates (1/s): how fast its linear and angular velocities decay. */
+export interface BodyDamping {
+  readonly linear: number;
+  readonly angular: number;
+}
+
+/** BodyOptions.damping: either rate may be left out (0). */
+export interface DampingOptions {
+  linear?: number;
+  angular?: number;
+}
+
+const DAMPING_KEYS = new Set(['linear', 'angular']);
+
+function dampingRate(rate: unknown, key: string, what: string): number {
+  if (typeof rate !== 'number' || !f32Finite(rate) || !(rate >= 0) || Math.fround(rate) > MAX_DAMPING_RATE) {
+    throw new RangeError(`${what}: damping.${key} must be a finite number (as f32) within [0, ${MAX_DAMPING_RATE}] 1/s, not ${String(rate)}`);
+  }
+  return rate;
+}
+
+/**
+ * A damping pair, read once and copied into a frozen object the caller cannot change. `full`
+ * (Body.setDamping) needs both rates; otherwise (BodyOptions.damping) a missing rate, or a missing
+ * pair, is 0. Unknown keys are refused, so a misspelt rate is not silently 0. Throws TypeError
+ * for a value that is not a plain pair and RangeError for a rate outside [0, MAX_DAMPING_RATE].
+ */
+export function checkDamping(value: unknown, what: string, full = false): BodyDamping {
+  if (value === undefined && !full) return Object.freeze({ linear: 0, angular: 0 });
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`${what}: damping must be an object { linear, angular }, not ${String(value)}`);
+  for (const key of Object.keys(value)) if (!DAMPING_KEYS.has(key)) throw new TypeError(`${what}: damping has no '${key}' (only linear and angular)`);
+  const { linear, angular } = value as { linear?: unknown; angular?: unknown };
+  if (full && (linear === undefined || angular === undefined)) throw new TypeError(`${what}: damping needs both linear and angular`);
+  return Object.freeze({ linear: linear === undefined ? 0 : dampingRate(linear, 'linear', what), angular: angular === undefined ? 0 : dampingRate(angular, 'angular', what) });
+}
+
+/**
+ * The exponent a damped body decays with each step, as the solver computes it in f32: rate × dt.
+ * It must be finite, which a finite rate and a finite dt alone do not guarantee.
+ */
+export function checkEffectiveDamping(rate: number, dt: number, what: string): void {
+  if (!Number.isFinite(Math.fround(Math.fround(rate) * Math.fround(dt)))) {
+    throw new RangeError(`${what}: damping ${String(rate)} 1/s times dt ${String(dt)} s is not finite (as f32)`);
+  }
+}

@@ -11,6 +11,13 @@ Read [breaking changes and migration](#breaking-changes-and-migration) before up
 
 ## Highlights
 
+- **Per-body velocity damping (current source).** Optional linear/angular rates in 1/s,
+  immutable getter/full-pair setter and `capabilities.damping`. Default 0 preserves undamped
+  behavior; dynamic bodies use exponential incoming-velocity decay. Reset/disable retain it,
+  pool leases restore their template, and invalid rates/effective exponents refuse atomically.
+  Fixed/kinematic motion, public custom shader source and record strides remain unchanged.
+  No fluid, spring damping, broad physical or target-device qualification is implied.
+
 - **CPU time accounting (current source).** Read-only `world.droppedTime` reports cumulative
   seconds discarded by `update` at its existing catch-up clamp. No stepping policy change,
   capability flag, GPU timer or readback; host-side omitted/clamped time is not included.
@@ -317,3 +324,12 @@ keep their original scenario, source and hardware.
 
 See [audit dispositions](AUDIT_DISPOSITION.md), [API](API.md) and
 [historical SDF verification](SDF_RELEASE_0.4.md).
+
+
+### Damping validation and step-size changes (current source)
+
+`BodyOptions.damping` is a new optional pair; omitted rates default to zero. The setter requires
+both rates and rejects unknown keys. `World.dt` now refuses a change if a live body's or active
+pool template's accepted damping rate times that dt would overflow in f32; the old dt/config
+remain intact. With zero damping, the previously accepted dt range is unchanged. This is an
+additive source API, not evidence of npm publication; repack the exact source you intend to use.
