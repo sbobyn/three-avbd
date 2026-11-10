@@ -15,11 +15,12 @@ breakable structures; experimental non-convex SDF collisions are also available.
 
 ## Status and requirements
 
-Current source has **0.4.0 candidate APIs**; npm latest was **0.3.0** at the November 9 check.
-Publication is pending. The prepared **review-20261106-1** has exact source/package hashes and
-[verification notes](docs/REVIEW_20261106.md). This branch includes the setup guides and
-standalone consumer example. The hosted demo and your checkout may differ; record the exported build commit with feedback.
-Keep a frozen candidate's own README with it; do not substitute registry 0.3 for its new APIs.
+Current source has **0.4.0 candidate APIs** and is not published. The last npm check recorded
+(**November 10, 2026**) showed latest **0.3.0**, which lacks the 0.4 subpaths such as SDF; check the
+registry yourself for anything newer. The frozen **review-20261106-1** snapshot has exact
+source/package hashes and [verification notes](docs/REVIEW_20261106.md); `main` has moved on since,
+and the hosted demo and your checkout may differ. Record the commit you run with feedback.
+Keep a frozen candidate's own README with it.
 
 Use Node **22.18+**, pnpm **10.18.0**, and a browser with a **hardware WebGPU adapter**.
 The tested environment is Node 25.2.1, Three 0.187.0, Chromium/Metal on Apple M4 Max.
@@ -87,7 +88,8 @@ Those studies are proposals; the gallery lists implemented demos only.
 - [Core concepts, APIs, demos and configuration](docs/USER_GUIDE.md): units, fixed stepping,
  bodies, materials, forces, joints, async readback, expected behavior and limitations.
 - [Fresh project, packaging, persistence and deliberate updates](docs/SETUP.md).
- Use a local built tarball for candidate 0.4; a bare Git dependency does not build its exports.
+ Use a local built tarball for candidate 0.4: a bare Git dependency does not build its exports,
+ and registry 0.3.0 lacks the new subpaths.
 - [API and editable architecture/map](docs/API.md), [static queries](docs/QUERIES.md),
  [experimental SDF API](docs/SDF_WORLD.md), [SDF baking](docs/SDF_BAKING.md).
 - [0.4 release/migration notes](docs/RELEASE_0.4.md), [measured findings](docs/FINDINGS.md),
@@ -96,9 +98,12 @@ Those studies are proposals; the gallery lists implemented demos only.
  [onboarding acceptance/tasks](docs/ONBOARDING.md).
 
 For maintainers, `pnpm check` runs typecheck, CPU tests, hardware GPU tests and site/library builds.
-Latest candidate evidence:255 CPU +260 GPU tests passed without skips; independent consumer
-build and bounded browser settling/impulse checks passed. These are not full visual, large-scene,
-other-device or user-acceptance tests. Reuse [the dated evidence](docs/REVIEW_20261106.md).
+Verification records are tied to a source version and device. The frozen review-20261106-1
+snapshot recorded 255 CPU + 260 GPU tests passing on an Apple M4 Max on **November 6**, plus an
+independent consumer build and bounded browser settling/impulse checks; the later
+[November 7 packed-API record](docs/REVIEW_20261107.md) covers its own commit. Neither covers
+today's `main`, full visual or large-scene behavior, other devices or user acceptance.
+Run `pnpm check` on your checkout for current results.
 
 ## Feedback and license
 
