@@ -228,6 +228,79 @@ was about 6.01 mm after the push; this is an engine-query observation, not an ac
 threshold or an AVBD comparison. Raw report and baseline comparison remain in private recovery
 evidence. Analytic compound verdicts remain unknown and qualification remains gated.
 
+### Proposed compound geometry model (2026-11-10, uncertified, not wired)
+
+`proposedCompoundSandwich` and `proposedRingPairDepth` in `interlocking-quality.ts` are
+research helpers. Production `observeInterlocking`, `evaluateHanging`, `summarizeTrial`,
+`ringRepresentationError`, the trial report and all predeclared criteria are unchanged.
+The helpers always expose `boundCertified: false`; compound `result` stays `unknown` and
+qualification stays `gated`. `conditionalResult` describes the model **if** its assumptions
+held. It is not a quality verdict for Rapier or AVBD.
+
+Notation: core circle K of radius R = 0.9 in z = 0, g(p) = dist(p, K), φ = g − r,
+T(c) = {φ ≤ c}, Δ = 2π/N. For ideal exact-real sector vertices with closed shared seams,
+the derived sandwich T(−ε_in) ⊆ U ⊆ T(+ε_out) implies
+φ − ε_out ≤ sd_U ≤ φ + ε_in. Independent review supported this mathematical argument:
+
+- Outward: clip each sector hull into angular wedges Q. For the convex hull S_Q of nearest
+  core points of a superset of Q's vertices, g(p) ≤ dist(p, S_Q) + sup(S_Q) dist(·, K).
+  Convexity bounds the first term by vertex values; the second is at most the chord sag
+  R(1 − cos(half spread)). First/last wedges extend beyond nominal angular boundaries so
+  rounded float32 vertices outside those angles are included. The implementation's numerical
+  tolerances are not a formal directed-rounding error analysis.
+- Inward, **exact reals only**: interpolating adjacent octagons gives radial factor
+  λ ≥ cos(Δ/4). The inscribed ellipse contains the disc about the core of radius r − ε_in,
+  where ε_in = (R + r)(1 − λ) + λ r(1 − cos π/8). A measured vertex perturbation is added
+  to the numerical model; this addition does not prove inward containment of the float32 union.
+
+| pieces | outward witness / derived model | inward witness / derived model | existing estimated band |
+|---|---|---|---|
+| 16 | 14.219 / 14.223 mm | 16.794 / 17.225 mm | 17.283 mm |
+| 32 | 3.563 / 3.564 mm | 13.333 / 13.441 mm | 13.456 mm |
+| 64 | 0.891 / 0.892 mm | 12.468 / 12.495 mm | 12.499 mm |
+
+**Float32 counterexample:** the closing octagon is not bitwise equal to the first octagon.
+The nonzero stored value of sin(2π) leaves a wrap crack up to about 2.6e-16 m. The point
+(0.9, −9.06e-17, 0), analytically at the tube core (φ = −0.16), lies outside every component.
+Thus literal inward containment is false, and these values do **not** certify a global signed-
+distance error band for the raw float32 union. The crack is far below the reported engine-query
+resolution; its physical significance is unqualified. Interior octagons are shared; selected
+Rapier hulls match the convex hull of their supplied points, with identity collider pose and
+zero skin. Neither empirical sampling nor those selected checks closes all proof assumptions.
+The scene geometry is deliberately unchanged; closing/regularizing seams would be a separate
+representation and metric decision, followed by requalification.
+
+The proposed common quantity is the deepest point of one solid inside the other (negative =
+separation), rather than minimum translation distance. For ideal tubes of radii r_a/r_b whose
+core circles are d apart, the exact-real expression is
+max(r_b − max(0, d − r_a), r_a − max(0, d − r_b)). `depth` applies that expression to a
+numerical core-distance interval and, for compounds, the conditional radii r ± ε. In particular,
+the compound `depth.lower` is **not** an established bound for the literal float32 union.
+Rapier per-component penetration is a different metric and is never substituted for this one.
+
+The core-distance search is bounded at 200,000 evaluations and reports `converged`. Its target
+width is 1e-7 m when converged, with a 1e-12 numerical guard; flat minima can return wider
+intervals. Pruned-cell lower allowances are retained. Centres must have every coordinate within
+±8 m; centre subtraction precedes local-point addition. The per-pose 1e-6 m allowance is assumed,
+not derived from Rapier internals. Ideal analytic tori use normalized reported poses; this is not
+an engine-accuracy certificate. Invalid poses/representations return invalid/unknown, and each
+result records the penetration limit it used. Unsupported inputs cannot silently select analytic
+semantics. Shared limits/assumptions are frozen.
+
+**Future gate:** under the conditional closed-seam model, the unchanged 16 mm criterion can be
+assessed at some shallow 32/64-piece contacts; 16 pieces require an analytic gap of about 12.4 mm.
+The octagonal tube approximation leaves a roughly 12.5 mm inward-model floor. These are feasibility
+observations, not adopted acceptance. Earlier worker evaluation of five private 32-piece trial
+snapshots is retained as historical model evidence; no new certified trial verdict is emitted.
+Peg, floor, topology, continuous motion, float32 containment/pose error and the choice of literal
+versus regularized geometry remain separate gates. Wiring a new metric into the report is an
+explicit contract decision; this change does not make it.
+
+Fixtures in `tests/interlocking-compound-bounds.test.ts` include actual selected Rapier hulls,
+known-distance and near-tangent cases, empirical samples, the literal seam counterexample,
+coincident/coaxial/budget-limited minima, unsupported inputs, large coordinates and frozen arrays.
+Production-observer JSON equality and its existing compound-unknown assertions remain intact.
+
 ## Fix-and-retest loop
 
 Keep raw observations with engine/source/settings and distinguish application mistake, docs/API

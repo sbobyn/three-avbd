@@ -106,6 +106,11 @@ observes shared poses against analytic geometry and predeclared guards. It does 
 engine, read device state or change the library API. Unproven compound error bands yield `unknown`;
 resolved analytic centre-circle linking is not solid-body topology certification. Qualification
 remains gated; see the protocol quality contract (2026-11-08, STE-3282).
+The same source file also contains **unwired research helpers** `proposedCompoundSandwich` and
+`proposedRingPairDepth` (2026-11-10). Their conditional geometry model is exercised by
+`tests/interlocking-compound-bounds.test.ts`; it does not feed the observer, trial JSON or solver.
+The float32 wrap-seam counterexample prevents certification: `boundCertified` stays false and
+compound results stay unknown. [Model, numerical domain and remaining proof gates](PAIRED_STUDIES.md#proposed-compound-geometry-model-2026-11-10-uncertified-not-wired).
 The optional [bounded runner](../src/comparison/interlocking-trial.ts), invoked by
 [`scripts/interlocking-trial.ts`](../scripts/interlocking-trial.ts), serializes model steps,
 queue drain/readback and snapshot observers. It owns its model; the CLI owns any Dawn device.
