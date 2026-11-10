@@ -280,3 +280,17 @@ becomes a finding or ticket, not a retune.
 **Delivery and limits.** Mode set by the lead (default local-only until reviewed). No Linear or
 publication. The result is a harness and short-window observations on one device: no timing claim
 and no `World`-level, rendered, long-run, large-scale or target-hardware qualification.
+
+## 8. Implementation notes — 2026-11-10, before hardware trials
+
+The first runner implements the three new files named above. Rapier runs once per row with
+config `R`, explicitly mapped to all selected A/B configurations; its inputs do not vary with
+the AVBD margin. Rows skipped after device failure have `execution.status` and `rowVerdict`
+`notRun`. Counters-read timings are available only for AVBD; Rapier's CPU inspection is not
+labelled a GPU read. Reports retain raw legacy `runOne` data with explicit timing limits.
+The draft schema remains `proposal: true` despite lead acceptance of the engineering protocol.
+
+Twenty focused fake-CPU tests and typecheck pass. Lead review added regressions/fixes for
+mutable nested protocol records and a timed-pass destroy failure not poisoning the session.
+Both failed before the fixes. No solver/default/threshold changed. Actual hardware observations
+will be a separately dated, source-qualified record; until then this is tooling, not evidence.

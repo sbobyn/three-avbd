@@ -178,6 +178,29 @@ checks cover standard/SDF free fall, default8-buffer limits, setter, pool reuse,
 custom shader compatibility and existing default-scene envelopes. This does not qualify
 other hardware, extreme settings, performance or broad physical accuracy. Damping remains open under STE-3328; the CPU dropped-time diagnostic is described below.
 
+### Bounded qualification tooling — 2026-11-10, STE-3354
+
+Source: main `f9562db` plus the protocol committed as `6d1fb00` and this scoped
+`feat/ste-3354-qualification-20261110` implementation. This is a direct-solver tool,
+not a package export or proof of `World`/consumer support.
+
+```mermaid
+flowchart LR
+  Protocol[Predeclared rows and criteria] --> Tool[qualification CLI / pure core]
+  Tool --> Runner[Existing runOne with observed adapter factory]
+  Runner --> Adapters[Rapier CPU or GpuSolver3D]
+  Adapters --> Replay[Timed pass and per-step validation replay]
+  Replay --> Judge[Independent shape metrics / pass, fail, unknown]
+  Judge --> Report[Source-qualified JSON after owned-device cleanup]
+```
+
+[`qualification.ts`](../tools/qualification.ts) owns adapter assessment, the optional Dawn
+session and new-file-only JSON output. [`qualification-core.ts`](../tools/qualification-core.ts)
+freezes the three small scenes, wraps only owned adapters, records separate wall intervals and
+judges the existing metrics. Device errors stop later GPU rows; absent metrics stay unknown.
+[Protocol, exact command, thresholds and limits](QUALIFICATION_MATRIX.md). No v0 report unlocks
+a timing comparison; no broad matrix, renderer, target-device or physical qualification follows.
+
 ### Public-World repeatability diagnostic — 2026-11-10, STE-3003/F1
 
 [`tools/world-determinism.ts`](../tools/world-determinism.ts) owns a qualified Dawn device;
@@ -325,6 +348,7 @@ device, settings and provenance must accompany performance claims.
 | `src/comparison/`, `src/results/`, `scripts/` | AVBD/Rapier adapters, quality metrics, benchmark and provenance tools |
 | `examples/` | Public API consumer journeys, including lifecycle/pool/SDF and pose capture/playback; `examples/index.html` is the gallery |
 | `src/gallery/`, `public/gallery/` | Static demo gallery: dependency-free catalog, filters and SVG illustrations ([design](GALLERY_DESIGN.md)) |
+| `tools/qualification*.ts` | Opt-in predeclared three-scene direct-solver observations; separate timers, missing metrics unknown, no timing comparison |
 | `tools/world-determinism*.ts` | Opt-in public-World repeatability diagnostic; fixed-storage final fields only, no hidden-state replay guarantee |
 | `tests/`, `tests-gpu/`, `tools/cpp-oracle*/` | CPU/GPU checks and upstream-generated oracle fixtures; never regenerate fixtures to hide failures |
 | `docs/data/`, `docs/measurements/`, `research/` | Dated raw results and retained experiments; not automatically accepted runtime behavior |
