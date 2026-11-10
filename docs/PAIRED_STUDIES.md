@@ -220,6 +220,14 @@ never a pass; criteria, verdicts, summaries and `qualification: 'gated'` are unc
 native-collider equivalent for its analytic fields: its snapshots record `available: false` with that
 reason, and no missing value is compared with Rapier.
 
+First bounded CLI observation (2026-11-10, clean source `81110bcc5d073873eead1a3f07e9d1a5b8071ddc`,
+Node 25.2.1 / Rapier 0.21.0): 32 sectors, 240 steps, snapshots 0/60/120/180/240,
+1,152 queries per snapshot, complete coverage and successful disposal. All five sampled poses
+exactly match the preserved earlier 32-sector baseline. The deepest returned ring-ring contact
+was about 6.01 mm after the push; this is an engine-query observation, not an accepted quality
+threshold or an AVBD comparison. Raw report and baseline comparison remain in private recovery
+evidence. Analytic compound verdicts remain unknown and qualification remains gated.
+
 ## Fix-and-retest loop
 
 Keep raw observations with engine/source/settings and distinguish application mistake, docs/API
