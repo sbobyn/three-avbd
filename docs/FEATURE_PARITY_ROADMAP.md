@@ -870,6 +870,6 @@ inference; any change to the 2D oracle or to reference defaults.
 F1's bounded public-World probe delivered in PR88/main31bb39b; its actual scope and limits
 are in [WORLD_DETERMINISM](WORLD_DETERMINISM.md). F2's [aux design](BODY_AUX_DESIGN.md) and
 G1's first gravity-scale slice include115affected real-adapterGPU checks, focusedCPU checks
-and public guidance. G1 remains open for damping and dropped-time reporting. B1 has a reviewed/fixed internal draft codec and corruption/recovery fixtures. It is not a
+and public guidance. G1 remains open for damping; dropped-time reporting has a separate bounded implementation. B1 has a reviewed/fixed internal draft codec and corruption/recovery fixtures. It is not a
 package export, recorder or stable cache contract; v1/export/consumer acceptance remains open.
 Tracking, implemented features, consumer adoption, cleanup and release acceptance are separate.

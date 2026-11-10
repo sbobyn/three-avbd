@@ -712,6 +712,7 @@ export class World {
   private writes = 0;
   private steps = 0;
   private owed = 0;
+  private dropped = 0;
   private reading: Promise<ReadOutcome> | null = null;
   /** What read() callers of the read in flight are given: its outcome, a listener error rejecting. */
   private readingResult: Promise<ReadResult> | null = null;
@@ -1453,6 +1454,16 @@ export class World {
     return this.steps;
   }
 
+  /**
+   * Cumulative seconds `update` discarded because more than maxSubsteps steps were owed (the at most
+   * one dt carried to the next update is not counted, nor is simulated time). Counts only the time
+   * passed to `update`: time an app clamps or never delivers (a hidden tab) is invisible here. CPU
+   * accounting, not GPU time. Past ~1.8e308 total it reads Infinity.
+   */
+  get droppedTime(): number {
+    return this.dropped;
+  }
+
   /** Run the fixed steps `seconds` of time owes (at most maxSubsteps). Returns how many ran. */
   update(seconds: number): number {
     this.assertLive('update');
@@ -1468,7 +1479,9 @@ export class World {
     }
     this.stepsThisUpdate = 1;
     // Behind by more than maxSubsteps allow: let the rest go rather than fall further behind
-    this.owed = Math.min(this.owed, this.dt);
+    const carried = Math.min(this.owed, this.dt);
+    this.dropped += this.owed - carried;
+    this.owed = carried;
     return n;
   }
 

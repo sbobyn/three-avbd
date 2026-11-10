@@ -25,6 +25,7 @@ The diagram is editable Mermaid; arrows describe source-inspected responsibiliti
 flowchart TD
   App[Consumer or examples] --> World[World / Body / Joint]
   World --> Commands[Masked commands, lifetime identity, capacity checks]
+  World --> TimeDebt[CPU time debt / droppedTime; not GPU timing]
   Commands --> Solver[GpuSolver3D.step]
   Solver --> Collision[Built-in broadphase and narrowphase]
   Mesh[Input triangle mesh or analytic shape] --> Bake[CPU SDF bake / optional worker]
@@ -175,8 +176,7 @@ flowchart LR
 [Reviewed design and compatibility decisions](BODY_AUX_DESIGN.md). M4 Max focused hardware
 checks cover standard/SDF free fall, default8-buffer limits, setter, pool reuse, reset/disable,
 custom shader compatibility and existing default-scene envelopes. This does not qualify
-other hardware, extreme settings, performance or broad physical accuracy. Damping and the
-dropped-time counter remain open under STE-3328.
+other hardware, extreme settings, performance or broad physical accuracy. Damping remains open under STE-3328; the CPU dropped-time diagnostic is described below.
 
 ### Public-World repeatability diagnostic — 2026-11-10, STE-3003/F1
 
@@ -429,9 +429,13 @@ Activation/reset (new in 0.4.0) and its GPU/lifetime semantics are described in
 - `step()` advances one fixed step. `update(seconds)` runs the steps that time is owed, at
   most `maxSubsteps` (default 4). A non-finite `seconds` (`NaN`, `undefined`, ±Infinity) throws
   before the time owed changes; a negative one still counts as no time. Time owed beyond
-  `maxSubsteps` steps is dropped (at most one step's worth carries over), with no dropped-time
-  counter. The return value counts completed steps; track discarded time in the host clock
-  if the application needs that accounting.
+  `maxSubsteps` steps is dropped (at most one step's worth carries over). The return value counts
+  completed steps. Read-only `world.droppedTime` accumulates the seconds that this existing clamp
+  discarded, starting at 0 for each World. It excludes simulated/carried time and any time an app
+  clamps or never passes to `update`. A failed update does not record a discard it never reached.
+  Bare `step`, body reset and destruction do not reset this World-lifetime diagnostic. It is CPU
+  accounting, not GPU elapsed time; no capability flag or readback is needed. Normal JS number
+  precision applies, with +Infinity if the cumulative total exceeds its finite range.
 - `dt` must be positive and finite as f32, `iterations` a nonnegative safe integer (0 integrates
   without solving), and `gravity` three numbers with finite f32 components and magnitude, in
   `World.create` and their setters alike. Set `world.maxSubsteps` to a positive safe integer
