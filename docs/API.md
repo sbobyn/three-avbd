@@ -111,6 +111,29 @@ The optional [bounded runner](../src/comparison/interlocking-trial.ts), invoked 
 queue drain/readback and snapshot observers. It owns its model; the CLI owns any Dawn device.
 JSON reports keep these wall spans separate and rendering unmeasured; they do not certify a
 performance comparison or alter the running demo/library API.
+The diagnostic [startup probe](../src/comparison/startup-profile.ts) (2026-11-10, STE-3003,
+[contract](STARTUP_PROFILING.md)) times one first-on-device and up to three same-device recreate
+cycles of the AVBD interlocking model through its public `step`/`readPoses`/`dispose` and
+`metadata.setupMs`. Hosts own the device: [`scripts/startup-profile.ts`](../scripts/startup-profile.ts)
+(Node + Dawn) and the dev-only [`examples/startup-profile.html`](../examples/startup-profile.html)
+(renderer, not a build input or gallery entry). Counters shadow only the probe's own device,
+queue and newly created shader-module methods, restoring their original descriptors on teardown.
+Module-info request→settle wall is separate from pipeline waits and is not compilation time.
+The visibility record is finalized after teardown; later tab changes cannot rewrite a finished run.
+The optional dev-only `preloadSdf=1` arm moves an import outside cycle windows, without changing
+the library, model or defaults. [Hardware screen and decision](STARTUP_PROFILING.md#14-hardware-attribution-and-decision--2026-11-10):
+no pipeline cache or concurrency optimization justified for this measured tiny scene.
+
+```mermaid
+flowchart LR
+  Host["Node/Dawn or dev browser host"] --> Device["Owned hardware device; browser owns renderer"]
+  Host --> Probe["Clock + scoped device/queue/module observers"]
+  Probe --> Model["Public interlocking model: create / step / read / dispose"]
+  Device --> Model
+  Model --> Report["Bounded diagnostic JSON; cache state unknown"]
+  Probe --> Report
+  Host --> Teardown["Dispose model, renderer and hooks, then device; finalize report"]
+```
 
 ### Demo gallery — 2026-11-09, STE-3288
 

@@ -3158,3 +3158,20 @@ AVBD missing the shared contact-depth target even on a resting grid, and on a se
 pile its contact events kept beginning and ending where Rapier's stopped. Whether a smaller
 margin fixes either, and what it costs in stability, is the next measurement; the default
 stays until then.
+
+## 2026-11-10 — startup profiling before pipeline reuse (STE-3003)
+
+The dev-only startup probe observes one tiny interlocking scene with four
+dispose/recreate cycles on an owned device. On the actual Apple M4 Max / Metal
+nonfallback adapter, browser SDF recreate setup was 3.0–5.1 ms across the recorded
+instrumented/default/preload and uninstrumented arms. Native recreate setup was
+9.2–13.9 ms. These fail the predeclared 50 ms opportunity screen. First-device
+setup varied; observed async pipeline and module-info request waits did not meet
+that screen either. No application pipeline cache or setup concurrency change is
+justified by this screen. No reload-speed improvement is claimed.
+
+The probe adds device-call and module-info request→settle diagnostics, honest
+unavailable fields, cleanup/failure fixtures and private raw evidence. It does not
+measure compiler time or expose browser cache hits. See [protocol, exact candidate,
+hardware observations and limits](STARTUP_PROFILING.md#14-hardware-attribution-and-decision--2026-11-10).
+Other devices, production bundles and large-scene startup remain unqualified.
