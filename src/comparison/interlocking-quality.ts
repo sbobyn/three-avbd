@@ -336,3 +336,221 @@ export function summarizeTrial(observations: readonly InterlockingObservation[],
     overall: linkChanged ? 'violation' as CriterionResult : observations.length ? worst(Object.values(perCriterion) as CriterionResult[]) : 'unknown' as CriterionResult,
     qualification: 'gated' as const };
 }
+
+// ---- PROPOSED compound sandwich bound (STE-3282; review pending) --------------------------------
+// Separate helpers only: observeInterlocking, evaluateHanging, summarizeTrial and ringRepresentationError
+// do not call them and keep their exact behavior. See docs/PAIRED_STUDIES.md "Proposed compound
+// sandwich bound" for the derivation, assumptions and the remaining gate.
+
+export interface ProposedCompoundSandwich {
+  status: 'proposed'; pieces: RingPieces;
+  boundCertified: false;
+  /** Derived outward enclosure; floating-point arithmetic has not been formally bounded. */
+  outwardUpper: number;
+  /** Attained: a hull point (midpoint of two actual inner vertices) with torusBodyPhi = outwardWitness. */
+  outwardWitness: number;
+  /** Exact-real inward model plus a measured perturbation. NOT containment of the literal float32 union. */
+  inwardUpper: number;
+  /** Numerical supporting-plane witness from sampled analytic surface points. Not a containment proof. */
+  inwardWitness: number;
+  /** Max |float32 stored vertex − float64 authored vertex| over all sectors; included in inwardUpper. */
+  float32Perturbation: number;
+  /** Maximum offset between the last end octagon and the first start octagon: a nonzero wrap crack. */
+  wrapSeamOffset: number;
+  slabs: number;
+  assumptions: readonly string[];
+}
+
+const SANDWICH_ASSUMPTIONS = Object.freeze([
+  'Rapier hull = convex hull of the supplied float32 points (checked on selected sectors), identity collider pose, zero contact skin',
+  'Inward containment is exact-real only: interior octagons are shared, but the float32 wrap seam is not closed; measured vertex perturbation does not prove union containment',
+  'Outward floating-point error and the per-pose arithmetic allowance are not formally derived; boundCertified remains false',
+  'A sandwich bound of geometry; it says nothing about solver behavior, contact forces or continuous motion',
+]);
+const sandwichCache = new Map<string, ProposedCompoundSandwich>();
+const coreDistance = (p: V) => Math.hypot(Math.hypot(p[0], p[1]) - INTERLOCKING.majorRadius, p[2]);
+
+/** Conditional exact-real sandwich model in the ring body frame, where T(c) = {torusBodyPhi ≤ c}.
+ * The float32 wrap crack prevents literal inward containment; outputs are explicitly uncertified.
+ * Outward: each sector hull is clipped into `slabs` angular wedges
+ * Q; on Q, dist(p, core) ≤ dist(p, S_Q) + sag(S_Q) with S_Q the convex hull of the nearest core points of a
+ * superset of Q's vertices (all sector points in the wedge plus all point-pair segment/wedge-plane crossings),
+ * so max over Q ≤ max candidate core distance + R(1 − cos(half angular spread)). Inward: interpolating the
+ * end and middle octagons gives, at every angle, the octagon scaled radially by λ ≥ cos(Δ/4); its inscribed
+ * ellipse contains the disc of radius r − ε_in about the core with ε_in = (R + r)(1 − λ) + λ r (1 − cos π/8). */
+export function proposedCompoundSandwich(pieces: RingPieces, slabs = 64): ProposedCompoundSandwich {
+  if (!Number.isInteger(slabs) || slabs < 1 || slabs > 1024) throw new Error('slabs must be an integer in [1, 1024]');
+  const key = `${pieces}:${slabs}`, cached = sandwichCache.get(key);
+  if (cached) return cached;
+  const { majorRadius: R, minorRadius: r } = INTERLOCKING, span = 2 * Math.PI / pieces;
+  const sectors = torusSectors(pieces).map(raw => { const pts: V[] = []; for (let i = 0; i < raw.length; i += 3) pts.push([raw[i], raw[i + 1], raw[i + 2]]); return pts; });
+  let float32Perturbation = 0, outwardWitness = -Infinity, outwardUpper = -Infinity;
+  sectors.forEach((pts, k) => {
+    pts.forEach((p, idx) => {
+      const a = (k + Math.floor(idx / 8) / 2) * Math.PI * 2 / pieces, b = (idx % 8) * Math.PI / 4, rho = R + r * Math.cos(b);
+      float32Perturbation = Math.max(float32Perturbation, norm(sub(p, [rho * Math.cos(a), rho * Math.sin(a), r * Math.sin(b)])));
+    });
+    // Inner-equator vertices (tube angle π) of the first and last octagon: their midpoint is a hull point.
+    const [p, q] = [pts[4], pts[20]];
+    outwardWitness = Math.max(outwardWitness, torusBodyPhi([(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2]));
+    for (let s = 0; s < slabs; s++) {
+      const t0 = (k + s / slabs) * span, t1 = (k + (s + 1) / slabs) * span, mid = (t0 + t1) / 2, tol = 1e-12;
+      const n0: V = [-Math.sin(t0), Math.cos(t0), 0], n1: V = [-Math.sin(t1), Math.cos(t1), 0];
+      // End wedges extend past the nominal sector: float32 vertices can lie just outside it.
+      const cand: V[] = pts.filter(p => (s === 0 || dot(n0, p) >= -tol) && (s === slabs - 1 || dot(n1, p) <= tol));
+      for (const [n, other, sign] of [[n0, n1, -1], [n1, n0, 1]] as const) for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+        const sp = dot(n, pts[i]), sq = dot(n, pts[j]);
+        if (sp === sq || sp * sq > 0) continue;
+        const t = sp / (sp - sq), x: V = [0, 1, 2].map(c => pts[i][c] + t * (pts[j][c] - pts[i][c])) as V;
+        if ((n === n0 && s === slabs - 1) || (n === n1 && s === 0) || sign * dot(other, x) >= -tol) cand.push(x);
+      }
+      if (!cand.length) continue;
+      let half = 0, far = 0;
+      for (const x of cand) {
+        half = Math.max(half, Math.abs(Math.atan2(Math.cos(mid) * x[1] - Math.sin(mid) * x[0], Math.cos(mid) * x[0] + Math.sin(mid) * x[1])));
+        far = Math.max(far, coreDistance(x));
+      }
+      outwardUpper = Math.max(outwardUpper, far - r + R * (1 - Math.cos(Math.min(half, Math.PI / 2))) + 1e-12);
+    }
+  });
+  const lambda = Math.cos(span / 4);
+  const inwardUpper = (R + r) * (1 - lambda) + lambda * r * (1 - Math.cos(Math.PI / 8)) + float32Perturbation + 1e-12;
+  // Inward witness: surface points of sector 0's wedge; distance to every hull via exact supporting planes or bounding balls.
+  const planeCache = new Map<number, { n: V; d: number }[]>();
+  const planesOf = (k: number) => {
+    let planes = planeCache.get(k);
+    if (!planes) {
+      planes = hullPlanes(sectors[k]).map(({ n }) => ({ n, d: Math.max(...sectors[k].map(p => dot(n, p))) }));
+      planeCache.set(k, planes);
+    }
+    return planes;
+  };
+  const balls = sectors.map(pts => { const c = pts.reduce((s, p) => [s[0] + p[0] / pts.length, s[1] + p[1] / pts.length, s[2] + p[2] / pts.length] as V, [0, 0, 0] as V);
+    return { c, radius: Math.max(...pts.map(p => norm(sub(p, c)))) }; });
+  let inwardWitness = 0;
+  for (let i = 0; i <= 16; i++) for (let j = 0; j < 64; j++) {
+    const a = i / 16 * span, b = j * Math.PI / 32, rho = R + r * Math.cos(b);
+    const y: V = [rho * Math.cos(a), rho * Math.sin(a), r * Math.sin(b)];
+    let lower = Infinity;
+    for (let k = 0; k < pieces; k++) {
+      const ball = norm(sub(y, balls[k].c)) - balls[k].radius;
+      if (ball >= lower) continue;
+      let plane = -Infinity;
+      for (const { n, d } of planesOf(k)) plane = Math.max(plane, dot(n, y) - d);
+      lower = Math.min(lower, Math.max(ball, plane));
+    }
+    inwardWitness = Math.max(inwardWitness, lower);
+  }
+  let wrapSeamOffset = 0;
+  for (let j = 0; j < 8; j++) wrapSeamOffset = Math.max(wrapSeamOffset, norm(sub(sectors[pieces - 1][16 + j], sectors[0][j])));
+  const result: ProposedCompoundSandwich = { status: 'proposed', boundCertified: false, pieces, outwardUpper, outwardWitness, inwardUpper, inwardWitness,
+    float32Perturbation, wrapSeamOffset, slabs, assumptions: SANDWICH_ASSUMPTIONS };
+  Object.freeze(result);
+  sandwichCache.set(key, result);
+  return result;
+}
+
+/** Lipschitz bounds in real arithmetic, with a small numerical guard. The target is 1e-7 m when
+ * converged; a bounded-budget result can be wider. This is not an interval-arithmetic certificate. */
+function circleMinimum(f: (t: number) => number, radius: number, initial = 2048, tolerance = 1e-7, maxEvaluations = 200_000) {
+  const arithmeticGuard = 1e-12;
+  type Cell = { t0: number; t1: number; f0: number; f1: number; lower: number };
+  const cell = (t0: number, t1: number, f0: number, f1: number): Cell => ({ t0, t1, f0, f1, lower: (f0 + f1 - radius * (t1 - t0)) / 2 - arithmeticGuard });
+  const values = Array.from({ length: initial + 1 }, (_, i) => i === initial ? NaN : f(i * 2 * Math.PI / initial));
+  values[initial] = values[0];
+  let cells = values.slice(0, initial).map((v, i) => cell(i * 2 * Math.PI / initial, (i + 1) * 2 * Math.PI / initial, v, values[i + 1]));
+  let upper = Infinity, evaluations = initial;
+  for (let i = 0; i < initial; i++) upper = Math.min(upper, values[i] + arithmeticGuard);
+  for (;;) {
+    if (upper <= tolerance) { cells = []; break; } // distance is nonnegative
+    cells = cells.filter(c => c.lower < upper - tolerance);
+    if (!cells.length || evaluations >= maxEvaluations) break;
+    const next: Cell[] = [];
+    for (const c of cells) {
+      if (evaluations >= maxEvaluations) { next.push(c); continue; }
+      const tm = (c.t0 + c.t1) / 2, fm = f(tm);
+      evaluations++;
+      upper = Math.min(upper, fm + arithmeticGuard);
+      next.push(cell(c.t0, tm, c.f0, fm), cell(tm, c.t1, fm, c.f1));
+    }
+    cells = next;
+  }
+  // Pruned cells still contribute the target-width lower bound. Never spread an unbounded array.
+  let lower = upper - tolerance - arithmeticGuard;
+  for (const c of cells) lower = Math.min(lower, c.lower);
+  lower = Math.max(0, lower);
+  return { lower, upper, evaluations, converged: upper - lower <= tolerance + 2 * arithmeticGuard };
+}
+
+export interface ProposedRingPairDepth {
+  status: 'proposed'; valid: boolean; invalidReasons: string[];
+  representation: RingRepresentation | null;
+  boundCertified: false; qualification: 'gated';
+  penetrationLimit: number | null;
+  /** Numerical interval for ideal analytic core circles; wider than the target when budget-exhausted. */
+  coreDistance: { lower: number; upper: number; evaluations: number; converged: boolean };
+  /** Conditional deepest-point model (negative = −separation). The compound lower value is NOT
+   * a bound for the literal float32 union, which has a wrap crack. Never a minimum translation distance. */
+  depth: { lower: number; upper: number };
+  /** Analytic classification only; compounds remain unknown because their containment is uncertified. */
+  result: PairStatus;
+  /** What the conditional model would classify if its containment/arithmetic assumptions held. */
+  conditionalResult: PairStatus;
+  limits: readonly string[];
+}
+const PROPOSED_LIMITS = Object.freeze([
+  'Proposed and uncertified: production observer verdicts and qualification:gated are unchanged',
+  'Deepest-point depth of one collision solid inside the other, not a minimum translation distance',
+  'One pose only: no continuous non-penetration or topology claim',
+  'Compound depth is conditional: inward containment fails at the literal float32 wrap crack; result remains unknown',
+  'Centres must have every coordinate within ±8 m; the 1e-6 m pose allowance is assumed, not a derived engine error bound',
+  'Core-distance precision targets 1e-7 m when converged, with a 1e-12 numerical guard; budget-exhausted intervals can be wider',
+]);
+
+/** Point depth of tube solids (tube radii ra, rb) whose core circles are d apart: max over both directions of
+ * sup_{x∈A} −sd_B(x) = rb − max(0, d − ra). Monotone: smaller d or larger radii never decrease it. */
+const tubeDepth = (ra: number, rb: number, d: number) => Math.max(rb - Math.max(0, d - ra), ra - Math.max(0, d - rb));
+
+/** PROPOSED ring/ring contact-quality interval on each engine's own representation. Never throws on bad pose data. */
+export function proposedRingPairDepth(poses: readonly StudyPose[], representation: RingRepresentation = { kind: 'analytic-sdf' },
+  criteria: InterlockingCriteria = INTERLOCKING_QUALITY_CRITERIA): ProposedRingPairDepth {
+  const invalidReasons: string[] = [], { majorRadius: R, minorRadius: r } = INTERLOCKING;
+  const rep = representation as RingRepresentation | null | undefined;
+  const supported = rep?.kind === 'analytic-sdf' || (rep?.kind === 'rapier-compound' && [16, 32, 64].includes(rep.pieces));
+  if (!supported) invalidReasons.push('unsupported ring representation');
+  const limit = criteria?.penetrationLimit, quatTolerance = criteria?.quaternionNormTolerance;
+  if (!Number.isFinite(limit) || limit < 0) invalidReasons.push('penetration limit must be finite and nonnegative');
+  if (!Number.isFinite(quatTolerance) || quatTolerance < 0 || quatTolerance > INTERLOCKING_QUALITY_CRITERIA.quaternionNormTolerance) invalidReasons.push('unsupported quaternion tolerance');
+  const list = Array.isArray(poses) ? poses : [];
+  if (list.length !== 2) invalidReasons.push(`expected 2 ring poses, got ${list.length}`);
+  const parsed = list.map((pose, i) => {
+    const c: V = [pose?.position?.x, pose?.position?.y, pose?.position?.z];
+    const q: Q = [pose?.rotation?.x, pose?.rotation?.y, pose?.rotation?.z, pose?.rotation?.w];
+    const error = Math.abs(Math.hypot(...q) - 1);
+    if (![...c, ...q].every(Number.isFinite)) invalidReasons.push(`ring ${i}: non-finite pose`);
+    else if (c.some(v => Math.abs(v) > 8)) invalidReasons.push(`ring ${i}: centre outside the ±8 m proposal domain`);
+    else if (error > quatTolerance) invalidReasons.push(`ring ${i}: quaternion norm error ${error}`);
+    return { c, q, error };
+  });
+  const base = { status: 'proposed' as const, representation: supported ? { ...rep! } as RingRepresentation : null,
+    boundCertified: false as const, qualification: 'gated' as const, penetrationLimit: Number.isFinite(limit) ? limit : null, limits: PROPOSED_LIMITS };
+  if (invalidReasons.length) return { ...base, valid: false, invalidReasons, coreDistance: { lower: NaN, upper: NaN, evaluations: 0, converged: false },
+    depth: { lower: NaN, upper: NaN }, result: 'unknown', conditionalResult: 'unknown' };
+  const [a, b] = parsed.map(p => ({ c: p.c, q: unit(p.q), error: p.error }));
+  const relative = sub(a.c, b.c); // subtract centres before adding the small rotated local point
+  const core = circleMinimum(t => {
+    const w = rotate(a.q, [R * Math.cos(t), R * Math.sin(t), 0]);
+    return coreDistance(rotate(conj(b.q), [w[0] + relative[0], w[1] + relative[1], w[2] + relative[2]]));
+  }, R);
+  let out = [0, 0], inn = [0, 0];
+  if (representation.kind === 'rapier-compound') {
+    const s = proposedCompoundSandwich(representation.pieces);
+    // Quaternion model plus an ASSUMED 1e-6 m allowance inside the restricted domain, not engine certification.
+    const slack = [a, b].map(p => (2 * p.error + p.error ** 2) * 2 * (R + r) + 1e-6);
+    out = slack.map(x => s.outwardUpper + x); inn = slack.map(x => s.inwardUpper + x);
+  }
+  const depth = { lower: tubeDepth(r - inn[0], r - inn[1], core.upper), upper: tubeDepth(r + out[0], r + out[1], core.lower) };
+  const conditionalResult: PairStatus = depth.upper < 0 ? 'separated' : depth.lower > limit ? 'penetrating' : depth.upper <= limit ? 'within-limit' : 'unknown';
+  return { ...base, valid: true, invalidReasons, coreDistance: core, depth,
+    result: representation.kind === 'rapier-compound' ? 'unknown' : conditionalResult, conditionalResult };
+}
