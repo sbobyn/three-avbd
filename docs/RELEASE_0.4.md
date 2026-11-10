@@ -11,6 +11,13 @@ Read [breaking changes and migration](#breaking-changes-and-migration) before up
 
 ## Highlights
 
+- **Per-body gravity scale (current source).** Options/getter/setter, standard/SDF built-in
+  integrator; default1,0 disables gravity only, negative reverses it. Reset/disable retain it;
+  pools restore their template. Finite-f32 input/effective-product validation,16B per slot in
+  the fixed budget; body/filter strides and exported custom-solve source unchanged. Custom
+  solve overrides refuse aux writes. Bounded M4 Max behavior is tested; this is not publication
+  or target-device qualification.
+
 - **Body writes only touch what you set.** `body.set({ position })` teleports a body and keeps its
   current GPU velocity, angular velocity and rotation, instead of uploading the last values you
   read back. `setFixed` keeps the current GPU pose.
@@ -234,6 +241,7 @@ range does not certify later versions.
 | Breakable and plastic joints | Supported, on the GPU |
 | Convex hull SAT | Needs a negotiated storage-buffer limit of at least 9; otherwise a bounding-box fallback (warned) or rejection (`requireHulls`). At most 32 vertices |
 | Contact events, selective reads, GPU rays | Asynchronous and bounded; lifetime IDs and loss counters |
+| Per-body gravity scale | Current candidate source; built-in integrator, standard/SDF tested; signed finite-f32 numeric limits |
 | Fixed-body move/retarget | GPU-authoritative; consumed by steps |
 | Activation/reset, fixed storage, pools | Built-in box/sphere/hull backends only; not SDF or custom backends |
 | Static triangle CPU rays and sphere/capsule queries | Copied immutable geometry, independent of the GPU World |

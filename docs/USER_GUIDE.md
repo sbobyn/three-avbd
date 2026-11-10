@@ -157,6 +157,33 @@ The design and what's planned: [docs/API.md](API.md). Runnable examples are inde
 ([gears](../examples/sdf-gear.ts), [balls in a torus](../examples/sdf-hollow.ts),
 [mesh baked in a worker](../examples/sdf-from-mesh.ts)).
 
+## Per-body gravity scale
+
+Candidate source supports `gravityScale` on box, sphere and hull options. In your small
+consumer, change only the ball's value to see a floatier or reversed-gravity mechanic:
+
+```ts
+const ball = world.addSphere({ radius: 0.5, position: [0, 7, 0], gravityScale: 0.35 })!;
+// Step/update the same World as before; rendering and fixed timing are unchanged.
+ball.setGravityScale(0);  // from the next step: existing velocity continues, with no gravity
+ball.setGravityScale(-1); // reversed gravity; other forces and wind are not scaled
+console.log(ball.gravityScale, world.capabilities.gravityScale);
+```
+
+Default1 is ordinary gravity. Values must be finite as f32 and within[-1000,1000] as f32;
+the effective gravity product must also be finite. Invalid changes throw before changing
+configuration, including a `world.gravity` change that would overflow a live body's or pool
+template's scale. These are numeric input bounds, not a guarantee of stable extreme scenes.
+Tiny values can flush to zero on a device. Fixed/kinematic bodies store the configuration but
+do not fall. Reset/disable keep it; pool reacquisition restores the template, not the previous
+lease. Read the capability again after switching advanced backends; custom solve shaders are
+unsupported for per-body scaling. Standard and experimental SDF paths have bounded M4 Max
+checks; no M1/GTX1080 or performance claim follows.
+
+This is current source, not registry0.3.0. Rebuild/repack deliberately using the setup recipe
+before trying it in your own consumer. Damping, restitution, sleeping and CCD remain separate
+unsupported features. [API and data flow](API.md#per-body-gravity-scale).
+
 ## Capture poses and play them back
 
 A small, end-to-end use of the public API: step a `World` headless, record every body's pose, and

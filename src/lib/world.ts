@@ -9,7 +9,7 @@ import type { SdfCollisionBridge } from '../avbd3d/gpu/sdf-bridge.ts';
 import * as THREE from 'three/webgpu';
 import { releaseStorageAttribute } from './storage.ts';
 import { bodyFields, copyBodyPatch, observedField, assignBodyPatch, type BodyField, type BodyPatch } from './body-commands.ts';
-import { checkBodyMaterial, checkBodySize, checkDelta, checkDt, checkGravity, checkIterations, checkMaxSubsteps, checkRadius } from './world-validation.ts';
+import { checkBodyMaterial, checkBodySize, checkDelta, checkDt, checkEffectiveGravity, checkGravity, checkGravityScale, checkIterations, checkMaxSubsteps, checkRadius } from './world-validation.ts';
 import { deviceCapabilities, worldCapabilities, checkRequiredHulls, type WorldCapabilities } from './capabilities.ts';
 import { BodyReset } from '../avbd3d/gpu/body-reset.ts';
 import { BodyDisabledError, BodyLifecycleError, UnsupportedLifecycleError, checkEnabled, resetBodyPatch } from './lifecycle.ts';
@@ -92,6 +92,13 @@ export interface BodyOptions extends BodyState {
   collidesWith?: number;
   /** Report when it starts and stops touching other bodies (World.onContact). */
   reportContacts?: boolean;
+  /**
+   * Multiplier of the world's gravity for this body (dimensionless). Default 1; 0: no gravity;
+   * negative: reversed. Finite as f32 within [-1000, 1000] (an API bound, not a stability claim),
+   * and its product with the world's gravity must be finite as f32. Fixed and kinematic bodies
+   * keep it but do not fall.
+   */
+  gravityScale?: number;
 }
 
 export interface BoxOptions extends BodyOptions {
@@ -271,6 +278,8 @@ export interface Reservation {
   readonly live: Set<Body>;
   /** The solver hull it pins for its leases, or null. */
   readonly hull: HullShape | null;
+  /** Its template's gravity scale: World.gravity refuses a value its leases could not fall with. */
+  readonly gravityScale: number;
   state: 'active' | 'disposed';
 }
 
@@ -300,6 +309,7 @@ export class Body {
   /** @internal The first step it's in. */
   addedAt = 0;
   private reports: boolean;
+  private scale: number;
   private groups: number;
   private mask: number;
   private isFixed: boolean;
@@ -334,6 +344,7 @@ export class Body {
     this.groups = options.group ?? 1;
     this.mask = options.collidesWith ?? 0xffffffff;
     this.reports = options.reportContacts ?? false;
+    this.scale = options.gravityScale ?? 1;
     this.state = {
       position: options.position ?? [0, 0, 0],
       rotation: options.rotation ?? [0, 0, 0, 1],
@@ -363,6 +374,21 @@ export class Body {
     this.groups = group;
     this.mask = collidesWith;
     this.world.refilter(this);
+  }
+  /** Multiplier of the world's gravity for this body (BodyOptions.gravityScale). */
+  get gravityScale(): number {
+    return this.scale;
+  }
+  /**
+   * Scale the world's gravity for this body, from the next step (contacts and warm starts are
+   * kept). Throws RangeError, changing nothing, unless finite as f32 within [-1000, 1000] with a
+   * finite product with the world's gravity.
+   */
+  setGravityScale(scale: number): void {
+    this.world.assertLive('Body.setGravityScale');
+    this.world.checkGravityScale(scale, 'Body.setGravityScale');
+    this.scale = scale;
+    this.world.reaux(this);
   }
   /** Whether it reports its contacts (World.onContact), from the next step. */
   get reportContacts(): boolean {
@@ -666,6 +692,8 @@ export class World {
   private readonly contactOptions: { pairs: number; events: number };
   /** Bodies whose collision groups go to the GPU at the next step (every new body, so a reused slot's are reset). */
   private readonly refilters = new Set<number>();
+  /** Slots whose aux record (gravity scale) goes to the GPU next flush: their occupant's, or the default. */
+  private readonly reauxes = new Set<number>();
   /** Fixed bodies moved (moveTo) since the last step, and those still sliding there (steps left). */
   private readonly moves = new Set<Body>();
   private readonly sliding = new Map<Body, number>();
@@ -797,7 +825,7 @@ export class World {
    * Advanced custom backends have unknown shape support. */
   get capabilities(): Readonly<WorldCapabilities> {
     const backend = this.solver.activeCollisionBackend;
-    return worldCapabilities(deviceCapabilities(this.device), backend ? backend === this.sdfBridge ? 'sdf' : 'custom' : 'standard', this.solver.hulls, this.solver.customShaders, this.fixed !== null && !this.destroyed && !this.gpuError);
+    return worldCapabilities(deviceCapabilities(this.device), backend ? backend === this.sdfBridge ? 'sdf' : 'custom' : 'standard', this.solver.hulls, this.solver.customShaders, this.fixed !== null && !this.destroyed && !this.gpuError, this.solver.supportsBodyAux);
   }
 
   /** The resolved storage plan: every fixed capacity and buffer size, or adaptive growth. */
@@ -815,6 +843,8 @@ export class World {
   set gravity(value: Vec3) {
     const g = checkGravity(value);
     const size = Math.hypot(g[0], g[1], g[2]);
+    // Every body's (and pooled template's) gravity stays finite as f32, or nothing changes
+    checkEffectiveGravity(-size, this.maxGravityScale(), 'World.gravity');
     const p = this.solver.params;
     p.gravity = -size;
     if (size > 0) p.up = [-g[0] / size, -g[1] / size, -g[2] / size];
@@ -997,6 +1027,21 @@ export class World {
   /** @internal */
   allocateBodyId(): number { return this.bodyIds.allocate(); }
 
+  /** @internal A gravity scale a body of this World may take now (before any change). */
+  checkGravityScale(scale: unknown, what: string): number {
+    checkGravityScale(scale, what);
+    checkEffectiveGravity(this.solver.params.gravity, scale as number, what);
+    return scale as number;
+  }
+
+  /** The largest |gravity scale| a live body or an active pool's template has (1 at least: the default). */
+  private maxGravityScale(): number {
+    let most = 1;
+    for (const body of this.slots) if (body?.alive) most = Math.max(most, Math.abs(body.gravityScale));
+    for (const reservation of this.reservations) if (reservation.state === 'active') most = Math.max(most, Math.abs(reservation.gravityScale));
+    return most;
+  }
+
   private add(shape: 'box' | 'sphere' | 'hull', size: Vec3, options: BodyOptions, hullShape: HullShape | null = null): Body | null {
     this.assertMutableTopology();
     if (options.enabled !== undefined) checkEnabled(options.enabled);
@@ -1005,6 +1050,7 @@ export class World {
     const what = shape === 'box' ? 'addBox' : shape === 'sphere' ? 'addSphere' : 'addHull';
     size = checkBodySize(size, what);
     checkBodyMaterial(options, what);
+    if (options.gravityScale !== undefined) this.checkGravityScale(options.gravityScale, what);
     options = { ...options, ...copyBodyPatch(options) } as BodyOptions;
     // A removed body's slot first, else the next one past the end (past any reserved tail)
     const index = this.free.length ? this.free[this.free.length - 1] : this.solver.bodyCount + this.appends.length;
@@ -1038,6 +1084,7 @@ export class World {
     // in place; appending twice would shift GPU body IDs.
     this.stage(index, body);
     this.refilters.add(index);
+    this.reauxes.add(index);
     if (!body.enabledState) this.lifecycleDirty.add(body);
     if(this.sdfBridge)this.sdfDirty=true;
     this.liveVersion++;
@@ -1061,8 +1108,9 @@ export class World {
    * @internal Reserve `capacity` slots (free holes first, then the tail) and pin `hull`, all or
    * nothing, before any body or ID exists. Ordinary adds never take reserved slots.
    */
-  reserveBodies(capacity: number, hull: HullShape | null): Reservation | ReserveFailure {
+  reserveBodies(capacity: number, hull: HullShape | null, gravityScale = 1): Reservation | ReserveFailure {
     this.assertLive('BodyPool.create');
+    this.checkGravityScale(gravityScale, 'BodyPool.create');
     if (!this.fixed) return 'fixed-storage-required';
     if (this.sdfState !== 'off' || this.solver.activeCollisionBackend || this.solver.customShaders) return 'unsupported-backend';
     if (hull && !this.solver.hulls) return 'resource-limit';
@@ -1078,13 +1126,14 @@ export class World {
       indices.push(this.solver.bodyCount + this.appends.length);
       this.appends.push(null);
     }
-    const reservation: Reservation = { capacity, indices: Object.freeze(indices), vacant: [...indices].reverse(), live: new Set(), hull, state: 'active' };
+    const reservation: Reservation = { capacity, indices: Object.freeze(indices), vacant: [...indices].reverse(), live: new Set(), hull, gravityScale, state: 'active' };
     for (const index of indices) {
       this.owners[index] = reservation;
       // A hole's parking write (if any) becomes the vacant record
       this.stage(index, null);
       this.vacancies.add(index);
       this.rewatches.add(index);
+      this.reauxes.add(index);
     }
     this.reservations.add(reservation);
     return reservation;
@@ -1117,6 +1166,8 @@ export class World {
     if (reservation.state !== 'active' || this.destroyed || this.gpuError) return 'disposed';
     if (!reservation.vacant.length) return 'capacity';
     if (this.bodyIds.remaining < 1) return 'id-exhausted';
+    // (World.gravity keeps the reservation's template scale valid; checked again before an ID is taken)
+    if (options.gravityScale !== undefined) this.checkGravityScale(options.gravityScale, 'BodyPool.tryAcquire');
     const index = reservation.vacant[reservation.vacant.length - 1];
     const body = new Body(this, index, shape, [size[0], size[1], size[2]], { ...options, enabled: true }, publicHull);
     reservation.vacant.pop();
@@ -1243,6 +1294,8 @@ export class World {
     this.retiredBodies.retire(body, this.steps);
     this.reporting.delete(body);
     this.rewatches.add(body.index);
+    // The slot's aux record back to the default (or the next occupant's, if it is reused first)
+    this.reauxes.add(body.index);
     const pin = this.hullPins.get(body);
     // Its record keeps the solver's reference until the parking write below is flushed
     if (pin) { this.hullPins.delete(body); this.solver.unpinHull(pin); }
@@ -1525,6 +1578,12 @@ export class World {
     if (body.alive) this.refilters.add(body.index);
   }
 
+  /** @internal Body.setGravityScale. */
+  reaux(body: Body): void {
+    assertOwner(this, body);
+    if (body.alive) this.reauxes.add(body.index);
+  }
+
   /** @internal Body.clearForces. */
   clearForces(body: Body): void {
     assertOwner(this, body);
@@ -1618,6 +1677,12 @@ export class World {
         list.map((b) => b.collidesWith),
       );
       this.refilters.clear();
+    }
+    if (this.reauxes.size) {
+      // A slot's occupant's scale, or the default for a vacant or parked slot (no previous value leaks)
+      const list = [...this.reauxes].sort((x, y) => x - y);
+      this.solver.setBodyAux(list, list.map(index => { const b = this.slots[index]; return b?.alive ? b.gravityScale : 1; }));
+      this.reauxes.clear();
     }
     if (this.pendingJoints.length) {
       // Off the queue first, so that if the solver throws (addJoint checks what the solver would

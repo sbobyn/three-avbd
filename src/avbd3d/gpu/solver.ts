@@ -23,12 +23,12 @@ import {
   BODY_DIRTY, BODY_DISABLED, BODY_COLD, ARGS_ITEMS_3D, B_ANGVEL, B_INERTIAL_POS, B_INERTIAL_ROT, B_INITIAL_POS, B_INITIAL_ROT, B_MOMENT, B_POS, B_ROT, B_SIZE, B_VEL, BODY_FLOATS,
   C_CLASHING_COLORS, C_MANIFOLDS, C_TAIL_BODIES, CONTACT_WORDS, FLAG_FACE_BIAS, FLAG_SPARSE_COLORS, FLAG_MASS_PENALTY, FLAG_MATCH_NEAREST, FLAG_REUSE_CONTACTS, FLAG_REUSE_MANIFOLDS, FLAG_START_AT_REST, J_C0_ANG, J_C0_LIN, J_LAM_ANG, K_LAM, K_PEN, K_RA, K_RB, M_GEO, MANIFOLD_WORDS, SDF_ROLLING_BIT, SPARSE_COLOR_START, STICK_BIT,
   J_BREAK_BEND, J_LAM_LIN, J_PEN_ANG, J_PEN_LIN, J_RA, J_RB, J_REST, J_REST_START, J_YIELD, JOINT_FLOATS, PARAM_WORDS, PRELUDE_3D, SHAPE_BOX, SHAPE_HULL, SHAPE_SAIL, SHAPE_SPHERE, T_JOINT, T_SPRING,
-  TOPOLOGY_ACCESSORS_3D,
+  TOPOLOGY_ACCESSORS_3D, A_GRAVITY_SCALE, BODY_AUX_BINDING, BODY_AUX_DEFAULT, BODY_AUX_FLOATS,
 } from './layout.ts';
 import { hullOf, isSail, isSphere, type HullShape } from '../shapes.ts';
 import { rotate, vec3 } from '../ref/math.ts';
 import { broadphaseWGSL, contactsHullWGSL, contactsWGSL, refsWGSL } from './wgsl-collision.ts';
-import { solveWGSL } from './wgsl-solve.ts';
+import { solveBodyAuxWGSL } from './wgsl-solve.ts';
 import { LARGE_FACTOR, largestSmall } from './radii.ts';
 import { IGNORE_SLOT, NoCollideTable } from './no-collide.ts';
 import { type FixedStoragePlan, hullVec4s as hullSize, StorageCapacityError } from '../../lib/storage-budget.ts';
@@ -590,6 +590,17 @@ export class GpuSolver3D {
   get filterStorage(): GPUBuffer {
     return this.filterBuffer;
   }
+  /**
+   * @internal Per body slot: the aux record (layout.ts BODY_AUX_*), written by setBodyAux and read
+   * only by warmStartBodies. Allocated once at bodyCapacity; never read back, grown or rebound.
+   */
+  private readonly auxBuffer: GPUBuffer;
+  /** warmStartBodies' group 0 (params, bodies, aux), made once; null when a custom solve module keeps the full layout. */
+  private integrateGroup: GPUBindGroup | null = null;
+  /** @internal Whether setBodyAux applies: built-in shaders (a custom solve module may ignore the record). */
+  get supportsBodyAux(): boolean {
+    return !this.customShaders && this.integrateGroup !== null;
+  }
   private readonly counterBuffer: GPUBuffer;
   /**
    * The pair records and contact points the last step wrote, and the counters (C_MANIFOLDS: how
@@ -656,7 +667,7 @@ export class GpuSolver3D {
   /** Joint slots released (releaseJoints), for appendJoints to fill before growing. */
   private freeSlots: number[] = [];
 
-  private readonly layouts: Record<'broad' | 'contacts' | 'topo' | 'solve' | 'pass' | 'args' | 'refs', GPUBindGroupLayout>;
+  private readonly layouts: Record<'broad' | 'contacts' | 'topo' | 'solve' | 'integrate' | 'pass' | 'args' | 'refs', GPUBindGroupLayout>;
   private readonly pipes: Record<string, GPUComputePipeline> = {};
   private groups!: {
     broad: GPUBindGroup;
@@ -703,94 +714,106 @@ export class GpuSolver3D {
     this.lifecycle = new Uint8Array(this.bodyCapacity);
     if (this.bodyCapacity < this.bodyCount) throw new Error('body buffer too small');
     this.bodyBuffer = options.bodyBuffer ?? device.createBuffer({ label: 'bodies 3d', size: bodyBufferSize(this.bodyCapacity), usage: storageUsage() });
-    // Every body in every group, colliding with every group, until told otherwise
-    this.filterBuffer = device.createBuffer({ label: 'collision filters', size: Math.max(this.bodyCapacity, 1) * 8, usage: storageUsage() });
-    device.queue.writeBuffer(this.filterBuffer, 0, new Uint32Array(Math.max(this.bodyCapacity, 1) * 2).fill(0xffffffff));
+    // From here on a throw releases what this solver made (never a caller's body buffer or device)
+    try {
+      // Every body in every group, colliding with every group, until told otherwise
+      this.filterBuffer = device.createBuffer({ label: 'collision filters', size: Math.max(this.bodyCapacity, 1) * 8, usage: storageUsage() });
+      device.queue.writeBuffer(this.filterBuffer, 0, new Uint32Array(Math.max(this.bodyCapacity, 1) * 2).fill(0xffffffff));
+      // Every slot at the default aux record (gravity scale 1) until setBodyAux says otherwise
+      const auxSlots = Math.max(this.bodyCapacity, 1);
+      this.auxBuffer = device.createBuffer({ label: 'body aux', size: auxSlots * BODY_AUX_FLOATS * 4, usage: storageUsage() });
+      const aux = new Float32Array(auxSlots * BODY_AUX_FLOATS);
+      for (let i = 0; i < aux.length; i += BODY_AUX_FLOATS) aux.set(BODY_AUX_DEFAULT, i);
+      device.queue.writeBuffer(this.auxBuffer, 0, aux);
 
-    const cap = this.bodyCapacity;
-    this.tableSize = pow2AtLeast(2 * cap);
-    this.gridBuffer = device.createBuffer({ label: 'grid 3d', size: (2 * this.tableSize + 1 + 4 * cap) * 4, usage: storageUsage() });
-    this.counterBuffer = device.createBuffer({ label: 'counters', size: COUNTER_WORDS * 4, usage: storageUsage() });
-    this.argsBuffer = device.createBuffer({ label: 'indirect args', size: (ARGS_WORDS + 3) * 4, usage: storageUsage() | GPUBufferUsage.INDIRECT });
-    this.colorGroups = Math.ceil(cap / COLOR_WG);
-    this.colorBuffer = device.createBuffer({ label: 'colours', size: (3 * cap + 65 + MAX_COLORS * this.colorGroups + 1) * 4, usage: storageUsage() });
-    this.paramsBuffer = device.createBuffer({ label: 'params 3d', size: PARAM_WORDS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.refBuffer = device.createBuffer({ label: 'reference poses', size: cap * 32, usage: storageUsage() });
-    if (plan) this.hullCapacity = plan.hullVec4s;
-    this.hullBuffer = device.createBuffer({ label: 'hulls', size: this.hullCapacity * 16, usage: storageUsage() });
-    device.queue.writeBuffer(this.colorBuffer, 0, new Uint32Array(cap).fill(NO_COLOR));
+      const cap = this.bodyCapacity;
+      this.tableSize = pow2AtLeast(2 * cap);
+      this.gridBuffer = device.createBuffer({ label: 'grid 3d', size: (2 * this.tableSize + 1 + 4 * cap) * 4, usage: storageUsage() });
+      this.counterBuffer = device.createBuffer({ label: 'counters', size: COUNTER_WORDS * 4, usage: storageUsage() });
+      this.argsBuffer = device.createBuffer({ label: 'indirect args', size: (ARGS_WORDS + 3) * 4, usage: storageUsage() | GPUBufferUsage.INDIRECT });
+      this.colorGroups = Math.ceil(cap / COLOR_WG);
+      this.colorBuffer = device.createBuffer({ label: 'colours', size: (3 * cap + 65 + MAX_COLORS * this.colorGroups + 1) * 4, usage: storageUsage() });
+      this.paramsBuffer = device.createBuffer({ label: 'params 3d', size: PARAM_WORDS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      this.refBuffer = device.createBuffer({ label: 'reference poses', size: cap * 32, usage: storageUsage() });
+      if (plan) this.hullCapacity = plan.hullVec4s;
+      this.hullBuffer = device.createBuffer({ label: 'hulls', size: this.hullCapacity * 16, usage: storageUsage() });
+      device.queue.writeBuffer(this.colorBuffer, 0, new Uint32Array(cap).fill(NO_COLOR));
 
-    const stamps = 2 * PHASES.length;
-    this.timing = device.features.has('timestamp-query')
-      ? {
-          querySet: device.createQuerySet({ type: 'timestamp', count: stamps }),
-          resolve: device.createBuffer({ size: stamps * 8, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC }),
-          read: device.createBuffer({ size: stamps * 8, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }),
-        }
-      : null;
+      const stamps = 2 * PHASES.length;
+      this.timing = device.features.has('timestamp-query')
+        ? {
+            querySet: device.createQuerySet({ type: 'timestamp', count: stamps }),
+            resolve: device.createBuffer({ size: stamps * 8, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC }),
+            read: device.createBuffer({ size: stamps * 8, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }),
+          }
+        : null;
 
-    this.layouts = this.createLayouts();
-    this.createPipelines(options.shaders ?? {});
-    this.gridScan = new PrefixScan(device, this.gridBuffer, 0, this.tableSize + 1);
-    this.colorHistScan = new PrefixScan(device, this.colorBuffer, this.colorHistOffset, MAX_COLORS * this.colorGroups + 1);
-    if (plan) {
-      // Allocated once at their most: every body large plus a triple per joint, and every colour
-      this.staticBuffer = device.createBuffer({ label: 'statics', size: plan.staticWords * 4, usage: storageUsage() });
-      this.passBuffer = device.createBuffer({ label: 'pass constants', size: plan.passEntries * PASS_STRIDE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-      this.passEntries = plan.passEntries;
-      this.passGroup = device.createBindGroup({ layout: this.layouts.pass, entries: [{ binding: 0, resource: { buffer: this.passBuffer, size: 16 } }] });
-      this.passData = new ArrayBuffer(plan.passEntries * PASS_STRIDE);
-      this.passU32 = new Uint32Array(this.passData);
-      this.passF32 = new Float32Array(this.passData);
-    }
+      this.layouts = this.createLayouts();
+      this.createPipelines(options.shaders ?? {});
+      this.gridScan = new PrefixScan(device, this.gridBuffer, 0, this.tableSize + 1);
+      this.colorHistScan = new PrefixScan(device, this.colorBuffer, this.colorHistOffset, MAX_COLORS * this.colorGroups + 1);
+      if (plan) {
+        // Allocated once at their most: every body large plus a triple per joint, and every colour
+        this.staticBuffer = device.createBuffer({ label: 'statics', size: plan.staticWords * 4, usage: storageUsage() });
+        this.passBuffer = device.createBuffer({ label: 'pass constants', size: plan.passEntries * PASS_STRIDE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        this.passEntries = plan.passEntries;
+        this.passGroup = device.createBindGroup({ layout: this.layouts.pass, entries: [{ binding: 0, resource: { buffer: this.passBuffer, size: 16 } }] });
+        this.passData = new ArrayBuffer(plan.passEntries * PASS_STRIDE);
+        this.passU32 = new Uint32Array(this.passData);
+        this.passF32 = new Float32Array(this.passData);
+      }
 
-    // Joints and springs in the reference's creation order; IgnoreCollision only filters pairs
-    const order = options.spatialSort === false ? ref.bodies.map((_, i) => i) : mortonOrder(ref.bodies);
-    this.refToGpu = new Int32Array(order.length);
-    order.forEach((r, g) => (this.refToGpu[r] = g));
-    const index = new Map<Rigid, number>(ref.bodies.map((b, i) => [b, this.refToGpu[i]]));
-    const joints = ref.forces.filter((f): f is Joint | Spring => f instanceof Joint || f instanceof Spring);
-    for (const f of ref.forces) {
-      if (!(f instanceof IgnoreCollision)) continue;
-      const a = index.get(f.bodyA!)!;
-      const b = index.get(f.bodyB)!;
-      this.noCollideTable.add(a, b, IGNORE_SLOT);
+      // Joints and springs in the reference's creation order; IgnoreCollision only filters pairs
+      const order = options.spatialSort === false ? ref.bodies.map((_, i) => i) : mortonOrder(ref.bodies);
+      this.refToGpu = new Int32Array(order.length);
+      order.forEach((r, g) => (this.refToGpu[r] = g));
+      const index = new Map<Rigid, number>(ref.bodies.map((b, i) => [b, this.refToGpu[i]]));
+      const joints = ref.forces.filter((f): f is Joint | Spring => f instanceof Joint || f instanceof Spring);
+      for (const f of ref.forces) {
+        if (!(f instanceof IgnoreCollision)) continue;
+        const a = index.get(f.bodyA!)!;
+        const b = index.get(f.bodyB)!;
+        this.noCollideTable.add(a, b, IGNORE_SLOT);
+      }
+      this.allocateJoints(plan ? plan.joints : Math.max(joints.length + 256, options.capacity?.joints ?? 0));
+      for (const f of joints) this.writeJoint(this.jointCount++, f, index);
+      // Size pair and contact storage from the scene's actual starting pairs: overflowing on the
+      // first steps drops pairs, and a freshly built wall then sinks into itself for good
+      const degree = new Int32Array(ref.bodies.length);
+      const { pairs, touching } = estimatePairs(ref.bodies, degree);
+      // Starting colour cap: a graph never needs more than max degree + 1 colours, plus spares
+      // for contacts that form before the first readback, and at least MIN_START_COLORS for
+      // scenes whose bodies start apart (see adapt). The cap only adapts after readbacks: a
+      // fixed 12 cost a 3-colour stack 4.5 ms a step, and the degree over all broadphase pairs
+      // started the 110k brick ring at 26 for 11 used.
+      const refIndex = new Map<Rigid, number>(ref.bodies.map((b, i) => [b, i]));
+      for (const f of joints) {
+        if (f.bodyA) degree[refIndex.get(f.bodyA)!]++;
+        degree[refIndex.get(f.bodyB)!]++;
+      }
+      let maxDegree = 0;
+      ref.bodies.forEach((b, i) => {
+        if (b.mass > 0) maxDegree = Math.max(maxDegree, degree[i]);
+      });
+      this.colorCap = Math.min(MAX_COLORS, Math.max(MIN_START_COLORS, maxDegree + 1 + COLOR_SPARE, options.capacity?.colors ?? 0));
+      // Pair entries are 8 bytes, so they stay roomy. Manifolds (32 bytes) and contacts (64) are
+      // double-buffered and hold most of the solver's memory: the touching pairs with headroom,
+      // and the most points those pairs can have. Floors for scenes that start apart (a falling
+      // pile): a manifold and four contacts per body.
+      const least = options.capacity ?? {};
+      if (plan) this.allocateContacts(plan.contacts, plan.pairs, plan.manifolds, true);
+      else {
+        this.allocateContacts(
+          Math.max(8192, 4 * cap, MAX_MANIFOLD_POINTS * touching, least.contacts ?? 0),
+          Math.max(4096, 4 * cap, 2 * pairs, least.pairs ?? 0),
+          Math.max(4096, cap, START_HEADROOM * touching, least.manifolds ?? 0),
+        );
+      }
+      this.writeBodies(0, order.map((r) => ref.bodies[r]));
+    } catch (error) {
+      this.destroy();
+      throw error;
     }
-    this.allocateJoints(plan ? plan.joints : Math.max(joints.length + 256, options.capacity?.joints ?? 0));
-    for (const f of joints) this.writeJoint(this.jointCount++, f, index);
-    // Size pair and contact storage from the scene's actual starting pairs: overflowing on the
-    // first steps drops pairs, and a freshly built wall then sinks into itself for good
-    const degree = new Int32Array(ref.bodies.length);
-    const { pairs, touching } = estimatePairs(ref.bodies, degree);
-    // Starting colour cap: a graph never needs more than max degree + 1 colours, plus spares
-    // for contacts that form before the first readback, and at least MIN_START_COLORS for
-    // scenes whose bodies start apart (see adapt). The cap only adapts after readbacks: a
-    // fixed 12 cost a 3-colour stack 4.5 ms a step, and the degree over all broadphase pairs
-    // started the 110k brick ring at 26 for 11 used.
-    const refIndex = new Map<Rigid, number>(ref.bodies.map((b, i) => [b, i]));
-    for (const f of joints) {
-      if (f.bodyA) degree[refIndex.get(f.bodyA)!]++;
-      degree[refIndex.get(f.bodyB)!]++;
-    }
-    let maxDegree = 0;
-    ref.bodies.forEach((b, i) => {
-      if (b.mass > 0) maxDegree = Math.max(maxDegree, degree[i]);
-    });
-    this.colorCap = Math.min(MAX_COLORS, Math.max(MIN_START_COLORS, maxDegree + 1 + COLOR_SPARE, options.capacity?.colors ?? 0));
-    // Pair entries are 8 bytes, so they stay roomy. Manifolds (32 bytes) and contacts (64) are
-    // double-buffered and hold most of the solver's memory: the touching pairs with headroom,
-    // and the most points those pairs can have. Floors for scenes that start apart (a falling
-    // pile): a manifold and four contacts per body.
-    const least = options.capacity ?? {};
-    if (plan) this.allocateContacts(plan.contacts, plan.pairs, plan.manifolds, true);
-    else {
-      this.allocateContacts(
-        Math.max(8192, 4 * cap, MAX_MANIFOLD_POINTS * touching, least.contacts ?? 0),
-        Math.max(4096, 4 * cap, 2 * pairs, least.pairs ?? 0),
-        Math.max(4096, cap, START_HEADROOM * touching, least.manifolds ?? 0),
-      );
-    }
-    this.writeBodies(0, order.map((r) => ref.bodies[r]));
     this.assembled = true;
   }
 
@@ -840,6 +863,15 @@ export class GpuSolver3D {
       contacts: layout('contacts 3d', [U, R, R, W, R, W, R, W, W, ...(this.hulls ? [R] : [])]),
       topo: layout('topology 3d', [U, R, R, R, R, W, W, W, R]),
       solve: layout('solve 3d', [U, W, W, R, W, R, R, R, R]),
+      // warmStartBodies only: params, bodies and the aux record (two storage buffers, not nine)
+      integrate: d.createBindGroupLayout({
+        label: 'integrate 3d',
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: U } },
+          { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: W } },
+          { binding: BODY_AUX_BINDING, visibility: GPUShaderStage.COMPUTE, buffer: { type: R } },
+        ],
+      }),
       pass: d.createBindGroupLayout({
         label: 'pass',
         entries: [{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 16 } }],
@@ -851,10 +883,10 @@ export class GpuSolver3D {
 
   private createPipelines(shaders: NonNullable<GpuSolverOptions['shaders']>): void {
     const d = this.device;
-    const make = (code: string, layouts: GPUBindGroupLayout[], entries: string[]) => {
-      const module = d.createShaderModule({ code });
+    const make = (code: string, layouts: GPUBindGroupLayout[], entries: string[], module = d.createShaderModule({ code })) => {
       const layout = d.createPipelineLayout({ bindGroupLayouts: layouts });
       for (const entryPoint of entries) this.pipes[entryPoint] = d.createComputePipeline({ label: entryPoint, layout, compute: { module, entryPoint } });
+      return module;
     };
     const L = this.layouts;
     make(broadphaseWGSL, [L.broad], ['beginFrame', 'gridCount', 'gridScatter', 'findPairs', 'findFixedLarge']);
@@ -868,7 +900,25 @@ export class GpuSolver3D {
       'degreeJoints', 'degreeContacts', 'fillJoints', 'fillContacts', 'sortAdjacency',
       'colorCompact', 'colorMark', 'colorRoundAB', 'colorRoundBA', 'colorCount', 'colorStarts', 'colorScatter',
     ]);
-    make(shaders.solve ?? solveWGSL, [L.solve, L.pass], ['warmStartJoints', 'warmStartBodies', 'primal', 'dual', 'updateVelocities', ...(!shaders.solve ? ['primalSparse'] : [])]);
+    // Built-in warmStartBodies reads aux through its own layout; the other entries retain the
+    // full solve layout. Custom modules keep the established exported solveWGSL contract and
+    // full layout, without inferring their resource use from source-text declarations.
+    const solveCode = shaders.solve ?? solveBodyAuxWGSL;
+    const integrate = !shaders.solve;
+    const solveModule = make(solveCode, [L.solve, L.pass], ['warmStartJoints', ...(integrate ? [] : ['warmStartBodies']), 'primal', 'dual', 'updateVelocities', ...(!shaders.solve ? ['primalSparse'] : [])]);
+    if (integrate) {
+      make(solveCode, [L.integrate, L.pass], ['warmStartBodies'], solveModule);
+      // params, bodies and aux are never reallocated: one group, valid for fixed storage too
+      this.integrateGroup = d.createBindGroup({
+        label: 'integrate 3d',
+        layout: L.integrate,
+        entries: [
+          { binding: 0, resource: { buffer: this.paramsBuffer } },
+          { binding: 1, resource: { buffer: this.bodyBuffer } },
+          { binding: BODY_AUX_BINDING, resource: { buffer: this.auxBuffer } },
+        ],
+      });
+    }
     make(makeArgsWGSL(PRELUDE_3D, { ...ARGS_ITEMS_3D, colors: `
       let sparse = (params.flags & FLAG_SPARSE_COLORS) != 0u;
       let n = colorThreads(color[params.colorStartOffset + c + 1u] - color[params.colorStartOffset + c]);
@@ -1666,6 +1716,40 @@ export class GpuSolver3D {
     }
   }
 
+  /**
+   * @internal Per-body gravity scale (aux.x): body `indices[k]` falls with `gravity * scales[k]`
+   * from the next step. Uploads one f32 per body (runs of consecutive slots in one write); does
+   * not invalidate manifold reuse. The caller validates the values (World: finite as f32, within
+   * [-1000, 1000], and a finite product with gravity). Refused under custom shaders, whose solve
+   * module may ignore the record.
+   */
+  setBodyAux(indices: ArrayLike<number>, scales: ArrayLike<number>): void {
+    if (this.customShaders || !this.integrateGroup) throw new Error('GpuSolver3D.setBodyAux: per-body gravity scale requires the built-in solve shaders');
+    if (indices.length !== scales.length) throw new Error('GpuSolver3D.setBodyAux: one scale per index');
+    for (let k = 0; k < indices.length; k++) {
+      const i = indices[k];
+      if (!Number.isInteger(i) || i < 0 || i >= this.bodyCapacity) throw new Error(`GpuSolver3D.setBodyAux: slot ${i} is outside the body capacity`);
+      if (!Number.isFinite(Math.fround(scales[k]))) throw new Error('GpuSolver3D.setBodyAux: scales must be finite (as f32)');
+    }
+    const stride = BODY_AUX_FLOATS * 4;
+    for (let k = 0; k < indices.length; ) {
+      let e = k + 1;
+      while (e < indices.length && indices[e] === indices[e - 1] + 1) e++;
+      if (e - k === 1) {
+        this.device.queue.writeBuffer(this.auxBuffer, indices[k] * stride + A_GRAVITY_SCALE * 4, new Float32Array([scales[k]]));
+      } else {
+        // Whole records for a run: the reserved lanes stay at their defaults
+        const f = new Float32Array((e - k) * BODY_AUX_FLOATS);
+        for (let i = k; i < e; i++) {
+          f.set(BODY_AUX_DEFAULT, (i - k) * BODY_AUX_FLOATS);
+          f[(i - k) * BODY_AUX_FLOATS + A_GRAVITY_SCALE] = scales[i];
+        }
+        this.device.queue.writeBuffer(this.auxBuffer, indices[k] * stride, f);
+      }
+      k = e;
+    }
+  }
+
   /** Move the world anchor of a world joint (the mouse drag). */
   setWorldAnchor(slot: number, p: ArrayLike<number>): void {
     this.device.queue.writeBuffer(this.jointBuffer, (slot * JOINT_FLOATS + J_RA) * 4, new Float32Array([p[0], p[1], p[2]]));
@@ -1953,8 +2037,15 @@ export class GpuSolver3D {
       pass.setPipeline(this.pipes.warmStartJoints);
       pass.dispatchWorkgroups(groups(J));
     }
+    // warmStartBodies binds its own group 0 (integrate layout); group 1 is the same pass
+    // layout. The full solve group and pass entry 0 are bound again before anything else runs,
+    // so primal (any iteration count), dual and updateVelocities never see the integrate group.
     pass.setPipeline(this.pipes.warmStartBodies);
+    if (this.integrateGroup) pass.setBindGroup(0, this.integrateGroup);
+    this.setPass(pass, 0);
     pass.dispatchWorkgroups(groups(N));
+    pass.setBindGroup(0, G.solve[cur]);
+    this.setPass(pass, 0);
     for (let it = 0; it < p.iterations; it++) {
       pass.setPipeline(this.pipes.primal);
       for (let col = 0; col < (this.useSparseColors ? SPARSE_COLOR_START : this.colorCap); col++) {
@@ -2151,17 +2242,19 @@ export class GpuSolver3D {
     this.collisionBackend?.destroy();
     this.collisionBackend = null;
     if (this.ownsBodyBuffer) this.bodyBuffer.destroy();
+    // (Tolerant of a constructor that threw part way: only what was made is released)
     const buffers = [
-      this.jointBuffer, this.infoBuffer, ...this.contactBuffers, ...this.manifoldBuffers, this.pairBuffer, this.tableBuffer, this.gridBuffer, this.staticBuffer,
+      this.jointBuffer, this.infoBuffer, ...(this.contactBuffers ?? []), ...(this.manifoldBuffers ?? []), this.pairBuffer, this.tableBuffer, this.gridBuffer, this.staticBuffer,
       this.counterBuffer, this.argsBuffer, this.adjBuffer, this.colorBuffer, this.paramsBuffer, this.refBuffer, this.hullBuffer, this.passBuffer, this.filterBuffer,
+      this.auxBuffer,
     ];
     for (const b of buffers) b?.destroy();
     // A timing read still mapping keeps its buffers until it settles: destroying a buffer mid-map
     // crashed Dawn under Node (the GPU tests' intermittent crash, docs/FINDINGS.md)
     this.destroyed = true;
     if (!this.timingBusy) this.releaseTiming();
-    this.gridScan.destroy();
-    this.colorHistScan.destroy();
+    this.gridScan?.destroy();
+    this.colorHistScan?.destroy();
     this.adjScan?.destroy();
   }
 }

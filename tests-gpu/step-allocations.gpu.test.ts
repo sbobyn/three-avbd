@@ -74,7 +74,8 @@ function record(steps: number, step: (k: number) => void): StepLog[] {
       log.passOffsets.push(...list);
       log.offsetArgs.push(offsets);
     }
-    log.trace.push(`group ${index} #${group ? id(group) : -1} [${list}]`);
+    // The integrate group (per-body gravity scale) is named, so it takes no id from the goldens
+    log.trace.push(`group ${index} ${group?.label === 'integrate 3d' ? 'integrate' : `#${group ? id(group) : -1}`} [${list}]`);
     return (saved.setBindGroup as (...a: unknown[]) => void).apply(this, [...arguments]);
   } as GPUComputePassEncoder['setBindGroup'];
   P.dispatchWorkgroups = function (this: GPUComputePassEncoder, x: number, y?: number, z?: number) {
@@ -125,6 +126,27 @@ function originalOrder3D(logs: StepLog[]): StepLog[] {
   });
 }
 
+/**
+ * warmStartBodies binds its own group 0 (params, bodies, aux) and pass entry 0, and the full solve
+ * group and entry 0 are restored before primal. Require exactly that, with the restored group the
+ * one bound before warmStartJoints, then drop those binds to compare with the goldens.
+ */
+function withoutIntegrate3D(logs: StepLog[]): StepLog[] {
+  return logs.map((log, k) => {
+    const trace = log.trace;
+    assert.equal(trace.filter((s) => s === 'pipeline warmStartBodies').length, 1, `step ${k}: one warmStartBodies`);
+    const at = trace.indexOf('pipeline warmStartBodies');
+    const solve = trace.slice(0, at).reverse().find((s) => /^group 0 #\d+ \[\]$/.test(s));
+    assert.equal(trace[at + 1], 'group 0 integrate []', `step ${k}: integrate group for warmStartBodies`);
+    assert.match(trace[at + 2], /^group 1 #\d+ \[0\]$/, `step ${k}: pass entry 0 for warmStartBodies`);
+    assert.match(trace[at + 3], /^dispatch \d+ 1 1$/, `step ${k}: warmStartBodies dispatch`);
+    assert.equal(trace[at + 4], solve, `step ${k}: the solve group restored`);
+    assert.equal(trace[at + 5], trace[at + 2], `step ${k}: pass entry 0 restored`);
+    assert.ok(!trace.slice(at + 6).includes('group 0 integrate []'), `step ${k}: the integrate group binds nothing else`);
+    return { ...log, trace: [...trace.slice(0, at + 1), trace[at + 3], ...trace.slice(at + 6)] };
+  });
+}
+
 /** The pass constants as the 0.2.2 solvers wrote them: (colour, alpha) at each entry's start, zero elsewhere. */
 function expectedPassBytes(entries: number, filled: number, perIteration: number, alphaFor: (it: number) => number): Uint8Array {
   const data = new ArrayBuffer(entries * PASS_STRIDE);
@@ -162,9 +184,12 @@ function checkUploads(logs: StepLog[], expected: (k: number) => Uint8Array, para
 /** The 3D pass constants: (colour, alpha) at the start of each of `entries` entries, zero elsewhere. */
 const expectedPassBytes3D = (entries: number, alpha: number) => expectedPassBytes(entries, entries, entries, () => Math.fround(alpha));
 
-/** The 3D dynamic offsets: entry 0, then per iteration the dense primal colours and the dual's entry. */
+/**
+ * The 3D dynamic offsets: entry 0 for the warm starts, entry 0 again for warmStartBodies and its
+ * restore, then per iteration the dense primal colours and the dual's entry.
+ */
 function expectedOffsets3D(iterations: number, primalColors: number, colorCap: number): number[] {
-  const offsets = [0];
+  const offsets = [0, 0, 0];
   for (let it = 0; it < iterations; it++) {
     for (let col = 0; col < primalColors; col++) offsets.push(col * PASS_STRIDE);
     offsets.push(colorCap * PASS_STRIDE);
@@ -212,7 +237,7 @@ gpuTest('3D step: same uploads, offsets and dispatches, from re-used buffers', a
   assert.equal(sources.size, 2, 'the pass-constant upload memory is allocated once, and again only to grow');
   const args = new Set(logs.flatMap((l) => l.offsetArgs));
   assert.equal(args.size, 1, 'every dynamic offset is passed in the same array');
-  const trace = digest(originalOrder3D(logs));
+  const trace = digest(originalOrder3D(withoutIntegrate3D(logs)));
   assert.equal(trace, TRACE_3D, `3D trace ${trace}`);
   gpu.destroy();
 });
@@ -243,7 +268,7 @@ gpuTest('3D step with sparse colours: same uploads, offsets and dispatches, from
   });
   checkParams(logs, 'params 3d');
   assert.equal(new Set(logs.flatMap((l) => l.offsetArgs)).size, 1, 'every dynamic offset is passed in the same array');
-  const trace = digest(originalOrder3D(logs));
+  const trace = digest(originalOrder3D(withoutIntegrate3D(logs)));
   assert.equal(trace, TRACE_3D_SPARSE, `3D sparse trace ${trace}`);
   gpu.destroy();
 });
