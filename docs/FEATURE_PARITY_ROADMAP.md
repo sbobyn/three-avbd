@@ -887,3 +887,9 @@ behavior and exported custom-solve source. The [API/units/lifecycle contract](AP
 and [small consumer exercise](USER_GUIDE.md#per-body-velocity-damping) are current source only.
 Focused M4 Max standard/SDF/free-body/default/lifecycle tests passed; other devices, contact-heavy
 quality, physical correctness and release acceptance remain separate from feature delivery.
+
+
+G2's first [isolated CPU method experiment](RESTITUTION_DESIGN.md#13-cpu-experiment-results--2026-11-10)
+now has measured failures as well as zero-mode compatibility. Both GPU-like parameter variants
+fail the unchanged rebound-height gate, so no GPU or public restitution feature follows. G2
+remains In Progress; another method/height-loss diagnosis is needed before native implementation.

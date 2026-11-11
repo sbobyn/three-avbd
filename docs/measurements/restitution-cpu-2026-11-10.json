@@ -1,0 +1,445 @@
+{
+  "schema": "three-avbd.restitution-cpu-observation/0",
+  "recordedAt": "2026-11-11T00:20:23+00:00",
+  "source": {
+    "base": "0f778193695ad067dd7e8b34876e1cdf422ca8e1",
+    "predeclaredContractCommit": "ab0a438520d54217c04cdfef3779b7b68271658e",
+    "dirtyDuringChecks": true,
+    "overlaySha256": {
+      "src/avbd2d/experiments/restitution.ts": "a120219dcc48eda6f103d65c32efcccbabf028f1782bdff4e242097508fcc7f1",
+      "tests/restitution-experiment.test.ts": "91b7c50c20d12b614c1bed896594697851a1a3454f1c240f6fcc2dfdafadba91",
+      "tools/restitution-experiment.ts": "4ededb452bc90ac070a2e14c2e24a5cdea75353e8e01cdca312f7c9a5ac32f48"
+    },
+    "runtime": "v25.2.1",
+    "note": "Final CPU checks/report ran on the committed contract plus hashed new-file overlay before Git delivery. Tracked reference/oracle/default/GPU/lib source unchanged."
+  },
+  "scope": {
+    "backend": "sequential f64 2D CPU, isolated experiment only",
+    "graphics": false,
+    "units": {
+      "length": "metres",
+      "velocity": "metres/second",
+      "dt": "seconds",
+      "coefficient": "dimensionless",
+      "rowResidual": "metres"
+    },
+    "sampling": {
+      "maxDropSteps": 6000,
+      "restSteps": 600,
+      "maxBodies": 21,
+      "dropCases": 54,
+      "restCases": 12,
+      "threshold": 1,
+      "iterations": 10,
+      "gravity": -10,
+      "normalSpeed": "Same step-start contact Jacobian before and after the same solve",
+      "impact": "First approaching contact solve with before < -1 m/s and compressive normal lambda; no reversal requirement",
+      "apex": "Maximum sampled margin-referenced geometric bottom height after first impact, through first vertical velocity sign change after observed upward contact-free flight, before next impact; no interpolation; in-contact jitter is not an apex",
+      "heightTarget": "Original e\u00b2 times declared geometric drop gap h; margin reference adds 0.0005m to initial height",
+      "draftFormula": "Unverified diagnostic; omits discrete apex sampling and does not alter A3r",
+      "noGain": "A4ratio is the signed restitution-response upper bound only; A4normalSpeedMagnitude compares absolute normal-speed ratios to 1. Neither proves total mechanical energy conservation; coupled/oblique energy and five-apex checks remain notRun"
+    },
+    "dropCases": 54,
+    "restCases": 12
+  },
+  "positiveDropGateCounts": [
+    {
+      "set": "P-ref",
+      "variant": "V0",
+      "cases": 6,
+      "A2pass": 2,
+      "A3rPass": 2
+    },
+    {
+      "set": "P-ref",
+      "variant": "V1",
+      "cases": 6,
+      "A2pass": 6,
+      "A3rPass": 6
+    },
+    {
+      "set": "P-par",
+      "variant": "V0",
+      "cases": 6,
+      "A2pass": 2,
+      "A3rPass": 1
+    },
+    {
+      "set": "P-par",
+      "variant": "V1",
+      "cases": 6,
+      "A2pass": 6,
+      "A3rPass": 5
+    },
+    {
+      "set": "P-3d",
+      "variant": "V0",
+      "cases": 6,
+      "A2pass": 2,
+      "A3rPass": 1
+    },
+    {
+      "set": "P-3d",
+      "variant": "V1",
+      "cases": 6,
+      "A2pass": 6,
+      "A3rPass": 5
+    }
+  ],
+  "eligibility": [
+    {
+      "set": "P-3d",
+      "variant": "V0",
+      "status": "ineligible",
+      "A2": "fail",
+      "A5": "fail",
+      "A3r": "fail"
+    },
+    {
+      "set": "P-3d",
+      "variant": "V1",
+      "status": "ineligible",
+      "A2": "pass",
+      "A5": "pass",
+      "A3r": "fail"
+    }
+  ],
+  "firstFalsifyingCase": {
+    "set": "P-3d",
+    "variant": "V0",
+    "h": 1,
+    "dt": 0.016666666666666666,
+    "e": 0.5,
+    "ratios": [
+      0.4999999913669472,
+      0.4999999913669472
+    ],
+    "apex": {
+      "status": "measured",
+      "height": 0.2327425619250188,
+      "step": 41,
+      "reason": null
+    },
+    "gates": {
+      "A0": "notRun",
+      "A1": "notRun",
+      "A2": "pass",
+      "A3r": "fail",
+      "A4ratio": "pass",
+      "A4normalSpeedMagnitude": "pass",
+      "A4firstApex": "pass",
+      "A4fiveApices": "notRun"
+    }
+  },
+  "matchedVariantFirstCase": [
+    {
+      "variant": "V0",
+      "ratios": [
+        0.4999999913669472,
+        0.4999999913669472
+      ],
+      "apex": {
+        "status": "measured",
+        "height": 0.2327425619250188,
+        "step": 41,
+        "reason": null
+      },
+      "heightErrorFraction": -0.06902975229992481,
+      "gates": {
+        "A0": "notRun",
+        "A1": "notRun",
+        "A2": "pass",
+        "A3r": "fail",
+        "A4ratio": "pass",
+        "A4normalSpeedMagnitude": "pass",
+        "A4firstApex": "pass",
+        "A4fiveApices": "notRun"
+      }
+    },
+    {
+      "variant": "V1",
+      "ratios": [
+        0.4999999008248179,
+        0.4999999008248179
+      ],
+      "apex": {
+        "status": "measured",
+        "height": 0.22776324684839705,
+        "step": 41,
+        "reason": null
+      },
+      "heightErrorFraction": -0.0889470126064118,
+      "gates": {
+        "A0": "notRun",
+        "A1": "notRun",
+        "A2": "pass",
+        "A3r": "fail",
+        "A4ratio": "pass",
+        "A4normalSpeedMagnitude": "pass",
+        "A4firstApex": "pass",
+        "A4fiveApices": "notRun"
+      }
+    }
+  ],
+  "zeroControls": {
+    "dropA0Pass": 18,
+    "dropA1Unknown": 18,
+    "restAndStackA0Pass": 12,
+    "note": "A0 now uses finite values and Object.is, retaining signed-zero distinctions. Missing zero-control ballistic apex stays unknown."
+  },
+  "rest": [
+    {
+      "set": "P-ref",
+      "variant": "V0",
+      "fixture": "rest",
+      "steps": 600,
+      "bodies": 2,
+      "maxApproach": 0.00586129557515358,
+      "controlMaxApproach": 0.00586129557515358,
+      "fixtureNote": "Single box starts touching ground",
+      "firstDifferenceStep": null,
+      "fired": 0,
+      "gates": {
+        "A0": "pass",
+        "A6": "pass"
+      }
+    },
+    {
+      "set": "P-ref",
+      "variant": "V0",
+      "fixture": "stack",
+      "steps": 600,
+      "bodies": 21,
+      "maxApproach": 319.79313486976724,
+      "controlMaxApproach": 19.823726858564825,
+      "fixtureNote": "Unmodified reference Stack starts with 1m gaps; not a pre-settled quiet stack",
+      "firstDifferenceStep": 28,
+      "fired": 155,
+      "gates": {
+        "A0": "pass",
+        "A6": "fail"
+      }
+    },
+    {
+      "set": "P-ref",
+      "variant": "V1",
+      "fixture": "rest",
+      "steps": 600,
+      "bodies": 2,
+      "maxApproach": 0.00586129557515358,
+      "controlMaxApproach": 0.00586129557515358,
+      "fixtureNote": "Single box starts touching ground",
+      "firstDifferenceStep": null,
+      "fired": 0,
+      "gates": {
+        "A0": "pass",
+        "A6": "pass"
+      }
+    },
+    {
+      "set": "P-ref",
+      "variant": "V1",
+      "fixture": "stack",
+      "steps": 600,
+      "bodies": 21,
+      "maxApproach": 45.8518575558805,
+      "controlMaxApproach": 19.823726858564825,
+      "fixtureNote": "Unmodified reference Stack starts with 1m gaps; not a pre-settled quiet stack",
+      "firstDifferenceStep": 28,
+      "fired": 1940,
+      "gates": {
+        "A0": "pass",
+        "A6": "fail"
+      }
+    },
+    {
+      "set": "P-par",
+      "variant": "V0",
+      "fixture": "rest",
+      "steps": 600,
+      "bodies": 2,
+      "maxApproach": 0.0074148104310900464,
+      "controlMaxApproach": 0.0074148104310900464,
+      "fixtureNote": "Single box starts touching ground",
+      "firstDifferenceStep": null,
+      "fired": 0,
+      "gates": {
+        "A0": "pass",
+        "A6": "pass"
+      }
+    },
+    {
+      "set": "P-par",
+      "variant": "V0",
+      "fixture": "stack",
+      "steps": 600,
+      "bodies": 21,
+      "maxApproach": 323.4616432081643,
+      "controlMaxApproach": 22.776069293497443,
+      "fixtureNote": "Unmodified reference Stack starts with 1m gaps; not a pre-settled quiet stack",
+      "firstDifferenceStep": 28,
+      "fired": 172,
+      "gates": {
+        "A0": "pass",
+        "A6": "fail"
+      }
+    },
+    {
+      "set": "P-par",
+      "variant": "V1",
+      "fixture": "rest",
+      "steps": 600,
+      "bodies": 2,
+      "maxApproach": 0.0074148104310900464,
+      "controlMaxApproach": 0.0074148104310900464,
+      "fixtureNote": "Single box starts touching ground",
+      "firstDifferenceStep": null,
+      "fired": 0,
+      "gates": {
+        "A0": "pass",
+        "A6": "pass"
+      }
+    },
+    {
+      "set": "P-par",
+      "variant": "V1",
+      "fixture": "stack",
+      "steps": 600,
+      "bodies": 21,
+      "maxApproach": 102.64269013585519,
+      "controlMaxApproach": 22.776069293497443,
+      "fixtureNote": "Unmodified reference Stack starts with 1m gaps; not a pre-settled quiet stack",
+      "firstDifferenceStep": 28,
+      "fired": 2018,
+      "gates": {
+        "A0": "pass",
+        "A6": "fail"
+      }
+    },
+    {
+      "set": "P-3d",
+      "variant": "V0",
+      "fixture": "rest",
+      "steps": 600,
+      "bodies": 2,
+      "maxApproach": 0.0061719529131343265,
+      "controlMaxApproach": 0.0061719529131343265,
+      "fixtureNote": "Single box starts touching ground",
+      "firstDifferenceStep": null,
+      "fired": 0,
+      "gates": {
+        "A0": "pass",
+        "A6": "pass"
+      }
+    },
+    {
+      "set": "P-3d",
+      "variant": "V0",
+      "fixture": "stack",
+      "steps": 600,
+      "bodies": 21,
+      "maxApproach": 323.0577486893923,
+      "controlMaxApproach": 21.597883052007703,
+      "fixtureNote": "Unmodified reference Stack starts with 1m gaps; not a pre-settled quiet stack",
+      "firstDifferenceStep": 28,
+      "fired": 135,
+      "gates": {
+        "A0": "pass",
+        "A6": "fail"
+      }
+    },
+    {
+      "set": "P-3d",
+      "variant": "V1",
+      "fixture": "rest",
+      "steps": 600,
+      "bodies": 2,
+      "maxApproach": 0.0061719529131343265,
+      "controlMaxApproach": 0.0061719529131343265,
+      "fixtureNote": "Single box starts touching ground",
+      "firstDifferenceStep": null,
+      "fired": 0,
+      "gates": {
+        "A0": "pass",
+        "A6": "pass"
+      }
+    },
+    {
+      "set": "P-3d",
+      "variant": "V1",
+      "fixture": "stack",
+      "steps": 600,
+      "bodies": 21,
+      "maxApproach": 54.780955579866344,
+      "controlMaxApproach": 21.597883052007703,
+      "fixtureNote": "Unmodified reference Stack starts with 1m gaps; not a pre-settled quiet stack",
+      "firstDifferenceStep": 28,
+      "fired": 1926,
+      "gates": {
+        "A0": "pass",
+        "A6": "fail"
+      }
+    }
+  ],
+  "laterCases": {
+    "A4fiveApices": "notRun",
+    "A7": "notRun",
+    "A8": "notRun",
+    "reason": "Mandatory positive-e P-3d eligibility falsified; no coupled/oblique expansion or five-apex qualification"
+  },
+  "validation": {
+    "focusedHarnessTests": 14,
+    "failed": 0,
+    "skipped": 0,
+    "typecheck": "passed",
+    "fullSuite": "not repeated; unchanged core evidence reused",
+    "gpuBrowserBuild": "not run, not relevant to isolated CPU graph"
+  },
+  "rawEvidence": {
+    "workerReportSha256": "c3a31f0cb99376be673d6e0c8c97670161c4e68054742a0621519084d6ece956",
+    "leadReportSha256": "458993283b4cfd176776970553636e7bb284a0f456ae704feef075dc2c25771e",
+    "leadReportBytes": 3333247,
+    "retention": "Full raw records, initial failed reporting regression and source-before-lead copies retained by existing lead; this public summary omits dense event arrays."
+  },
+  "limits": [
+    "Both P-3d variants are ineligible under the frozen original height goal; no production GPU/API restitution follows.",
+    "A4ratio is a signed-response ceiling only; normal-speed magnitude and one apex are limited observations, not full mechanical-energy or multi-contact proof.",
+    "Source Stack begins gapped. Its frozen A6 failure is retained with an applicability flaw; it is not proof of a quiet-stack defect.",
+    "No sphere, f32, coloured GPU, SDF, DCC, performance, large-scale, target-device, replay, release or human qualification."
+  ],
+  "trace": {
+    "contract": "RESTITUTION_DESIGN.md section14, fixed known failure,45steps per variant, no new gate/method",
+    "sha256": "8319c4eb842f6c24d03ef79527cb6223583af9d7f269f2e0ba4557f5c161466b",
+    "steps": 45,
+    "observations": [
+      {
+        "variant": "V0",
+        "step": 29,
+        "netVerticalResponse": 0.04624776354230464,
+        "biases": [
+          0,
+          0
+        ],
+        "finalNormalLambdas": [
+          0,
+          0
+        ],
+        "note": "Departure from pure gravity after the first impact, despite zero current restitution bias and zero final normal lambda. Does not independently identify an impulse or root cause; intermediate iteration/cache response needs a future experiment."
+      },
+      {
+        "variant": "V1",
+        "step": 29,
+        "netVerticalResponse": 0.023266748123594194,
+        "biases": [
+          0,
+          0
+        ],
+        "finalNormalLambdas": [
+          0,
+          0
+        ],
+        "note": "Departure from pure gravity after the first impact, despite zero current restitution bias and zero final normal lambda. Does not independently identify an impulse or root cause; intermediate iteration/cache response needs a future experiment."
+      }
+    ]
+  }
+}
