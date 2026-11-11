@@ -1,0 +1,843 @@
+{
+  "schema": "three-avbd.restitution-memory-controls/0",
+  "recordedAt": "2026-11-11T00:40:02+00:00",
+  "source": {
+    "base": "7539042dc4eccb755dd05503f1e977b724140b64",
+    "predeclaredContract": "719b8baf9d4ba9d077156c03627919ea5263ab2f",
+    "dirtyDuringChecks": true,
+    "filesSha256": {
+      "src/avbd2d/experiments/restitution.ts": "4eb9b68fde46cd1e5211079df22c0f53cf24c43a198f0a4f156301b69f0019c4",
+      "tools/restitution-experiment.ts": "0ba8e7f55be4c1f5fbc5d0152867661a92771bd5286a2d1e8433a6b092de643b",
+      "tests/restitution-experiment.test.ts": "7c35503931b39ce1a1801b74c0210102792ccce01a8ef1eb544b89bdb9a6f473"
+    },
+    "note": "Experimental module/report/tests only; current source reproduced returned report and both delivered baseline outputs exactly."
+  },
+  "scope": {
+    "backend": "sequential f64 2D CPU only",
+    "arms": 8,
+    "stepsPerArm": 45,
+    "h": 1,
+    "dt": 0.016666666666666666,
+    "e": 0.5,
+    "threshold": 1,
+    "iterations": 10,
+    "noNewEligibilityGate": true
+  },
+  "arms": [
+    {
+      "variant": "V0",
+      "control": "baseline",
+      "options": {
+        "set": "P-3d",
+        "h": 1,
+        "e": 0.5,
+        "steps": 45,
+        "threshold": 1,
+        "combine": "average",
+        "impactPenaltyFloor": false,
+        "releaseImpactLambda": false,
+        "solver": {
+          "dt": 0.016666666666666666,
+          "gravity": -10,
+          "iterations": 10,
+          "beta": 100000,
+          "alpha": 0.99,
+          "gamma": 0.99,
+          "postStabilize": false,
+          "stiffnessRescale": false,
+          "vbd": false,
+          "vbdStiffness": 1000000,
+          "matchNearest": false
+        }
+      },
+      "impact": {
+        "step": 28,
+        "rows": [
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 66048,
+            "row": 0,
+            "before": -4.499999999999984,
+            "after": 2.2499999611512544,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49999883453742,
+            "penaltyFloor": 0,
+            "rowResidual": -6.474789593369223e-10
+          },
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 16777220,
+            "row": 2,
+            "before": -4.499999999999984,
+            "after": 2.2499999611512544,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49999883453742,
+            "penaltyFloor": 0,
+            "rowResidual": -6.474789593369223e-10
+          }
+        ],
+        "ratios": [
+          0.4999999913669472,
+          0.4999999913669472
+        ]
+      },
+      "impactEndpoint": {
+        "step": 28,
+        "position": [
+          0,
+          0.9874999993525246,
+          0
+        ],
+        "velocity": [
+          0,
+          2.2499999611512544,
+          0
+        ]
+      },
+      "apex": {
+        "status": "measured",
+        "height": 0.2327425619250188,
+        "step": 41,
+        "reason": null
+      },
+      "targetHeight": 0.25,
+      "gates": {
+        "A2": "pass",
+        "A3r": "fail"
+      },
+      "step29NetVerticalResponse": 0.04624776354230464,
+      "hypothesisScreen": {
+        "tolerance": 1e-10,
+        "status": "fail"
+      },
+      "controls": {
+        "zeroCoefficientMatchesSameOptionPlainSolver": true,
+        "first28MatchesBaseline": true,
+        "releaseOnlyFirst28Required": false
+      },
+      "releaseCount": 0
+    },
+    {
+      "variant": "V0",
+      "control": "impact-lambda-release",
+      "options": {
+        "set": "P-3d",
+        "h": 1,
+        "e": 0.5,
+        "steps": 45,
+        "threshold": 1,
+        "combine": "average",
+        "impactPenaltyFloor": false,
+        "releaseImpactLambda": true,
+        "solver": {
+          "dt": 0.016666666666666666,
+          "gravity": -10,
+          "iterations": 10,
+          "beta": 100000,
+          "alpha": 0.99,
+          "gamma": 0.99,
+          "postStabilize": false,
+          "stiffnessRescale": false,
+          "vbd": false,
+          "vbdStiffness": 1000000,
+          "matchNearest": false
+        }
+      },
+      "impact": {
+        "step": 28,
+        "rows": [
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 66048,
+            "row": 0,
+            "before": -4.499999999999984,
+            "after": 2.2499999611512544,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49999883453742,
+            "penaltyFloor": 0,
+            "releasedNormalLambda": 0,
+            "releasedCount": 0,
+            "rowResidual": -6.474789593369223e-10
+          },
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 16777220,
+            "row": 2,
+            "before": -4.499999999999984,
+            "after": 2.2499999611512544,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49999883453742,
+            "penaltyFloor": 0,
+            "releasedNormalLambda": 0,
+            "releasedCount": 0,
+            "rowResidual": -6.474789593369223e-10
+          }
+        ],
+        "ratios": [
+          0.4999999913669472,
+          0.4999999913669472
+        ]
+      },
+      "impactEndpoint": {
+        "step": 28,
+        "position": [
+          0,
+          0.9874999993525246,
+          0
+        ],
+        "velocity": [
+          0,
+          2.2499999611512544,
+          0
+        ]
+      },
+      "apex": {
+        "status": "measured",
+        "height": 0.2327425619250188,
+        "step": 41,
+        "reason": null
+      },
+      "targetHeight": 0.25,
+      "gates": {
+        "A2": "pass",
+        "A3r": "fail"
+      },
+      "step29NetVerticalResponse": 0.04624776354230464,
+      "hypothesisScreen": {
+        "tolerance": 1e-10,
+        "status": "fail"
+      },
+      "controls": {
+        "zeroCoefficientMatchesSameOptionPlainSolver": true,
+        "first28MatchesBaseline": true,
+        "releaseOnlyFirst28Required": true
+      },
+      "releaseCount": 2
+    },
+    {
+      "variant": "V0",
+      "control": "stiffnessRescale",
+      "options": {
+        "set": "P-3d",
+        "h": 1,
+        "e": 0.5,
+        "steps": 45,
+        "threshold": 1,
+        "combine": "average",
+        "impactPenaltyFloor": false,
+        "releaseImpactLambda": false,
+        "solver": {
+          "dt": 0.016666666666666666,
+          "gravity": -10,
+          "iterations": 10,
+          "beta": 100000,
+          "alpha": 0.99,
+          "gamma": 0.99,
+          "postStabilize": false,
+          "stiffnessRescale": true,
+          "vbd": false,
+          "vbdStiffness": 1000000,
+          "matchNearest": false
+        }
+      },
+      "impact": {
+        "step": 28,
+        "rows": [
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 66048,
+            "row": 0,
+            "before": -4.499999999999984,
+            "after": 2.2499999611512544,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49999883453742,
+            "penaltyFloor": 0,
+            "rowResidual": -6.474789593369223e-10
+          },
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 16777220,
+            "row": 2,
+            "before": -4.499999999999984,
+            "after": 2.2499999611512544,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49999883453742,
+            "penaltyFloor": 0,
+            "rowResidual": -6.474789593369223e-10
+          }
+        ],
+        "ratios": [
+          0.4999999913669472,
+          0.4999999913669472
+        ]
+      },
+      "impactEndpoint": {
+        "step": 28,
+        "position": [
+          0,
+          0.9874999993525246,
+          0
+        ],
+        "velocity": [
+          0,
+          2.2499999611512544,
+          0
+        ]
+      },
+      "apex": {
+        "status": "measured",
+        "height": 0.22272221315751956,
+        "step": 41,
+        "reason": null
+      },
+      "targetHeight": 0.25,
+      "gates": {
+        "A2": "pass",
+        "A3r": "fail"
+      },
+      "step29NetVerticalResponse": 4.440892098500626e-16,
+      "hypothesisScreen": {
+        "tolerance": 1e-10,
+        "status": "pass"
+      },
+      "controls": {
+        "zeroCoefficientMatchesSameOptionPlainSolver": true,
+        "first28MatchesBaseline": true,
+        "releaseOnlyFirst28Required": false
+      },
+      "releaseCount": 0
+    },
+    {
+      "variant": "V0",
+      "control": "both",
+      "options": {
+        "set": "P-3d",
+        "h": 1,
+        "e": 0.5,
+        "steps": 45,
+        "threshold": 1,
+        "combine": "average",
+        "impactPenaltyFloor": false,
+        "releaseImpactLambda": true,
+        "solver": {
+          "dt": 0.016666666666666666,
+          "gravity": -10,
+          "iterations": 10,
+          "beta": 100000,
+          "alpha": 0.99,
+          "gamma": 0.99,
+          "postStabilize": false,
+          "stiffnessRescale": true,
+          "vbd": false,
+          "vbdStiffness": 1000000,
+          "matchNearest": false
+        }
+      },
+      "impact": {
+        "step": 28,
+        "rows": [
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 66048,
+            "row": 0,
+            "before": -4.499999999999984,
+            "after": 2.2499999611512544,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49999883453742,
+            "penaltyFloor": 0,
+            "releasedNormalLambda": 0,
+            "releasedCount": 0,
+            "rowResidual": -6.474789593369223e-10
+          },
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 16777220,
+            "row": 2,
+            "before": -4.499999999999984,
+            "after": 2.2499999611512544,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49999883453742,
+            "penaltyFloor": 0,
+            "releasedNormalLambda": 0,
+            "releasedCount": 0,
+            "rowResidual": -6.474789593369223e-10
+          }
+        ],
+        "ratios": [
+          0.4999999913669472,
+          0.4999999913669472
+        ]
+      },
+      "impactEndpoint": {
+        "step": 28,
+        "position": [
+          0,
+          0.9874999993525246,
+          0
+        ],
+        "velocity": [
+          0,
+          2.2499999611512544,
+          0
+        ]
+      },
+      "apex": {
+        "status": "measured",
+        "height": 0.22272221315751956,
+        "step": 41,
+        "reason": null
+      },
+      "targetHeight": 0.25,
+      "gates": {
+        "A2": "pass",
+        "A3r": "fail"
+      },
+      "step29NetVerticalResponse": 4.440892098500626e-16,
+      "hypothesisScreen": {
+        "tolerance": 1e-10,
+        "status": "pass"
+      },
+      "controls": {
+        "zeroCoefficientMatchesSameOptionPlainSolver": true,
+        "first28MatchesBaseline": true,
+        "releaseOnlyFirst28Required": false
+      },
+      "releaseCount": 2
+    },
+    {
+      "variant": "V1",
+      "control": "baseline",
+      "options": {
+        "set": "P-3d",
+        "h": 1,
+        "e": 0.5,
+        "steps": 45,
+        "threshold": 1,
+        "combine": "average",
+        "impactPenaltyFloor": true,
+        "releaseImpactLambda": false,
+        "solver": {
+          "dt": 0.016666666666666666,
+          "gravity": -10,
+          "iterations": 10,
+          "beta": 100000,
+          "alpha": 0.99,
+          "gamma": 0.99,
+          "postStabilize": false,
+          "stiffnessRescale": false,
+          "vbd": false,
+          "vbdStiffness": 1000000,
+          "matchNearest": false
+        }
+      },
+      "impact": {
+        "step": 28,
+        "rows": [
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 66048,
+            "row": 0,
+            "before": -4.499999999999984,
+            "after": 2.2499995537116724,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49998661134939,
+            "penaltyFloor": 3600,
+            "rowResidual": -7.438138660553761e-09
+          },
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 16777220,
+            "row": 2,
+            "before": -4.499999999999984,
+            "after": 2.2499995537116724,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49998661134939,
+            "penaltyFloor": 3600,
+            "rowResidual": -7.438138660553761e-09
+          }
+        ],
+        "ratios": [
+          0.4999999008248179,
+          0.4999999008248179
+        ]
+      },
+      "impactEndpoint": {
+        "step": 28,
+        "position": [
+          0,
+          0.9874999925618649,
+          0
+        ],
+        "velocity": [
+          0,
+          2.2499995537116724,
+          0
+        ]
+      },
+      "apex": {
+        "status": "measured",
+        "height": 0.22776324684839705,
+        "step": 41,
+        "reason": null
+      },
+      "targetHeight": 0.25,
+      "gates": {
+        "A2": "pass",
+        "A3r": "fail"
+      },
+      "step29NetVerticalResponse": 0.023266748123594194,
+      "hypothesisScreen": {
+        "tolerance": 1e-10,
+        "status": "fail"
+      },
+      "controls": {
+        "zeroCoefficientMatchesSameOptionPlainSolver": true,
+        "first28MatchesBaseline": true,
+        "releaseOnlyFirst28Required": false
+      },
+      "releaseCount": 0
+    },
+    {
+      "variant": "V1",
+      "control": "impact-lambda-release",
+      "options": {
+        "set": "P-3d",
+        "h": 1,
+        "e": 0.5,
+        "steps": 45,
+        "threshold": 1,
+        "combine": "average",
+        "impactPenaltyFloor": true,
+        "releaseImpactLambda": true,
+        "solver": {
+          "dt": 0.016666666666666666,
+          "gravity": -10,
+          "iterations": 10,
+          "beta": 100000,
+          "alpha": 0.99,
+          "gamma": 0.99,
+          "postStabilize": false,
+          "stiffnessRescale": false,
+          "vbd": false,
+          "vbdStiffness": 1000000,
+          "matchNearest": false
+        }
+      },
+      "impact": {
+        "step": 28,
+        "rows": [
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 66048,
+            "row": 0,
+            "before": -4.499999999999984,
+            "after": 2.2499995537116724,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49998661134939,
+            "penaltyFloor": 3600,
+            "releasedNormalLambda": 0,
+            "releasedCount": 0,
+            "rowResidual": -7.438138660553761e-09
+          },
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 16777220,
+            "row": 2,
+            "before": -4.499999999999984,
+            "after": 2.2499995537116724,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49998661134939,
+            "penaltyFloor": 3600,
+            "releasedNormalLambda": 0,
+            "releasedCount": 0,
+            "rowResidual": -7.438138660553761e-09
+          }
+        ],
+        "ratios": [
+          0.4999999008248179,
+          0.4999999008248179
+        ]
+      },
+      "impactEndpoint": {
+        "step": 28,
+        "position": [
+          0,
+          0.9874999925618649,
+          0
+        ],
+        "velocity": [
+          0,
+          2.2499995537116724,
+          0
+        ]
+      },
+      "apex": {
+        "status": "measured",
+        "height": 0.22776324684839705,
+        "step": 41,
+        "reason": null
+      },
+      "targetHeight": 0.25,
+      "gates": {
+        "A2": "pass",
+        "A3r": "fail"
+      },
+      "step29NetVerticalResponse": 0.023266748123594194,
+      "hypothesisScreen": {
+        "tolerance": 1e-10,
+        "status": "fail"
+      },
+      "controls": {
+        "zeroCoefficientMatchesSameOptionPlainSolver": true,
+        "first28MatchesBaseline": true,
+        "releaseOnlyFirst28Required": true
+      },
+      "releaseCount": 2
+    },
+    {
+      "variant": "V1",
+      "control": "stiffnessRescale",
+      "options": {
+        "set": "P-3d",
+        "h": 1,
+        "e": 0.5,
+        "steps": 45,
+        "threshold": 1,
+        "combine": "average",
+        "impactPenaltyFloor": true,
+        "releaseImpactLambda": false,
+        "solver": {
+          "dt": 0.016666666666666666,
+          "gravity": -10,
+          "iterations": 10,
+          "beta": 100000,
+          "alpha": 0.99,
+          "gamma": 0.99,
+          "postStabilize": false,
+          "stiffnessRescale": true,
+          "vbd": false,
+          "vbdStiffness": 1000000,
+          "matchNearest": false
+        }
+      },
+      "impact": {
+        "step": 28,
+        "rows": [
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 66048,
+            "row": 0,
+            "before": -4.499999999999984,
+            "after": 2.2499995537116724,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49998661134939,
+            "penaltyFloor": 3600,
+            "rowResidual": -7.438138660553761e-09
+          },
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 16777220,
+            "row": 2,
+            "before": -4.499999999999984,
+            "after": 2.2499995537116724,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49998661134939,
+            "penaltyFloor": 3600,
+            "rowResidual": -7.438138660553761e-09
+          }
+        ],
+        "ratios": [
+          0.4999999008248179,
+          0.4999999008248179
+        ]
+      },
+      "impactEndpoint": {
+        "step": 28,
+        "position": [
+          0,
+          0.9874999925618649,
+          0
+        ],
+        "velocity": [
+          0,
+          2.2499995537116724,
+          0
+        ]
+      },
+      "apex": {
+        "status": "measured",
+        "height": 0.22272211808828507,
+        "step": 41,
+        "reason": null
+      },
+      "targetHeight": 0.25,
+      "gates": {
+        "A2": "pass",
+        "A3r": "fail"
+      },
+      "step29NetVerticalResponse": 4.440892098500626e-16,
+      "hypothesisScreen": {
+        "tolerance": 1e-10,
+        "status": "pass"
+      },
+      "controls": {
+        "zeroCoefficientMatchesSameOptionPlainSolver": true,
+        "first28MatchesBaseline": true,
+        "releaseOnlyFirst28Required": false
+      },
+      "releaseCount": 0
+    },
+    {
+      "variant": "V1",
+      "control": "both",
+      "options": {
+        "set": "P-3d",
+        "h": 1,
+        "e": 0.5,
+        "steps": 45,
+        "threshold": 1,
+        "combine": "average",
+        "impactPenaltyFloor": true,
+        "releaseImpactLambda": true,
+        "solver": {
+          "dt": 0.016666666666666666,
+          "gravity": -10,
+          "iterations": 10,
+          "beta": 100000,
+          "alpha": 0.99,
+          "gamma": 0.99,
+          "postStabilize": false,
+          "stiffnessRescale": true,
+          "vbd": false,
+          "vbdStiffness": 1000000,
+          "matchNearest": false
+        }
+      },
+      "impact": {
+        "step": 28,
+        "rows": [
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 66048,
+            "row": 0,
+            "before": -4.499999999999984,
+            "after": 2.2499995537116724,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49998661134939,
+            "penaltyFloor": 3600,
+            "releasedNormalLambda": 0,
+            "releasedCount": 0,
+            "rowResidual": -7.438138660553761e-09
+          },
+          {
+            "bodyA": 1,
+            "bodyB": 0,
+            "feature": 16777220,
+            "row": 2,
+            "before": -4.499999999999984,
+            "after": 2.2499995537116724,
+            "bias": 0.03749999999999987,
+            "c0": -0.04949999999999627,
+            "normalLambda": -207.49998661134939,
+            "penaltyFloor": 3600,
+            "releasedNormalLambda": 0,
+            "releasedCount": 0,
+            "rowResidual": -7.438138660553761e-09
+          }
+        ],
+        "ratios": [
+          0.4999999008248179,
+          0.4999999008248179
+        ]
+      },
+      "impactEndpoint": {
+        "step": 28,
+        "position": [
+          0,
+          0.9874999925618649,
+          0
+        ],
+        "velocity": [
+          0,
+          2.2499995537116724,
+          0
+        ]
+      },
+      "apex": {
+        "status": "measured",
+        "height": 0.22272211808828507,
+        "step": 41,
+        "reason": null
+      },
+      "targetHeight": 0.25,
+      "gates": {
+        "A2": "pass",
+        "A3r": "fail"
+      },
+      "step29NetVerticalResponse": 4.440892098500626e-16,
+      "hypothesisScreen": {
+        "tolerance": 1e-10,
+        "status": "pass"
+      },
+      "controls": {
+        "zeroCoefficientMatchesSameOptionPlainSolver": true,
+        "first28MatchesBaseline": true,
+        "releaseOnlyFirst28Required": false
+      },
+      "releaseCount": 2
+    }
+  ],
+  "findings": [
+    "Release-only does not change the step29 residual or apex in either variant; its elimination hypothesis fails.",
+    "Existing stiffnessRescale opt-in, with or without lambda release, reduces the residual to about4.44e-16m/s. This is one controlled fixture observation, not full iteration-level causality or production suitability.",
+    "All8 arms fail original5% rebound-height target. No control replaces or waives that gate.",
+    "Release-only first28states exactly match baseline; allzero-coefficient controls match plainSolver using the same rescale option.",
+    "Default54drop/12rest report and default45step traces are byte-identical to preserved prior evidence."
+  ],
+  "verification": {
+    "workerFocusedTests": 18,
+    "workerTypecheck": "passed",
+    "parentReview": "final diff inspected; artifact/source reproducibility and frozen baseline equivalence verified",
+    "graphicsBuildFullSuite": "not run; isolated CPU tool, core paths unchanged"
+  },
+  "raw": {
+    "sha256": "9219fcd25a86eac360cdd007bfb9ad60f6bf38605946c66cdad5ef83ae613fa0",
+    "bytes": 189558,
+    "retention": "Full traces retained in existing lead-local Git recovery evidence; compact source-qualified outcomes versioned here."
+  },
+  "limits": [
+    "No production solver/reference/oracle/default/fixtures/SoA/GPU/lib changes. No native/public restitution support.",
+    "No full energy, multi-contact, sphere, f32/colouredGPU/SDF/large-scale/target-device/performance/human/release qualification.",
+    "This rejects one attribution hypothesis and supports a narrow rescaling observation; it does not establish a universally correct method."
+  ]
+}

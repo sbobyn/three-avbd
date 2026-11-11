@@ -10,6 +10,7 @@ export interface RestitutionOptions {
   combine: RestitutionCombine;
   threshold: number;
   impactPenaltyFloor?: boolean;
+  releaseImpactLambda?: boolean;
 }
 
 function coefficient(value: number): void {
@@ -50,11 +51,17 @@ export interface NormalSample {
   penaltyFloor: number;
   /** End-of-main-solve fixed-J row residual in metres, from BDF1 velocity. */
   rowResidual: number;
+  /** Present only in the opt-in memory diagnostic; value is before warm-start decay. */
+  releasedNormalLambda?: number;
+  releasedCount?: number;
 }
 
 export class RestitutionManifold extends Manifold {
   readonly bias: number[] = [];
   readonly incoming: number[] = [];
+  private releaseEnabled = false;
+  private readonly released: number[] = [];
+  private readonly releaseCounts: number[] = [];
   private pairCoefficient = 0;
   private threshold = 1;
   private floorEnabled = false;
@@ -62,23 +69,32 @@ export class RestitutionManifold extends Manifold {
   private floor = 0;
 
   /** The wrapper replaces this snapshot every step, including on persistent contacts. */
-  prepare(pairCoefficient: number, threshold: number, floorEnabled: boolean): void {
+  prepare(pairCoefficient: number, threshold: number, floorEnabled: boolean, releaseImpactLambda = false): void {
     coefficient(pairCoefficient);
     if (!Number.isFinite(threshold) || threshold < 0.1) throw new RangeError('Threshold must be finite and >= 0.1 m/s');
     if (typeof floorEnabled !== 'boolean') throw new TypeError('Penalty floor must be boolean');
+    if (typeof releaseImpactLambda !== 'boolean') throw new TypeError('Impact lambda release must be boolean');
+    this.releaseEnabled = releaseImpactLambda;
     this.pairCoefficient = pairCoefficient;
     this.threshold = threshold;
     this.floorEnabled = floorEnabled;
   }
 
   override initialize(): boolean {
+    // Read the preceding step by feature before super replaces/reorders contacts.
+    const biasedFeatures = new Set(this.contacts.filter((_, i) => this.bias[i] > 0).map((c) => c.feature));
     const active = super.initialize();
+    this.released.length = this.releaseCounts.length = 0;
     this.bias.length = this.incoming.length = 0;
     this.floorPending = this.floorEnabled;
     const masses = [this.bodyA!.mass, this.bodyB.mass].filter((mass) => mass > 0);
     this.floor = masses.length ? Math.min(PENALTY_MAX, Math.min(...masses) / (this.solver.dt * this.solver.dt)) : 0;
-    for (const c of this.contacts) {
+    for (const [i, c] of this.contacts.entries()) {
       const vn = normalSpeed(c, this.bodyA!, this.bodyB);
+      const release = this.releaseEnabled && biasedFeatures.has(c.feature) && vn > 0;
+      this.released.push(release ? this.lambda[i * 2] : 0);
+      this.releaseCounts.push(release ? 1 : 0);
+      if (release) this.lambda[i * 2] = 0;
       this.incoming.push(vn);
       this.bias.push(this.pairCoefficient > 0 && vn < -this.threshold ? this.pairCoefficient * -vn * this.solver.dt : 0);
     }
@@ -105,6 +121,7 @@ export class RestitutionManifold extends Manifold {
         bodyA: this.solver.bodies.indexOf(this.bodyA!), bodyB: this.solver.bodies.indexOf(this.bodyB),
         feature: c.feature, row: i * 2, before: this.incoming[i], after, bias: this.bias[i], c0: c.C0[0],
         normalLambda: this.lambda[i * 2], penaltyFloor: this.floorEnabled && this.bias[i] > 0 ? this.floor : 0,
+        ...(this.releaseEnabled ? { releasedNormalLambda: this.released[i], releasedCount: this.releaseCounts[i] } : {}),
         rowResidual: after * this.solver.dt + (this.bias[i] > 0 ? Math.min(initialTerm, -this.bias[i]) : initialTerm),
       };
     });
@@ -119,11 +136,12 @@ export interface RestitutionStep {
 
 /** Preflight is observational: callbacks must not mutate the solver. No callbacks run in the solve. */
 export function stepWithRestitution(solver: Solver, options: RestitutionOptions): RestitutionStep {
-  const { restitution, combine, threshold, impactPenaltyFloor = false } = options;
+  const { restitution, combine, threshold, impactPenaltyFloor = false, releaseImpactLambda = false } = options;
   if (typeof restitution !== 'function') throw new TypeError('Restitution must be a body callback');
   combineRule(combine);
   if (!Number.isFinite(threshold) || threshold < 0.1) throw new RangeError('Threshold must be finite and >= 0.1 m/s');
   if (typeof impactPenaltyFloor !== 'boolean') throw new TypeError('Penalty floor must be boolean');
+  if (typeof releaseImpactLambda !== 'boolean') throw new TypeError('Impact lambda release must be boolean');
   if (!Number.isFinite(solver.dt) || solver.dt <= 0 || !Number.isFinite(solver.dt * solver.dt) || solver.dt * solver.dt === 0 ||
       !Number.isInteger(solver.iterations) || solver.iterations < 1 ||
       !Number.isFinite(solver.gravity) || !Number.isFinite(solver.beta) || solver.beta < 0 ||
@@ -167,7 +185,7 @@ export function stepWithRestitution(solver: Solver, options: RestitutionOptions)
   }
   for (const force of solver.forces) {
     if (force instanceof RestitutionManifold) {
-      force.prepare(combineRestitution(values.get(force.bodyA!)!, values.get(force.bodyB)!, combine), threshold, impactPenaltyFloor);
+      force.prepare(combineRestitution(values.get(force.bodyA!)!, values.get(force.bodyB)!, combine), threshold, impactPenaltyFloor, releaseImpactLambda);
     }
   }
   solver.step();

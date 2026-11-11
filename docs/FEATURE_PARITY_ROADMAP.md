@@ -893,3 +893,9 @@ G2's first [isolated CPU method experiment](RESTITUTION_DESIGN.md#13-cpu-experim
 now has measured failures as well as zero-mode compatibility. Both GPU-like parameter variants
 fail the unchanged rebound-height gate, so no GPU or public restitution feature follows. G2
 remains In Progress; another method/height-loss diagnosis is needed before native implementation.
+
+
+A fixed G2 CPU attribution control rejects the proposed impact-lambda-release explanation and
+isolates a narrow Hessian-rescaling effect, but every control still fails the unchanged height
+goal. [Measured controls](RESTITUTION_DESIGN.md#16-attribution-control-observations--local-nov10--utc-nov11)
+do not establish production restitution support or an alternative acceptance shortcut.

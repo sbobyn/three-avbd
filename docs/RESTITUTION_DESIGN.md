@@ -486,3 +486,35 @@ The method remains CPU research. Whole-contract default report and default trace
 byte-identical to the delivered baseline. All original raw/failed records remain preserved.
 Only the existing experimental module, report host and focused tests may change in the worker;
 lead owns result acceptance/docs/Git/Linear. Coupled/oblique/GPU/public API stay gated.
+
+
+## 16. Attribution-control observations — local Nov10 / UTC Nov11
+
+[Source-qualified summary](measurements/restitution-memory-controls-2026-11-10.json), protocol
+committed as `719b8ba` before trials. Only the experimental module/report/tests changed.
+Command:
+
+```sh
+node --experimental-transform-types --no-warnings tools/restitution-experiment.ts --trace-memory-control
+```
+
+The release-only hypothesis fails: clearing both inherited normal lambdas changes neither
+step29 residual nor apex in this fixture. V0 retains 0.0462477635 m/s; V1 retains 0.0232667481 m/s.
+The reference's existing `stiffnessRescale` opt-in, alone or with release, reduces the residual
+to about 4.44e-16 m/s in both variants. This is a controlled observation, not full iteration-level
+causality, an energy proof or evidence that a GPU solver should enable the option.
+
+**All eight arms still fail the original height gate.** With rescaling the sampled apex is
+about 0.2227222 m, still below the 0.25 m target. Removing this residual is not sufficient to
+qualify the restitution method. No production change follows from the control.
+
+Release-only first 28 positions/velocities exactly match baseline. All zero-coefficient controls
+match a plain Solver with the same rescale setting; opt-in rescaling is not relabelled default
+behavior. Default 54-drop/12-rest JSON and default traces remain byte-identical to delivered
+baseline evidence. The worker reports 18 focused harness tests and typecheck passing; lead
+review reproduced the raw report from current source and verified those baseline identities.
+No new GPU, browser, build, full-suite or performance check was warranted.
+
+Original failed arms, unknowns and applicability limits remain. G2 stays In Progress. A further
+method proposal must address finite-step contact/position handling before native restitution,
+while retaining the original target and separate energy/coupled/quiet-stack acceptance.
