@@ -454,3 +454,35 @@ These observations expose additional post-impact response but do not identify it
 iteration/cache cause. A future source-level experiment must separate intermediate constraint
 updates from final output; the trace is not a contact-impulse or energy measurement. It changes
 neither method eligibility nor production behavior.
+
+
+## 15. Prospective CPU attribution controls — before trials
+
+The next slice tests two independent hypotheses on the same known failure, without changing
+any previous eligibility gate or physics default. Both P-3d V0/V1 cases remain h1m,dt1/60,e0.5,
+45steps. At most eight arms: each variant with baseline, impact-lambda release, existing
+`stiffnessRescale` opt-in, and both controls. This is an attribution experiment, not a new
+restitution implementation or a parameter search.
+
+- **Impact-lambda release control:** after contact initialization/feature matching, clear only
+  normal lambda inherited from a feature biased on the preceding step when that same feature
+  now has positive separating normal velocity. Keep penalties/tangent lambda/contact geometry.
+  Never clear an ordinary resting contact's lambda. Default off; coefficient-zero runs never
+  acquire impact history. Record old lambda/release counts. This cannot repair a height failure
+  by assertion; it tests whether that memory explains the next-step response.
+- **Existing Hessian-rescaling control:** use the reference's existing `stiffnessRescale:true`
+  on the owned Solver. It changes the clamped-force Hessian path, so its zero-coefficient control
+  must be a matched plain Solver with that same option. Do not call it unchanged default mode.
+  No reference implementation/default/fixture edit is permitted.
+- **Fixed observations:** first-impact rows/rho and endpoint, step29 departure from free gravity,
+  the subsequent body trajectory and apex within the45step trace, row bias/final lambda and
+  option provenance. A release-only control must leave the first28body states exactly unchanged.
+  Existing normal impulse/height goals remain reported; no new GPU-eligibility shortcut.
+- **Diagnostic hypothesis screen:** a proposed elimination of the step29 free-gravity residual
+  needs magnitude at most1e-10m/s in this f64 fixture. Retain nonzero/failing/unknown results;
+  no retuning after observations. This is not a physical accuracy tolerance or energy proof.
+
+The method remains CPU research. Whole-contract default report and default traces must remain
+byte-identical to the delivered baseline. All original raw/failed records remain preserved.
+Only the existing experimental module, report host and focused tests may change in the worker;
+lead owns result acceptance/docs/Git/Linear. Coupled/oblique/GPU/public API stay gated.
