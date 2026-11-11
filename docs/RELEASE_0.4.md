@@ -253,12 +253,13 @@ range does not certify later versions.
 | Convex hull SAT | Needs a negotiated storage-buffer limit of at least 9; otherwise a bounding-box fallback (warned) or rejection (`requireHulls`). At most 32 vertices |
 | Contact events, selective reads, GPU rays | Asynchronous and bounded; lifetime IDs and loss counters |
 | Per-body gravity scale | Current candidate source; built-in integrator, standard/SDF tested; signed finite-f32 numeric limits |
+| Per-body damping | Current source: opt-in linear/angular decay; zero default; built-in integrator only |
 | Fixed-body move/retarget | GPU-authoritative; consumed by steps |
 | Activation/reset, fixed storage, pools | Built-in box/sphere/hull backends only; not SDF or custom backends |
 | Static triangle CPU rays and sphere/capsule queries | Copied immutable geometry, independent of the GPU World |
 | SDF non-convex collisions | Experimental; adaptive-storage Worlds only |
-| Capsule bodies, compounds, solver mesh/heightfield, sensors | Unavailable |
-| Sleeping, CCD, hinge/prismatic joints, motors, restitution, damping | Unavailable |
+| Capsule bodies, compounds, solver mesh/heightfield, public sensors | Unavailable |
+| Sleeping, CCD, hinge/prismatic joints, motors, restitution | Unavailable |
 | Save/restore, cross-device deterministic replay, CPU fallback | Unavailable |
 
 ## Known limitations
@@ -333,3 +334,14 @@ both rates and rejects unknown keys. `World.dt` now refuses a change if a live b
 pool template's accepted damping rate times that dt would overflow in f32; the old dt/config
 remain intact. With zero damping, the previously accepted dt range is unchanged. This is an
 additive source API, not evidence of npm publication; repack the exact source you intend to use.
+
+
+### Internal sensor proof is not public support
+
+`three-avbd/advanced` exposes experimental `sensorProof` / `setSensorFlags` spellings only for
+the bounded standard fixed-box/sphere proof. They are not a stable API or a reason to enable
+`capabilities.sensors`; `World` and pools still have no sensor option. The proof explicitly
+opts into private aux.w/contact-bit26 semantics and fresh detection, refuses custom shaders,
+hull-enabled mode and collision backends, and leaves default shader sources/strides unchanged.
+Do not apply its marker interpretation to SDF contact keys. See [contract and remaining
+gates](SENSORS_DESIGN.md) before treating it as an advanced integration surface.
