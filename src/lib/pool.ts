@@ -7,7 +7,7 @@
 import { Body, World, type BodyOptions, type BodyState, type BoxOptions, type Quat, type Reservation, type SphereOptions, type Vec3 } from './world.ts';
 import { BodyLifecycleError } from './lifecycle.ts';
 import { MAX_HULL_VERTICES, type HullShape } from '../avbd3d/hull.ts';
-import { checkDamping, checkGravityScale } from './world-validation.ts';
+import { checkDamping, checkGravityScale, checkSensor } from './world-validation.ts';
 
 type TemplateOptions<T> = Omit<T, keyof BodyState | 'enabled'>;
 
@@ -66,7 +66,8 @@ function checkOptions(options: Record<string, unknown>): BodyOptions {
   mask(options.group, 'BodyPool template: group');
   mask(options.collidesWith, 'BodyPool template: collidesWith');
   if (options.gravityScale !== undefined) checkGravityScale(options.gravityScale, 'BodyPool template');
-  const copy = { ...options } as BodyOptions & Record<string, unknown>;
+  const sensor = checkSensor(options.sensor, 'BodyPool template', true);
+  const copy = { ...options, sensor } as BodyOptions & Record<string, unknown>;
   // A frozen copy: later changes to the caller's pair do not reach the template or its leases
   if (options.damping !== undefined) copy.damping = checkDamping(options.damping, 'BodyPool template');
   if (options.massProperties !== undefined) {
@@ -163,7 +164,7 @@ export class BodyPool {
     // (The template's scale times the World's gravity is checked there, before anything is reserved)
     // (and its larger damping rate times the World's dt)
     const damping = template.options.damping;
-    const reservation = world.reserveBodies(capacity, template.hull, template.options.gravityScale ?? 1, Math.max(damping?.linear ?? 0, damping?.angular ?? 0));
+    const reservation = world.reserveBodies(capacity, template.hull, template.options.gravityScale ?? 1, Math.max(damping?.linear ?? 0, damping?.angular ?? 0), template.options.sensor ?? false);
     if (typeof reservation === 'string') return { ok: false, reason: reservation };
     try {
       await world.prewarmReservation(reservation);

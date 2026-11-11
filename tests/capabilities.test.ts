@@ -30,7 +30,13 @@ test('capabilities: backend snapshots never advertise future shapes or native hu
     assert.ok(Object.isFrozen(caps));
     assert.equal(caps.capsules, false);
     assert.equal(caps.compounds, false);
-    assert.equal(caps.sensors, false);
+    assert.equal(caps.sensors, caps.backend === 'standard');
   }
   assert.equal(standard.backend, 'standard');
+});
+
+test('sensor capability excludes custom shaders and proof overrides', () => {
+  const device = deviceCapabilities({ limits: { maxStorageBuffersPerShaderStage: 8 } });
+  assert.equal(worldCapabilities(device, 'standard', false, true).sensors, false);
+  assert.equal(worldCapabilities(device, 'standard', false, false, false, true, false).sensors, false);
 });

@@ -702,3 +702,83 @@ Activated solvers retain their no-reuse and non-null-backend refusal for life. F
 public coupling must restore authored flags after full reset/replacement and refuse
 SDF-preparing admission before metadata/slot/ID mutation. No same-day full gate replay,
 registry install/publication or user-copy change occurred.
+
+
+## 20. Coupled public candidate contract — 2026-11-11T01:41:04.371400+00:00
+
+Next implementation uses main `2f146679e0e44b704949b6494e3e710c074be96c` A1, not a
+new design/audit. Add the ratified boolean Body option/getter/setter and copied pool
+template; queue flags alongside `reauxes`, restoring authored flags after every full
+reset/rewrite and before physics. Keep reporting explicit. Strictly validate booleans
+before IDs/slots/pins/metadata; removed handles only change their own validated state.
+No new World opt-in, solver architecture, shape/table stride or event kind.
+
+Use eager activation when the first true intent is accepted (after topology/ID/capacity
+preflight, before taking ownership); GPU flag upload waits for the normal flush after
+new records exist. Scan authored live/pending bodies and pool reservations as well as
+uploaded solver shape metadata. Fallback hull mixing is refused in both directions
+once native sensors are used; no mask-dependent admission. If removed unsupported
+uploaded geometry still prevents activation, reject without an implicit flush and
+state that an explicit normal flush is required. No silent loss of pending state.
+
+**Current public-candidate backend boundary is deliberate:** first native activation
+locks that solver to standard collision for life, including after flags clear. SDF/
+custom/preparing states reject true sensor admission before metadata/activation,
+and the existing solver guard rejects direct backend installation before prepare.
+Do not add the earlier owner-permit/SDF-switch proposal or an unwired pending callback
+now. Public docs must require a separate/recreated World for SDF after sensor use.
+Non-sensor Worlds keep existing SDF/custom behavior. Existing preparing state guards
+prevent a true sensor intent racing an SDF transaction; test the refusal and state.
+
+The local candidate may compute `WorldCapabilities.sensors: boolean` as true only
+for built-in standard native support, false for SDF/custom/proof overrides. This is
+not merged/public acceptance until parent qualifies the matrix. Native hull sensors
+require negotiated native hull collision; eight-buffer Worlds expose primitives and
+refuse authored sensor/fallback hull mixing. Keep all other capability fields honest.
+No repeated setup for false/default bodies, pool acquisitions or frame stepping.
+
+Scope: World/Body validation/state/flush, pool template/reservation/lease ownership,
+capability calculation and only minimal readonly solver availability/mode getters.
+New focused CPU admission/lifecycle/pool fixtures and unrun GPU fixtures for native
+box/sphere/hull geometry, moving fixed bodies, dynamic/sensor-sensor, gravity/damping/
+forces/joints retention, pending identity/reset/remove/reuse, event loss/overflow and
+8/9-buffer cases. Use §9/§18 tolerances and existing lifecycle/event semantics.
+Declare cases in source before parent execution; keep raw failed cases, no tuning.
+No worker GPU/build/full suite, install, publication, docs or Git writes.
+
+Parent owns API/README/guide, public advanced metadata-version/standard feature-mask
+exports and their exact export fixture, hardware/packed-consumer proof and merge.
+Public sensor options are not declared delivered until coupled acceptance passes;
+otherwise preserve the local candidate with specific blockers. Other-device/large-
+scene/performance/CCD/physical/release/human qualification remains separate.
+
+
+## 21. Coupled public acceptance — 2026-11-10 local / 2026-11-11 UTC
+
+[Exact source hashes, environment, package and limits](measurements/public-sensors-2026-11-10.json)
+identify protocol d6ff00a plus the dirty overlay. The public candidate passes109 focused
+CPU checks,14 new hardware tests and91 existing wrapper regressions, no failures/skips.
+Typecheck/builds and packed five-entry strict types/imports pass. Parent added the
+ratified standard raw-contact metadata exports; no worker production claim was assumed.
+
+Actual Apple M4 Max/Metal8/9-storage devices pass216 small geometry/config cases
+(box-sphere/box-box/sphere-sphere and native hull-box/hull-sphere/hull-hull), sensor
+on either/both endpoint, reporting off/on, zero/four iterations and fixed/dynamic
+roles. Existing binary transit and moving translation/rotation fixtures pass exact
+detect steps; dynamic gravity/damping/force/impulse and constraints match mask-excluded
+controls. Reset/disable/removed lifetime/pending read, copied pool template/release/
+newID and native hull pool cases pass. Exact event loss, watch overflow and bounded
+upstream capacity loss remain observable, never counted as lossless contact quality.
+
+The packed0.4.0 consumer on an owned default8-storage hardware device emits begin45/
+end86 with zero collision impulse, passes through at2m/s, blocks when the same zone
+is made solid, and passes again after reset/re-enabling sensor mode. A packed pool
+lease restores its sensor template with a new ID; destroying Worlds keeps the caller
+device usable. Compatible peers were linked locally; no registry install/publication,
+browser rendering, user copy or release-directory change occurred.
+
+This accepts the bounded **native G3 API/ownership/event functionality** for delivery,
+not general physics, performance, scale, target-device, release or human acceptance.
+SDF/custom sensors remain unsupported. Activation's lifetime backend/no-reuse lock,
+fallback-hull exclusion, discrete timing and bounded event loss are public documented
+limits. Reuse unchanged A1/kernel evidence; no full gate replay under the daily limit.

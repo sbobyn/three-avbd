@@ -11,6 +11,13 @@ Read [breaking changes and migration](#breaking-changes-and-migration) before up
 
 ## Highlights
 
+- **Native sensors (current source).** `sensor: true`, `body.sensor` and `setSensor`
+  suppress standard collision response while retaining independently requested
+  async overlaps. Reset/pools preserve authored intent and lifetime IDs. Primitive
+  support uses eight storage buffers; native hull sensors need nine. SDF/custom
+  are unsupported; first use locks that World to fresh standard detection for life.
+  [Trigger-zone guide and limits](USER_GUIDE.md#sensors-and-trigger-zones).
+
 - **Per-body velocity damping (current source).** Optional linear/angular rates in 1/s,
   immutable getter/full-pair setter and `capabilities.damping`. Default 0 preserves undamped
   behavior; dynamic bodies use exponential incoming-velocity decay. Reset/disable retain it,
@@ -258,7 +265,8 @@ range does not certify later versions.
 | Activation/reset, fixed storage, pools | Built-in box/sphere/hull backends only; not SDF or custom backends |
 | Static triangle CPU rays and sphere/capsule queries | Copied immutable geometry, independent of the GPU World |
 | SDF non-convex collisions | Experimental; adaptive-storage Worlds only |
-| Capsule bodies, compounds, solver mesh/heightfield, public sensors | Unavailable |
+| Native standard sensors | Current source; discrete box/sphere/native-hull overlaps, async events; lifetime standard-backend lock |
+| Capsule bodies, compounds, solver mesh/heightfield | Unavailable |
 | Sleeping, CCD, hinge/prismatic joints, motors, restitution | Unavailable |
 | Save/restore, cross-device deterministic replay, CPU fallback | Unavailable |
 
@@ -336,11 +344,12 @@ remain intact. With zero damping, the previously accepted dt range is unchanged.
 additive source API, not evidence of npm publication; repack the exact source you intend to use.
 
 
-### Internal sensor proof is not public support
+### Historical internal sensor proof (PR96)
 
-`three-avbd/advanced` exposes experimental `sensorProof` / `setSensorFlags` spellings only for
+At PR96, `three-avbd/advanced` exposed experimental `sensorProof` / `setSensorFlags` spellings only for
 the bounded standard fixed-box/sphere proof. They are not a stable API or a reason to enable
-`capabilities.sensors`; `World` and pools still have no sensor option. The proof explicitly
+`capabilities.sensors`; World/pool sensor options were absent at that checkpoint. The current
+public API is described in the native-sensor highlight and guide. The proof explicitly
 opts into private aux.w/contact-bit26 semantics and fresh detection, refuses custom shaders,
 hull-enabled mode and collision backends, and leaves default shader sources/strides unchanged.
 Do not apply its marker interpretation to SDF contact keys. See [contract and remaining
@@ -350,7 +359,8 @@ gates](SENSORS_DESIGN.md) before treating it as an advanced integration surface.
 ### Native sensor foundation and masked advanced commands
 
 Internal `ensureNativeSensors` / `setNativeSensorFlags` add lazy native setup; they
-are not the promised public Body/World/pool API and `capabilities.sensors` stays false.
+were not the public Body/World/pool API at PR97; the coupled current-source API now
+uses them and advertises standard native support.
 Activation retains private pipelines/no-reuse policy for life and refuses non-null
 collision backends even after flags clear; recreate a separate World for SDF until
 owner-safe switching is implemented. Full advanced body replacement clears native
@@ -358,3 +368,18 @@ flags, while masked state/mass commands preserve them and uploaded geometry/hull
 This also fixes masked commands acquiring/releasing a hull they never upload; use full
 replacement when intentionally changing shape. No default shader/stride change or npm
 publication follows. [Contract/results/remaining gates](SENSORS_DESIGN.md).
+
+
+### Standard native sensor contact metadata
+
+Advanced raw standard contacts use `STANDARD_CONTACT_METADATA_VERSION = 1`,
+`STANDARD_SENSOR_BIT = 0x04000000` and `STANDARD_CONTACT_FEATURE_MASK = 0x03ffffff`.
+The marker is set only on sensor contacts; legacy false/default contacts, strides
+and exported default WGSL stay unchanged. Do not apply this feature mask or marker
+interpretation to SDF IDs. `readContactList` decodes the standard marker for you.
+
+`WorldCapabilities.sensors` changes from literal false to a boolean: built-in
+standard native support only, false on SDF/custom. Once a sensor or sensor pool
+activates that World, turning every sensor off does not restore reuse or permit
+a backend switch. Use a separate/recreated World for SDF. Reporting remains an
+independent opt-in; overflow remains observable and can invalidate membership.

@@ -124,7 +124,7 @@ those are extensions with no oracle. [U] The paper text was not re-read for this
 | CCD | Absent: discrete only. Remedy today is a smaller `dt` and CPU sweeps against static meshes | `API.md` settings | no dedicated native coverage found | G4 |
 | Restitution | Absent: inelastic contacts | — | missing | G2 |
 | Linear and angular damping, gravity scale | Absent | — | missing | G1 |
-| Sensors | Absent: `reportContacts` still collides | `src/lib/contacts.ts` | missing | G3 |
+| Sensors | Native standard body option/setter, independent async reporting; SDF/custom excluded | `src/lib/world.ts`, `src/lib/contacts.ts` | implemented; bounded M4 Max acceptance | G3 |
 | Contact events, force events, overflow semantics | Begin and end exist: async, bounded, lossy with counters. No force threshold events | `API.md` contact events | partial: STE-3003 documents today's bounded semantics | G6 |
 | Stability acceptance (mass ratio, thin wall, step-size invariance) | One fix (pivot floor) and scattered tests; no declared suite | `tests-gpu/pivot.gpu.test.ts` | partial: STE-2219 (Done), STE-2290 (Backlog, 2D) | G7 |
 
@@ -213,7 +213,7 @@ the initial In Progress leaves were F2 and B1, followed by G1 after its design g
 | F2 | [STE-3327](https://linear.app/sbobyn/issue/STE-3327/three-avbd-f2-body-auxiliary-record-and-feature-flag-pattern-design) | Body auxiliary record and feature-flag pattern (design note, then code) | In Progress — bounded first slice |
 | G1 | [STE-3328](https://linear.app/sbobyn/issue/STE-3328/three-avbd-g1-linear-and-angular-damping-gravity-scale-dropped-time) | Linear and angular damping, gravity scale, dropped-time counter | Backlog |
 | G2 | [STE-3329](https://linear.app/sbobyn/issue/STE-3329/three-avbd-g2-restitution-with-a-combine-rule) | Restitution with a combine rule | Backlog |
-| G3 | [STE-3330](https://linear.app/sbobyn/issue/STE-3330/three-avbd-g3-sensors) | Sensors | In Progress: internal proof; public support absent |
+| G3 | [STE-3330](https://linear.app/sbobyn/issue/STE-3330/three-avbd-g3-sensors) | Sensors | Public native candidate qualified; delivery tracked in STE-3330 |
 | G4 | [STE-3331](https://linear.app/sbobyn/issue/STE-3331/three-avbd-g4-opt-in-ccd-by-speculative-contacts) | Opt-in CCD by speculative contacts | Backlog |
 | G5 | [STE-3332](https://linear.app/sbobyn/issue/STE-3332/three-avbd-g5-native-sleeping-with-island-wake) | Native sleeping with island wake | Backlog |
 | G6 | [STE-3333](https://linear.app/sbobyn/issue/STE-3333/three-avbd-g6-contact-force-events-and-event-lifecycle-contract) | Contact force events and event lifecycle contract | Backlog |
@@ -574,7 +574,7 @@ Fit: Fable Medium note, Opus Medium code.
 - [U] The method (velocity pass or modified contact target) is a design question; no oracle.
 - Deps: F2, G1. First slice: method note with a 2D reference experiment behind an opt-in.
 
-**G3 · Sensors** — In Progress (internal proof only), High. Current implementation route: Codex High, explicitly authorized after Claude access failed.
+**G3 · Sensors** — Native public candidate qualified; delivery tracked in STE-3330. High. Codex High route explicitly authorized after Claude access failed.
 - API: `sensor: true` on a body (per collider after C2): overlap events, no response.
 - Accept: a body passes through a sensor with unchanged momentum; begin and end arrive with the
   existing step ordering; a moving fixed sensor reports dynamic bodies; overflow counted as today.
@@ -920,3 +920,14 @@ later hull acquisition. This is a runtime-add foundation, not a public feature: 
 Body/pool sensors and the capability remain absent/false. [Exact checks and limits](measurements/native-sensor-activation-2026-11-10.json).
 Next is the coupled authored-state/admission/lifecycle/pool API, then the full native
 geometry/overflow/consumer matrix; STE-3330 remains In Progress.
+
+
+### G3 coupled native API acceptance — 2026-11-10
+
+The body-level API, native capability, copied pool ownership, reset/reuse identity and
+documented backend limits now meet bounded G3 functional acceptance:109 focusedCPU,
+14 new actualM4Max hardware tests (216 small geometry/config cases) plus91 existing
+wrapper regressions and packed-consumer proof. [Exact source/environment/limits](measurements/public-sensors-2026-11-10.json).
+Public delivery is tracked in STE-3330; broader scale/other-device/release/human
+acceptance and SDF/custom support remain separate. Earlier proof/A1 notes are dated
+history rather than the current public API boundary.

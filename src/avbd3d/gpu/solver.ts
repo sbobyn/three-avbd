@@ -611,6 +611,12 @@ export class GpuSolver3D {
   get supportsBodyAux(): boolean {
     return !this.customShaders && this.integrateGroup !== null;
   }
+  /** @internal Built-in standard candidate support; proof/custom modes are separate. */
+  get supportsNativeSensors(): boolean {
+    return !this.destroyed && !this.sensorProof && !this.customShaders && !this.collisionBackend;
+  }
+  /** @internal Activation keeps native variants/backend refusal for the solver's lifetime. */
+  get nativeSensorsActive(): boolean { return this.nativeSensors; }
   private readonly counterBuffer: GPUBuffer;
   /**
    * The pair records and contact points the last step wrote, and the counters (C_MANIFOLDS: how

@@ -26,7 +26,7 @@ export interface WorldCapabilities extends DeviceCapabilities {
   readonly sdfFields: boolean;
   readonly capsules: false;
   readonly compounds: false;
-  readonly sensors: false;
+  readonly sensors: boolean;
   /** Body gravityScale on built-in solve shaders, independent of the collision backend. */
   readonly gravityScale: boolean;
   /** Body damping on built-in solve shaders, independent of the collision backend (as gravityScale). */
@@ -34,13 +34,13 @@ export interface WorldCapabilities extends DeviceCapabilities {
 }
 
 /** @internal Pure backend decision, also used for CPU limit-boundary tests. */
-export function worldCapabilities(device: DeviceCapabilities, backend: WorldCapabilities['backend'], hulls: boolean, customShaders = false, fixedStorage = false, bodyAux = !customShaders): Readonly<WorldCapabilities> {
+export function worldCapabilities(device: DeviceCapabilities, backend: WorldCapabilities['backend'], hulls: boolean, customShaders = false, fixedStorage = false, bodyAux = !customShaders, nativeSensors = !customShaders): Readonly<WorldCapabilities> {
   return Object.freeze({ ...device, backend,
     bodyActivation: backend === 'standard' && !customShaders, bodyReset: backend === 'standard' && !customShaders,
     bodyPooling: fixedStorage && backend === 'standard' && !customShaders, nativeSleeping: false, lifecycleAbi: 1,
     hullCollisions: backend === 'sdf' ? 'explicit-sdf-field' : backend === 'custom' ? 'unknown' : hulls ? 'native' : 'box-fallback',
     boxes: backend !== 'custom', spheres: backend !== 'custom', sdfFields: backend === 'sdf',
-    capsules: false, compounds: false, sensors: false,
+    capsules: false, compounds: false, sensors: backend === 'standard' && !customShaders && nativeSensors,
     gravityScale: !customShaders && bodyAux,
     damping: !customShaders && bodyAux,
   });

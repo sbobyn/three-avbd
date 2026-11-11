@@ -403,3 +403,74 @@ The experimental [Rapier comparison](RAPIER_COMPARISON.md) also runs at `/compar
 (`/compare-frame.html` for a rendered workflow, `/compare-side.html` for a live side-by-side view). Its completed-batch timing is not a rendered FPS
 comparison, and the numbers in that document are historical (see its header).
 
+
+
+## Sensors and trigger zones
+
+Current-source 0.4 candidate API; use the local package recipe. A sensor detects
+overlaps without applying collision force or stiffness to either body. It still
+responds to gravity, damping, applied forces/impulses and joints. `reportContacts`
+independently requests existing asynchronous begin/end events: a sensor alone does
+not allocate a contact watcher or schedule readback.
+
+In the [fresh Three.js consumer](SETUP.md#fresh-threejs-consumer), add this after
+creating `world`. Keep the consumer's existing render loop, clock and disposal.
+The fixed zone encloses the falling crate's path. Add it before the starter's
+`BodyMesh` declarations; change that existing box mesh's `bodies: 'box'` to
+`bodies: body => body.shape === 'box' && body !== zone` so it does not draw the
+zone as an opaque solid. The physics zone itself does not own a Three.js mesh.
+
+```js
+const zone = world.addBox({
+  size: [4, 1, 4], position: [0, 1.5, 0],
+  fixed: true, sensor: true, reportContacts: true,
+});
+if (!zone) throw new Error('No body slot for the trigger');
+const unsubscribe = world.onContact(event => {
+  if (event.a === zone || event.b === zone) {
+    console.log(event.type, event.step, event.a.id, event.b.id);
+  }
+});
+world.readbackEvery = 4; // gameplay/event observations; no extra physics stepping
+// Or call await world.read() explicitly at a suitable cadence.
+// Contact callbacks arrive on reads; reporting does not step the World.
+```
+
+For a 20-minute Gamerthesia goal-zone study, start with a nonsolid zone, let the
+crate pass through, and read begin/end events. Toggle `zone.setSensor(false)` to
+make the same shape solid; toggle back and reset the crate using its existing
+`body.reset` recipe. `zone.sensor` reports authored configuration immediately;
+the next submitted detecting step applies it. `sensor` is a strict boolean, not
+a material or visual flag. `setSensor(true)` does not imply reporting.
+
+`body.reset` and disable/re-enable retain sensor intent. A pool lease starts with
+its copied template's value; lease edits do not change the template, release clears
+the parked slot, and a later lease gets a new lifetime ID. Removal/reuse cannot
+retarget an unread event. Changing sensor mode while touching does not synthesize
+a new begin/end; membership changes only with detection. Sensor collision impulses
+are zero; event point/normal are geometric witnesses, not a volume centroid.
+
+Support and limits:
+
+- `world.capabilities.sensors` is true for the built-in standard backend. Boxes and
+  spheres work on the default eight-storage-buffer device; hull sensors require
+  negotiated native hulls (nine), checked with `hullCollisions === 'native'`. A World
+  using sensors refuses fallback-hull mixing, in either admission order. Removed
+  unsupported uploaded geometry may need an explicit `flushCommands()` before
+  first activation; rejection does not silently flush your pending state.
+- Moving fixed, dynamic and sensor-sensor contacts use existing standard geometry.
+  Fixed-fixed pairs and collision exclusions from connected joints/groups remain
+  excluded. Sensors are discrete: detection precedes integration, so a fast body
+  or teleport can cross a zone without an event. There is no CCD.
+- First use lazily creates owned native pipelines. That World keeps fresh detection
+  and refuses all non-null collision backends for its lifetime, even after every
+  sensor is off/removed. Use a separate/recreated World for SDF. SDF/custom/preparing
+  Worlds refuse true sensor intent before mutation. Performance and startup cost
+  are unqualified; no shader-cache or large-scene speed claim is implied.
+- Pair/contact/manifold, watch-set and event capacities remain bounded. Inspect
+  overflow/dropped-event counters; membership under overflow is unreliable. Native
+  M4 Max fixtures are evidence, not other-device or broad physical qualification.
+
+On teardown, call `unsubscribe()` and destroy your owned World; continue disposing
+your own renderer/meshes as in the consumer. State is transient and does not become
+a snapshot/save file. [API and source-qualified evidence](API.md#public-native-sensors).
