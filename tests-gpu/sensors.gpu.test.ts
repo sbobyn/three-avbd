@@ -21,7 +21,7 @@ const near=(actual:number,expected:number,why:string)=>{
 };
 function fixture(device:GPUDevice, options:{control?:boolean;swap?:boolean;report?:'sensor'|'partner'|'none';iterations?:number;ordinary?:boolean;custom?:boolean;native?:boolean;hull?:'early'|'late'}={}) {
   const ref=new Solver(); ref.gravity=0; ref.dt=DT;
-  const cube = () => convexHull(new Float32Array([-0.5,-0.5,-0.5, -0.5,-0.5,0.5, -0.5,0.5,-0.5, -0.5,0.5,0.5, 0.5,-0.5,-0.5, 0.5,-0.5,0.5, 0.5,0.5,-0.5, 0.5,0.5,0.5]));
+  const cube = () => { const shape=convexHull(new Float32Array([-0.5,-0.5,-0.5, -0.5,-0.5,0.5, -0.5,0.5,-0.5, -0.5,0.5,0.5, 0.5,-0.5,-0.5, 0.5,-0.5,0.5, 0.5,0.5,-0.5, 0.5,0.5,0.5])); assert.ok(shape); return shape; };
   const addBox=()=>options.hull==='early'?hull(ref,cube(),0,0.5,[0,0,0]):new Rigid(ref,[1,4,4],0,0.5,[0,0,0]);
   const addSphere=()=>sphere(ref,1/8,1,0.5,[-2,0,0],[2,0,0]);
   let box:Rigid,ball:Rigid;

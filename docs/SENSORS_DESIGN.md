@@ -671,3 +671,34 @@ considering final assignment. A failing-before-fix CPU regression is retained;
 resolve duplicates before deciding whether untouched native resources are needed.
 Public World/pool/capability remain absent/false. Raw files/source hashes and every
 failed hardware run must be kept; do not relax criteria after a run.
+
+
+## 19. A1 result — 2026-11-10 local / 2026-11-11 UTC
+
+The local implementation of lazy activation/atomic native flags passes61 focused
+CPU tests, typecheck, builds, packed five-entry imports/strict types and159 selected
+actual M4 Max GPU regressions (no failures/skips). Default exported/generated shader
+hashes and the separate proof semantics remain intact. [Exact source hashes/results](measurements/native-sensor-activation-2026-11-10.json)
+retain dirty run provenance rather than relabeling the later merged tree as the run.
+
+Dedicated8-storage native primitive fixtures pass all frozen §18 arms. Dedicated
+9-storage unit-cube trigger/sphere flights pass both existing-hull and later-first-hull
+activation orders, including expected enter45/end86. Dynamic sphere[true,false] and
+[true,true]16-step coasting screens pass masked/analytic and raw-zero-response checks.
+These are bounded compute/readback observations, not rendering, energy/physics,
+performance, full native geometry or target-device qualification. GPU prerequisites
+were assessed in each process; native fixtures recorded nonfallback Apple hardware.
+
+Lead review added a failing-before-fix duplicate-final-false regression: compute final
+batch values before deciding whether activation is needed. The parent's cube fixture
+also needed an explicit non-null assertion for type safety; static failure is retained,
+no geometry/threshold changed. Existing default hull/command/lifecycle/SDF/G1 behavior
+envelopes passed. Masked patches now preserve uploaded geometry/hull leases instead of
+acquiring/releasing an unuploaded Rigid shape; full replacement intentionally changes it.
+
+No public Body/World/pool sensor option or capability is enabled. The public coupling,
+moving/dynamic full matrix, pooling/pending identity/overflow/consumer gates remain.
+Activated solvers retain their no-reuse and non-null-backend refusal for life. First
+public coupling must restore authored flags after full reset/replacement and refuse
+SDF-preparing admission before metadata/slot/ID mutation. No same-day full gate replay,
+registry install/publication or user-copy change occurred.

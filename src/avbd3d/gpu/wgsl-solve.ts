@@ -692,3 +692,6 @@ export const solveBodyAuxWGSL = makeSolveWGSL(true);
 
 /** @internal Experimental standard-contact proof only. */
 export const sensorProofSolveWGSL = makeSolveWGSL(true, true);
+
+// Private native activation uses the same nonresponse guards as the bounded proof.
+export const nativeSensorSolveWGSL = makeSolveWGSL(true, true);

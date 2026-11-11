@@ -909,3 +909,14 @@ observations while suppressing collision response. Public World/pool/capabilitie
 unchanged and sensors remain unsupported. Public lifecycle/atomic shape refusal, moving and
 dynamic sensors, overflow and consumer gates must pass separately; one box/sphere proof does
 not complete STE-3330 or the broader parity roadmap. See the [dated checked-source record](measurements/sensors-proof-2026-11-10.json).
+
+
+### G3 A1 native activation foundation — 2026-11-10
+
+The internal solver can lazily activate native nonresponse and owns validated slot
+flags/current uploaded shape metadata. Full replacement clears flags; masked patches
+keep actual geometry/hull leases. Native hull pipeline selection handles existing and
+later hull acquisition. This is a runtime-add foundation, not a public feature: World/
+Body/pool sensors and the capability remain absent/false. [Exact checks and limits](measurements/native-sensor-activation-2026-11-10.json).
+Next is the coupled authored-state/admission/lifecycle/pool API, then the full native
+geometry/overflow/consumer matrix; STE-3330 remains In Progress.

@@ -345,3 +345,16 @@ opts into private aux.w/contact-bit26 semantics and fresh detection, refuses cus
 hull-enabled mode and collision backends, and leaves default shader sources/strides unchanged.
 Do not apply its marker interpretation to SDF contact keys. See [contract and remaining
 gates](SENSORS_DESIGN.md) before treating it as an advanced integration surface.
+
+
+### Native sensor foundation and masked advanced commands
+
+Internal `ensureNativeSensors` / `setNativeSensorFlags` add lazy native setup; they
+are not the promised public Body/World/pool API and `capabilities.sensors` stays false.
+Activation retains private pipelines/no-reuse policy for life and refuses non-null
+collision backends even after flags clear; recreate a separate World for SDF until
+owner-safe switching is implemented. Full advanced body replacement clears native
+flags, while masked state/mass commands preserve them and uploaded geometry/hull leases.
+This also fixes masked commands acquiring/releasing a hull they never upload; use full
+replacement when intentionally changing shape. No default shader/stride change or npm
+publication follows. [Contract/results/remaining gates](SENSORS_DESIGN.md).

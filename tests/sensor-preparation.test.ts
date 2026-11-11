@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { createHash } from 'node:crypto';
 import { GpuSolver3D } from '../src/avbd3d/gpu/solver.ts';
 import { Solver } from '../src/avbd3d/ref/solver.ts';
-import { sphere, sail } from '../src/avbd3d/shapes.ts';
+import { sphere, sail, hull, convexHull } from '../src/avbd3d/shapes.ts';
 import { Rigid } from '../src/avbd3d/ref/body.ts';
 import { BODY_FLOATS, CONTACT_WORDS, MANIFOLD_WORDS, K_RA, B_INITIAL_POS, BODY_DIRTY, BODY_DISABLED, BODY_COLD, PRELUDE_3D, FLAG_REUSE_CONTACTS } from '../src/avbd3d/gpu/layout.ts';
 import { IA_CONTACTS } from '../src/avbd2d/gpu/layout.ts';
@@ -24,7 +24,8 @@ interface FakeBuffer { label: string; size: number; usage: number; destroyed: bo
 interface Write { buffer: FakeBuffer; offset: number; bytes: Uint8Array }
 type Call = ['pipeline', Any] | ['group', number, Any, number[]] | ['dispatch', number?];
 
-function fakeDevice(options: { storage?: number; failPipeline?: string } = {}) {
+function fakeDevice(options: { storage?: number; failPipeline?: string; failSensorGroup?: number } = {}) {
+  let sensorGroups = 0;
   const buffers: FakeBuffer[] = [];
   const writes: Write[] = [];
   const passes: Call[][] = [];
@@ -60,7 +61,7 @@ function fakeDevice(options: { storage?: number; failPipeline?: string } = {}) {
       pipelines.push(p);
       return p;
     },
-    createBindGroup(desc: Any) { if (desc.layout.label === 'sensor preparation' && options.failPipeline === 'sensor binding') throw new Error('fake: sensor binding refused'); bindGroups.push(desc); return desc; },
+    createBindGroup(desc: Any) { if (desc.layout.label === 'sensor preparation' && ++sensorGroups === options.failSensorGroup) throw new Error('fake: sensor parity refused'); if (desc.layout.label === 'sensor preparation' && options.failPipeline === 'sensor binding') throw new Error('fake: sensor binding refused'); bindGroups.push(desc); return desc; },
     createQuerySet() { return { destroy() {} }; },
     createCommandEncoder() {
       return {
@@ -223,15 +224,16 @@ test('baseline source hashes from frozen 6bf85224; private variants guard before
 });
 
 test('decoder masks bit26 only for standard proof records; ordinary and SDF keep it', async () => {
-  for (const mode of ['ordinary','proof','sdf'] as const) {
+  for (const mode of ['ordinary','proof','native','sdf'] as const) {
     const f=fakeDevice(),gpu=new GpuSolver3D(f.device,scene(),mode==='proof'?proof:{hulls:false});
+    if(mode==='native')gpu.ensureNativeSensors();
     const mf=new Uint32Array(MANIFOLD_WORDS);mf.set([1,0,0,1]);
     const cf=new Uint32Array(CONTACT_WORDS);cf[K_RA+3]=0x04000000 | (3<<24);
     (gpu as Any).readCounters=async()=>({manifolds:1,contacts:1});
     (gpu as Any).read=async(buffer:GPUBuffer)=>buffer===(gpu as Any).manifoldBuffers[1]?mf.buffer:cf.buffer;
     const backend={destroy(){}};
     if(mode==='sdf')(gpu as Any).collisionBackend=backend;
-    assert.equal((await gpu.readContactList())[0].feature, mode==='proof'?(3<<24):(0x04000000 | (3<<24)));
+    assert.equal((await gpu.readContactList())[0].feature, (mode==='proof'||mode==='native')?(3<<24):(0x04000000 | (3<<24)));
     gpu.destroy();
   }
 });
@@ -282,5 +284,265 @@ test('a fixed-to-dynamic patched slot cannot newly acquire a sensor flag', () =>
   const before = f.writes.length;
   assert.throws(() => gpu.setSensorFlags([0], [true]), /stationary fixed box/);
   assert.equal(f.writes.length, before);
+  gpu.destroy();
+});
+
+const native = { hulls: false, spatialSort: false, bodyCapacity: 8 } as const;
+function tetra() {
+  const shape = convexHull(new Float32Array([0,0,0, 1,0,0, 0,1,0, 0,0,1]));
+  assert.ok(shape);
+  return shape;
+}
+
+test('native activation is lazy, per-instance, idempotent and replaces only affected pipelines', () => {
+  const f = fakeDevice(), gpu = new GpuSolver3D(f.device, scene(), native);
+  const other = new GpuSolver3D(f.device, scene(), native);
+  const old = { ...(gpu as Any).pipes }, integrate = (gpu as Any).integrateGroup;
+  const counts = [f.buffers.length, f.bindGroups.length, f.pipelines.length];
+  gpu.setNativeSensorFlags([0,1], [false,false]);
+  assert.deepEqual([f.buffers.length, f.bindGroups.length, f.pipelines.length], counts);
+  assert.equal((gpu as Any).sensorFlags.length, 0);
+  gpu.ensureNativeSensors();
+  assert.equal(f.buffers.length, counts[0]);
+  assert.equal((gpu as Any).integrateGroup, integrate);
+  const changed = ['narrowphase','primal','primalSparse','dual'];
+  for (const key of Object.keys(old)) assert.equal((gpu as Any).pipes[key] === old[key], !changed.includes(key), key);
+  assert.equal((other as Any).nativeSensors, false);
+  assert.equal((other as Any).pipes.primal.module.code, solveBodyAuxWGSL);
+  const after = [f.buffers.length, f.bindGroups.length, f.pipelines.length];
+  gpu.ensureNativeSensors();
+  gpu.setNativeSensorFlags([1,1,2], [true,false,true]);
+  assert.deepEqual([...(gpu as Any).sensorFlags], [0,0,1,0,0,0,0,0]);
+  gpu.setNativeSensorFlags([2], [false]);
+  assert.deepEqual([f.buffers.length, f.bindGroups.length, f.pipelines.length], after);
+  gpu.destroy(); other.destroy();
+  assert.throws(() => gpu.ensureNativeSensors(), /destroyed/);
+});
+
+test('native setup throws at each pipeline/parity boundary without committing and retries', () => {
+  for (const failure of ['narrowphase','primal','dual','primalSparse','prepareSensors',1,2]) {
+    const options: { failPipeline?: string; failSensorGroup?: number } = {};
+    const f = fakeDevice(options);
+    const borrowed = f.device.createBuffer({ label:'borrowed', size:8*BODY_FLOATS*4, usage:0 });
+    const gpu = new GpuSolver3D(f.device, scene(), {...native,bodyBuffer:borrowed});
+    if (typeof failure === 'string') options.failPipeline = failure;
+    else options.failSensorGroup = failure;
+    const pipes = {...(gpu as Any).pipes}, groups = (gpu as Any).sensorGroups;
+    const writes = f.writes.length, buffers = f.buffers.length;
+    assert.throws(() => gpu.setNativeSensorFlags([0,1], [true,true]), /fake:/);
+    assert.equal((gpu as Any).nativeSensors,false);
+    assert.deepEqual((gpu as Any).pipes,pipes);
+    assert.equal((gpu as Any).sensorGroups,groups);
+    assert.equal((gpu as Any).sensorLayout,null);
+    assert.equal((gpu as Any).sensorFlags.length,0);
+    assert.equal(gpu.bodyCount,4);
+    assert.equal(f.writes.length,writes);
+    assert.equal(f.buffers.length,buffers);
+    assert.ok(f.buffers.every(b=>!b.destroyed));
+    delete options.failPipeline; delete options.failSensorGroup;
+    gpu.setNativeSensorFlags([0], [true]);
+    assert.equal((gpu as Any).nativeSensors,true);
+    gpu.destroy(); assert.equal((borrowed as Any).destroyed,false);
+  }
+});
+
+test('native batch validation precedes activation and writes, copies inputs, last duplicate wins', () => {
+  const f=fakeDevice(),gpu=new GpuSolver3D(f.device,scene(),native);
+  for(const [indices,flags] of [[[0,7],[true,false]],[[0,1],[true,1]],[[0,-1],[true,false]],[[0,1.5],[true,false]],[[0],[]]] as Any[]) {
+    const n=[f.writes.length,f.pipelines.length,f.bindGroups.length];
+    assert.throws(()=>gpu.setNativeSensorFlags(indices,flags));
+    assert.deepEqual([f.writes.length,f.pipelines.length,f.bindGroups.length],n);
+    assert.equal((gpu as Any).nativeSensors,false);
+  }
+  gpu.setLifecycle(1,BODY_DISABLED|BODY_COLD);
+  const flags=[true,true]; gpu.setNativeSensorFlags([1,2],flags);flags.fill(false);
+  assert.equal((gpu as Any).sensorFlags[1],1);
+  const dirty=f.writes.filter(w=>w.buffer===(gpu.bodyBuffer as unknown as FakeBuffer)&&w.offset===(BODY_FLOATS+B_INITIAL_POS+3)*4).at(-1)!;
+  assert.deepEqual(f32(dirty.bytes),[BODY_DIRTY|BODY_DISABLED|BODY_COLD]);
+  const n=f.writes.length;
+  gpu.setNativeSensorFlags([1,1],[false,true]);
+  assert.equal(f.writes.length,n);
+  gpu.destroy();
+});
+
+test('native flags admit dynamic and prescribed bodies, survive masked edits/aux setters; full replacements clear', () => {
+  const ref=scene(); sphere(ref,0.5,1,0.5,[0,3,0]);
+  const moving=new Rigid(ref,[1,1,1],0,0.5,[0,4,0],[1,0,0]);moving.velocityAng[0]=1;
+  const f=fakeDevice(),gpu=new GpuSolver3D(f.device,ref,native);
+  gpu.setNativeSensorFlags([0,1,4,5],[true,true,true,true]);
+  gpu.setBodyAux([0,1],[2,3],[4,5],[6,7]);
+  assert.deepEqual(f32(auxWrites(f).at(-1)!.bytes),[2,4,6,1,3,5,7,1]);
+  gpu.setBodyAux([0,1],[8,9]);
+  assert.deepEqual(f32(auxWrites(f).at(-1)!.bytes),[8,0,0,1,9,0,0,1]);
+  const unsupported=sail(new Rigid(new Solver(),[1,1,1],1,0.5,[1,2,3]));
+  gpu.patchBody(1,new Set(['position','velocity','angularVelocity']),unsupported,true);
+  assert.equal((gpu as Any).bodies[1].nativeShape,'box');
+  assert.equal((gpu as Any).sensorFlags[1],1);
+  gpu.setNativeSensorFlags([1],[true]);
+  const before=f.writes.length;
+  gpu.rewriteBodies([1],[ref.bodies[1]]);
+  assert.equal((gpu as Any).sensorFlags[1],0);
+  assert.deepEqual(auxWrites(f,before).map(w=>[w.offset,f32(w.bytes)]),[[28,[0]]]);
+  gpu.rewriteFixed([0],[0,0,0],[1,1,1],0.5);
+  assert.equal((gpu as Any).sensorFlags[0],0);
+  gpu.addBody(ref.bodies[0]);assert.equal((gpu as Any).sensorFlags[6],0);
+  gpu.setLifecycle(4,BODY_DISABLED|BODY_COLD);
+  gpu.seedFrom(ref);
+  assert.equal((gpu as Any).lifecycle[4],BODY_DISABLED|BODY_COLD);
+  const seeded=f.writes.filter(w=>w.buffer===(gpu.bodyBuffer as unknown as FakeBuffer)&&w.offset===0).at(-1)!;
+  assert.equal(f32(seeded.bytes)[4*BODY_FLOATS+B_INITIAL_POS+3],BODY_DIRTY|BODY_DISABLED|BODY_COLD);
+  assert.ok((gpu as Any).sensorFlags.every((v:number)=>v===0));
+  gpu.destroy();
+});
+
+test('actual uploaded shape, not later Rigid marks, controls native eligibility', () => {
+  const ref=scene(),f=fakeDevice(),gpu=new GpuSolver3D(f.device,ref,native);
+  sail(ref.bodies[0]);
+  gpu.patchBody(0,new Set(['velocity']),ref.bodies[0]);
+  gpu.setNativeSensorFlags([0],[true]);
+  assert.equal((gpu as Any).bodies[0].nativeShape,'box');
+  gpu.destroy();
+});
+
+test('sail/fallback mixing refuses native activation and future add/full rewrite before mutation', () => {
+  for(const shape of ['sail','fallback']) {
+    const ref=new Solver();
+    const bad=shape==='sail'?sail(new Rigid(ref,[1,1,1],1,0.5,[0,0,0])):hull(ref,tetra(),1,0.5,[0,0,0]);
+    const f=fakeDevice(),badGpu=new GpuSolver3D(f.device,ref,native);
+    const n=[f.writes.length,f.pipelines.length,f.bindGroups.length];
+    assert.throws(()=>badGpu.ensureNativeSensors(),/standard boxes/);
+    assert.deepEqual([f.writes.length,f.pipelines.length,f.bindGroups.length],n);badGpu.destroy();
+    const gpu=new GpuSolver3D(f.device,scene(),native);gpu.ensureNativeSensors();
+    for(const change of [()=>gpu.addBodies([scene().bodies[0],bad]),()=>gpu.rewriteBodies([0,1],[scene().bodies[0],bad]),()=>gpu.seedFrom(ref)]) {
+      const before=[f.writes.length,gpu.bodyCount,(gpu as Any).hullTop];
+      const infos=[...(gpu as Any).bodies];
+      assert.throws(change,/standard boxes/);
+      assert.deepEqual([f.writes.length,gpu.bodyCount,(gpu as Any).hullTop],before);
+      assert.deepEqual((gpu as Any).bodies,infos);
+    }
+    gpu.destroy();
+  }
+});
+
+test('native hull source is selected at activation or future first acquisition, with 9/8/5 layouts', () => {
+  for(const early of [true,false]) {
+    const ref=scene(),shape=tetra();if(early)hull(ref,shape,1,0.5,[0,3,0]);
+    const f=fakeDevice({storage:9}),gpu=new GpuSolver3D(f.device,ref,{...native,hulls:true});
+    gpu.ensureNativeSensors();
+    if(!early)gpu.addBody(hull(new Solver(),shape,1,0.5,[0,3,0]));
+    const code=(gpu as Any).pipes.narrowphase.module.code;
+    assert.ok(code.includes('~(STICK_BIT | 0x04000000u)'));
+    assert.ok(code.includes('fn collidePoly('));
+    for(const [name,count] of [['contacts 3d',9],['solve 3d',8],['sensor preparation',5]] as const) assert.equal(f.layouts.find(l=>l.label===name).entries.filter((e:Any)=>e.buffer.type!=='uniform').length,count);
+    gpu.setNativeSensorFlags([4],[true]);gpu.destroy();
+  }
+});
+
+test('native backend refusal lasts with flags cleared; custom/proof cross-mode refusal is inert', () => {
+  const f=fakeDevice(),gpu=new GpuSolver3D(f.device,scene(),native);
+  gpu.setNativeSensorFlags([0],[true]);gpu.setNativeSensorFlags([0],[false]);
+  let prepared=false;const n=f.writes.length;
+  assert.throws(()=>gpu.setCollisionBackend({prepare(){prepared=true;}} as Any),/Native sensors/);
+  assert.equal(prepared,false);assert.equal(f.writes.length,n);gpu.destroy();
+  for(const options of [proof,{...native,shaders:{} }]) {
+    const other=new GpuSolver3D(f.device,scene(),options);
+    const before=[f.writes.length,f.pipelines.length,f.bindGroups.length];
+    assert.throws(()=>other.ensureNativeSensors(),/built-in standard/);
+    assert.throws(()=>other.setNativeSensorFlags([0],[false]),/built-in standard/);
+    assert.deepEqual([f.writes.length,f.pipelines.length,f.bindGroups.length],before);other.destroy();
+  }
+  const backendGpu=new GpuSolver3D(f.device,scene(),native);
+  backendGpu.setCollisionBackend({prepare(){},destroy(){}} as Any);
+  assert.throws(()=>backendGpu.ensureNativeSensors(),/built-in standard/);backendGpu.destroy();
+});
+
+test('native preparation runs before topology at zero iterations, fixed steps/toggles allocate nothing', () => {
+  const f=fakeDevice(),fixed=resolveFixedStorage({maxBodies:8},{growth:'fixed',pairs:4096,contacts:8192,manifolds:4096,joints:256,hullVec4s:4096},LIMITS);
+  const gpu=new GpuSolver3D(f.device,scene(),{...native,fixed});gpu.ensureNativeSensors();gpu.params.iterations=0;
+  const counts=[f.buffers.length,f.bindGroups.length,f.pipelines.length];
+  for(let i=0;i<4;i++) {
+    gpu.setNativeSensorFlags([0],[i%2===0]);f.passes.length=0;gpu.step({reuseManifolds:true});
+    const names=f.passes.flatMap(dispatches).map(d=>d.name),at=names.indexOf('prepareSensors');
+    assert.equal(names[at-1],'argsContacts');assert.equal(names[at+1],'degreeContacts');
+    assert.ok(names.includes('narrowphase'));assert.ok(!names.includes('reuseManifolds'));assert.ok(!names.includes('updateRefs'));
+    assert.equal((gpu as Any).paramU32[6]&FLAG_REUSE_CONTACTS,0);assert.equal(gpu.params.reuseContacts,true);
+    assert.deepEqual([f.buffers.length,f.bindGroups.length,f.pipelines.length],counts);
+  }
+  gpu.destroy();
+});
+
+
+test('native adaptive storage rebuilds both preparation groups without losing slot intent', () => {
+  const f=fakeDevice(),gpu=new GpuSolver3D(f.device,scene(),native);
+  gpu.setNativeSensorFlags([1],[true]);
+  const old=gpu.contactStorages();gpu.reserveCollisionCapacity(gpu.contactCapacity+1);
+  const gs=f.bindGroups.filter(g=>g.layout.label==='sensor preparation').slice(-2);
+  assert.equal(gs.length,2);
+  for(let i=0;i<2;i++) {
+    assert.equal(gs[i].entries[3].resource.buffer,gpu.contactStorages()[i].manifolds);
+    assert.equal(gs[i].entries[5].resource.buffer,gpu.contactStorages()[i].contacts);
+    assert.equal((old[i].contacts as unknown as FakeBuffer).destroyed,true);
+  }
+  assert.equal((gpu as Any).sensorFlags[1],1);gpu.destroy();
+});
+
+test('masked hull commands never pin or release unuploaded geometry; full replacement updates shape', () => {
+  const ref=scene(),shape=tetra(),original=hull(ref,shape,1,0.5,[0,3,0]);
+  const f=fakeDevice({storage:9}),gpu=new GpuSolver3D(f.device,ref,{...native,hulls:true});
+  const replacement=hull(new Solver(),tetra(),1,0.5,[1,2,3]);
+  const slots=(gpu as Any).hullSlots, before=[...slots].map(([s,h]:Any)=>[s,{...h}]);
+  const top=(gpu as Any).hullTop;
+  gpu.patchBody(4,new Set(['position','rotation','velocity','angularVelocity']),replacement,true);
+  assert.deepEqual([...slots],before);assert.equal((gpu as Any).hullTop,top);
+  assert.equal((gpu as Any).bodies[4].hull,shape);
+  gpu.setNativeSensorFlags([4],[true]);
+  gpu.rewriteBodies([4],[ref.bodies[0]]);
+  assert.equal((gpu as Any).bodies[4].nativeShape,'box');assert.equal(slots.has(shape),false);
+  assert.equal((gpu as Any).sensorFlags[4],0);
+  gpu.rewriteBodies([4],[original]);
+  assert.equal((gpu as Any).bodies[4].nativeShape,'hull');
+  assert.equal((gpu as Any).sensorFlags[4],0);gpu.destroy();
+});
+
+test('standard feature producer fixtures reserve bit26 for activated metadata', () => {
+  // Actual key producers, including the hull insertion, are frozen here. A new producer
+  // must update this fixture and justify its bit budget rather than borrowing bit26.
+  const lines=contactsHullWGSL.split('\n').map(l=>l.trim());
+  assert.deepEqual(lines.filter(l=>l.startsWith('const AXIS_')||l.startsWith('const SPHERE_FEATURE')), [
+    'const SPHERE_FEATURE = 50331648u;', 'const AXIS_FACE_A = 0u;', 'const AXIS_FACE_B = 1u;', 'const AXIS_EDGE = 2u;',
+  ]);
+  assert.deepEqual(lines.filter(l=>l.startsWith('let prefix =')||l.startsWith('let key =')), [
+    'let prefix = (select(AXIS_FACE_B, AXIS_FACE_A, refIsA) << 24u) | (refAxis << 16u) | (incAxis << 8u);',
+    'let key = (AXIS_EDGE << 24u) | (ia << 8u) | ib;',
+    'let prefix = (select(AXIS_FACE_B, AXIS_FACE_A, refIsA) << 24u) | (min(refFace, 255u) << 16u) | (min(inc, 255u) << 8u);',
+  ]);
+  const producers=lines.filter(l=>l.includes('addFound(&found,'));
+  assert.deepEqual(producers,[
+    'addFound(&found, select(p, onRef, refIsA), select(onRef, p, refIsA), prefix | i);',
+    'if (found.count == 0u) { addFound(&found, support(A, nAB), support(B, -nAB), prefix); }',
+    'addFound(&found, p0 + d1 * s, q0 + d2 * t, key);',
+    'if (found.count == 0u) { addFound(&found, support(A, nAB), support(B, -nAB), key); }',
+    'addFound(&found, A.c + n * A.h.x, B.c - n * B.h.x, SPHERE_FEATURE);',
+    'addFound(&found, select(p, onRef, refIsA), select(onRef, p, refIsA), prefix | min(index[pick], 255u));',
+    'addFound(&found, polySupport(A, nAB), polySupport(B, -nAB), prefix);',
+    'addFound(&found, p0 + d1 * s, q0 + d2 * t, (AXIS_EDGE << 24u) | (min(q.ea, 255u) << 8u) | min(q.eb, 255u));',
+    'if (h.hit) { addFound(&found, h.onSphere, h.onBox, SPHERE_FEATURE); }',
+    'if (h.hit) { addFound(&found, h.onBox, h.onSphere, SPHERE_FEATURE); }',
+    'if (h.hit) { addFound(&found, h.onSphere, h.onBox, SPHERE_FEATURE); }',
+    'if (h.hit) { addFound(&found, h.onBox, h.onSphere, SPHERE_FEATURE); }',
+  ]);
+  for(const axis of [0,1,2,3]) for(const a of [0,2,255]) for(const b of [0,2,255]) for(const point of [0,7,63,255]) {
+    const key=(axis<<24)|(a<<16)|(b<<8)|point;
+    assert.equal(key&0x04000000,0);
+  }
+});
+
+test('a duplicate batch ending false does not activate an untouched native solver', () => {
+  const f = fakeDevice(), gpu = new GpuSolver3D(f.device, scene(), native);
+  const before = [f.writes.length, f.pipelines.length, f.bindGroups.length];
+  gpu.setNativeSensorFlags([0, 0], [true, false]);
+  assert.equal((gpu as Any).nativeSensors, false);
+  assert.equal((gpu as Any).sensorFlags.length, 0);
+  assert.deepEqual([f.writes.length, f.pipelines.length, f.bindGroups.length], before);
   gpu.destroy();
 });
