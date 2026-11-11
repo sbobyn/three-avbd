@@ -141,3 +141,10 @@ export function checkEffectiveDamping(rate: number, dt: number, what: string): v
     throw new RangeError(`${what}: damping ${String(rate)} 1/s times dt ${String(dt)} s is not finite (as f32)`);
   }
 }
+
+/** Strict sensor intent; only an omitted creation option defaults to false. */
+export function checkSensor(value: unknown, what: string, optional = false): boolean {
+  if (optional && value === undefined) return false;
+  if (typeof value !== 'boolean') throw new TypeError(`${what}: sensor must be boolean`);
+  return value;
+}

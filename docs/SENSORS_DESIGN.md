@@ -751,3 +751,34 @@ exports and their exact export fixture, hardware/packed-consumer proof and merge
 Public sensor options are not declared delivered until coupled acceptance passes;
 otherwise preserve the local candidate with specific blockers. Other-device/large-
 scene/performance/CCD/physical/release/human qualification remains separate.
+
+
+## 21. Coupled public acceptance — 2026-11-10 local / 2026-11-11 UTC
+
+[Exact source hashes, environment, package and limits](measurements/public-sensors-2026-11-10.json)
+identify protocol d6ff00a plus the dirty overlay. The public candidate passes109 focused
+CPU checks,14 new hardware tests and91 existing wrapper regressions, no failures/skips.
+Typecheck/builds and packed five-entry strict types/imports pass. Parent added the
+ratified standard raw-contact metadata exports; no worker production claim was assumed.
+
+Actual Apple M4 Max/Metal8/9-storage devices pass216 small geometry/config cases
+(box-sphere/box-box/sphere-sphere and native hull-box/hull-sphere/hull-hull), sensor
+on either/both endpoint, reporting off/on, zero/four iterations and fixed/dynamic
+roles. Existing binary transit and moving translation/rotation fixtures pass exact
+detect steps; dynamic gravity/damping/force/impulse and constraints match mask-excluded
+controls. Reset/disable/removed lifetime/pending read, copied pool template/release/
+newID and native hull pool cases pass. Exact event loss, watch overflow and bounded
+upstream capacity loss remain observable, never counted as lossless contact quality.
+
+The packed0.4.0 consumer on an owned default8-storage hardware device emits begin45/
+end86 with zero collision impulse, passes through at2m/s, blocks when the same zone
+is made solid, and passes again after reset/re-enabling sensor mode. A packed pool
+lease restores its sensor template with a new ID; destroying Worlds keeps the caller
+device usable. Compatible peers were linked locally; no registry install/publication,
+browser rendering, user copy or release-directory change occurred.
+
+This accepts the bounded **native G3 API/ownership/event functionality** for delivery,
+not general physics, performance, scale, target-device, release or human acceptance.
+SDF/custom sensors remain unsupported. Activation's lifetime backend/no-reuse lock,
+fallback-hull exclusion, discrete timing and bounded event loss are public documented
+limits. Reuse unchanged A1/kernel evidence; no full gate replay under the daily limit.

@@ -298,6 +298,57 @@ The [design and remaining acceptance](SENSORS_DESIGN.md) separate bounded primit
 source-selection and dynamic-sphere coasting evidence from moving sensors, full native
 geometry/lifecycle/pool/overflow/consumer qualification and human/release acceptance.
 
+### Public native sensors
+
+Source: protocol `d6ff00a28e3a4acdb3d7a75ee90fadf5fc9bf9d7` plus this scoped
+`feat/ste-3330-public-sensors-20261110` patch (2026-11-10 local). [Checked-source record](measurements/public-sensors-2026-11-10.json)
+separates bounded M4 Max acceptance from release/physical/performance claims. Earlier
+proof/A1 sections above retain their dated support boundary; this is the current API.
+
+```mermaid
+flowchart LR
+  Intent[BodyOptions.sensor / Body.setSensor] --> Preflight[Strict boolean / native geometry / ownership admission]
+  Pool[Copied pool template / fresh lease ID] --> Preflight
+  Preflight --> Lazy[One-time native activation]
+  Intent --> Queue[Authored Body state / reauxes]
+  Queue --> Flush[Full replacements, lifecycle, aux xyz, restored sensor flags]
+  Flush --> Detect[Standard narrowphase / fresh detection]
+  Detect --> Guard[Marked contacts / no force or stiffness]
+  Detect --> Watch[Independent reportContacts / async begin-end]
+  Watch --> Identity[Step-stamped lifetime-ID observations / bounded loss]
+```
+
+`BodyOptions.sensor?: boolean` defaults false; readonly `body.sensor` and
+`body.setSensor(boolean)` expose authored state. Validation precedes allocation or
+metadata mutation. It applies on the next submitted detecting step; flush/read do
+not invent overlap events. A removed handle changes only its own validated metadata.
+Reporting remains explicit/independent. Existing gravity/damping/forces/constraints
+remain active; fixed-fixed and joint/group exclusions remain unchanged.
+
+World restores current authored flags after reset/full replacement and clears parked
+slots before reuse. Pool templates are copied and prewarmed, lease edits stay local,
+new leases restore template intent with new IDs. `contacts.ts`/`identity.ts` retain
+captured lifetime attribution and end-before-begin ordering; event body references
+are handles, not historical snapshots of `body.sensor`. Sensor collision impulse is
+zero, with existing geometric point/normal semantics and bounded overflow/loss.
+
+Capability `sensors` is true only for built-in standard native support; hull sensor
+pairs additionally require native negotiated hulls. Fallback hull mixing is refused
+in either admission direction. SDF/custom/preparing states refuse true sensor intent.
+First use locks the solver to fresh native detection and refuses non-null backends
+for life, even after all sensor flags clear: use a separate/recreated World for SDF.
+No new World opt-in or mandatory optional device feature is added. Default false
+bodies do not activate/compile sensor pipelines. No no-reuse performance claim.
+
+Raw advanced standard contacts now declare `STANDARD_CONTACT_METADATA_VERSION = 1`,
+`STANDARD_SENSOR_BIT = 0x04000000`, and feature mask `0x03ffffff` (bits0..25). Apply
+these only to standard native keys; SDF IDs occupy bit26. `readContactList` masks the
+marker only on activated native/proof standard records. Body/filter/contact strides
+and default/exported shader strings are unchanged.
+
+[Trigger-zone task and reset/dispose guidance](USER_GUIDE.md#sensors-and-trigger-zones) ·
+[Design, frozen fixtures and limitations](SENSORS_DESIGN.md).
+
 ### Isolated restitution research — 2026-11-10, STE-3329
 
 [`restitution.ts`](../src/avbd2d/experiments/restitution.ts) subclasses the f64 2D reference's
@@ -486,7 +537,7 @@ device, settings and provenance must accompany performance claims.
 | `src/comparison/`, `src/results/`, `scripts/` | AVBD/Rapier adapters, quality metrics, benchmark and provenance tools |
 | `examples/` | Public API consumer journeys, including lifecycle/pool/SDF and pose capture/playback; `examples/index.html` is the gallery |
 | `src/gallery/`, `public/gallery/` | Static demo gallery: dependency-free catalog, filters and SVG illustrations ([design](GALLERY_DESIGN.md)) |
-| `src/avbd3d/gpu/sensor-preparation.ts`, native activation in `solver.ts` | Internal proof/lazy native setup, current slot metadata and guarded contacts; no public sensor capability |
+| `src/avbd3d/gpu/sensor-preparation.ts`, native activation in `solver.ts` | Lazy native setup, current slot metadata and guarded contacts; public intent is owned by World/Body/pool |
 | `src/avbd2d/experiments/restitution.ts`, `tools/restitution-experiment.ts` | Isolated f64 research wrapper and report; not a public feature or GPU qualification |
 | `tools/qualification*.ts` | Opt-in predeclared three-scene direct-solver observations; separate timers, missing metrics unknown, no timing comparison |
 | `tools/world-determinism*.ts` | Opt-in public-World repeatability diagnostic; fixed-storage final fields only, no hidden-state replay guarantee |
@@ -970,9 +1021,9 @@ option checks initial standard support, and does not prohibit later backend swit
 `sdfFields` means the experimental SDF collision backend is installed, not that
 native hull SAT is running. SDF fields replace collision geometry only; mass,
 inertia and meshes remain caller-owned. `boxes`/`spheres` report built-in support
-and are false (unverified) for custom backends. `capsules`, `compounds`, `sensors`
-remain false: there are no supported public body helpers/encodings for those features. The
-internal standard-only sensor proof above does not change this public contract. An
+and are false (unverified) for custom backends. `capsules` and `compounds`
+remain false. `sensors` reports built-in standard native support as described above;
+SDF/custom are false and hull sensors require native hull collision. An
 analytic capsule SDF field does not provide a native capsule body API.
 `hullsEnabled` retains its historical meaning (standard solver hull support), even
 while SDF is installed. Direct advanced backend installation is reflected as

@@ -41,3 +41,6 @@ export {
 // own readback or compute pass): record strides and field offsets, in 32-bit words
 export { CONTACT_WORDS, K_RA, K_RB, K_PEN, K_LAM, STICK_BIT, MANIFOLD_WORDS, M_IDS, M_GEO, C_MANIFOLDS, C_PREV_MANIFOLDS, C_TAIL_BODIES } from '../avbd3d/gpu/layout.ts';
 export { C_PAIRS, C_CONTACTS, C_PREV_CONTACTS, C_OVERFLOW, C_CLASHES, C_NUM_COLORS, COUNTER_WORDS, NO_COLOR } from '../avbd2d/gpu/layout.ts';
+
+// Standard native contact metadata only. SDF point IDs occupy bit26 and use another namespace.
+export { STANDARD_CONTACT_METADATA_VERSION, STANDARD_CONTACT_FEATURE_MASK, STANDARD_SENSOR_BIT } from '../avbd3d/gpu/sensor-preparation.ts';

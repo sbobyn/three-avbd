@@ -1,0 +1,170 @@
+{
+  "schema": "three-avbd.public-native-sensors/v1",
+  "generatedAt": "2026-11-11T02:05:03.499853+00:00",
+  "source": {
+    "contractCommit": "d6ff00a28e3a4acdb3d7a75ee90fadf5fc9bf9d7",
+    "branch": "feat/ste-3330-public-sensors-20261110",
+    "dirty": true,
+    "sha256": {
+      "src/lib/world.ts": "cb26eff6c05679622d0090465df94a8b431151f701442b5ad5d56c0e0c64660a",
+      "src/lib/world-validation.ts": "be03707afe3db6b3b1886af0cd3c42c21f8d2120c6ce267a957789063a8fa114",
+      "src/lib/pool.ts": "c9f3db0937e351fe88eb0efcc50ce92c23f3605f3708bb7bb5a16c2f8075af2a",
+      "src/lib/capabilities.ts": "7664cc0b4c436686dcf71b1e9b46607029b12a24ae6d4da98cb6770ce7514cf7",
+      "src/avbd3d/gpu/solver.ts": "3946bba154c37dfc9bb6b978e471895e4c2245d6ab2f7603f7180f60c60f8392",
+      "src/avbd3d/gpu/sensor-preparation.ts": "737c36ecadf16163e5b0be3771cd2f574dc382c4ffd439b260ca42000343dd83",
+      "src/lib/advanced.ts": "a8bc787e08cc585831dcf6370cc993288734411f523a01515d555e83039bc724",
+      "tests/world-sensors.test.ts": "f867505326f5b13580c78ccdb23b086a98daf658331e1e9976fa4de51cf073e1",
+      "tests/pool-sensors.test.ts": "bdba959ba8bc04f8312e4fdebd582c4f0386a4035a034065cc774833209f0003",
+      "tests/capabilities.test.ts": "368224ea6be46bd76551d879f839743b20163554718d870bbcf4141bc7c8e5a4",
+      "tests/advanced-exports.test.ts": "70d46f39033da6d6c2d33b2e895131e1d81da1f29fe180f15a6938d414eecade",
+      "tests-gpu/world-sensors.gpu.test.ts": "ec2db243a468767d8e35b721d9e28622810bd5e321f55bdbb1ec148a3db6780a"
+    },
+    "qualification": "exact hashed overlay after worker, with parent additive metadata exports and guide; later merge does not rewrite dirty run provenance"
+  },
+  "environment": {
+    "node": "25.2.1",
+    "webgpu": "0.6.1",
+    "three": "0.187.0",
+    "adapter": "Apple M4 Max / apple / metal-3 / Metal macOS26.6.2 build25G83",
+    "nativeFixtureFallbackAssessment": false,
+    "storageLimits": [
+      8,
+      9
+    ],
+    "renderer": "not used; compute/readback only"
+  },
+  "checks": {
+    "focusedCpu": {
+      "pass": 109,
+      "fail": 0,
+      "skip": 0
+    },
+    "publicGpu": {
+      "pass": 14,
+      "fail": 0,
+      "skip": 0,
+      "wallSecondsApprox": 8.7,
+      "geometryVariants": 216,
+      "geometryIterations": [
+        0,
+        4
+      ],
+      "geometryDt": 0.015625,
+      "geometrySteps": 16,
+      "notes": "three primitive pairs on8, plus three native hull pairs on9; sensor endpoint0/1/both, reportfalse/true, fixedleft/dynamic roles, matching mask-excluded controls"
+    },
+    "existingGpuRegressions": {
+      "pass": 91,
+      "fail": 0,
+      "skip": 0,
+      "files": [
+        "world-contracts",
+        "world-observations",
+        "pool",
+        "lib-lifecycle",
+        "body-commands",
+        "lib",
+        "sdf-world",
+        "world-validation"
+      ]
+    },
+    "typecheck": "passed",
+    "siteBuild": "passed; existing chunk-size warning",
+    "libraryBuild": "passed",
+    "fullGate": "not replayed under user same-day once/project limit; reuse unchanged native kernel/A1 evidence and selected wrapper regressions",
+    "localPack": {
+      "version": "0.4.0",
+      "sha256": "219556894ee8e09a2d5bfe6a6be54555bd39b81a52daa86e22c99fa1644c6aa2",
+      "bytes": 398898,
+      "entries": 276,
+      "sourceBase": "d6ff00a28e3a4acdb3d7a75ee90fadf5fc9bf9d7",
+      "dirty": true,
+      "overlay": "reviewed public sensor candidate, parent standard metadata exports and source-qualified docs",
+      "dependencies": "existing local compatible peers, no fresh registry install/download/publication"
+    },
+    "packedFiveEsmImports": [
+      {
+        "entry": "three-avbd",
+        "exports": 14
+      },
+      {
+        "entry": "three-avbd/sdf",
+        "exports": 11
+      },
+      {
+        "entry": "three-avbd/advanced",
+        "exports": 56
+      },
+      {
+        "entry": "three-avbd/queries",
+        "exports": 2
+      },
+      {
+        "entry": "three-avbd/pool",
+        "exports": 1
+      }
+    ],
+    "packedStrictTypes": "passed skipLibCheck false, readonly sensor getter, strict boolean options/setter, metadata exports and all five entries; existing compatible local peers, not registry install",
+    "packedHardwareConsumer": {
+      "at": "2026-11-11T02:02:08.671Z",
+      "adapter": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "device": "apple-m4-max",
+        "description": "Metal driver on macOS Version 26.6.2 (Build 25G83)"
+      },
+      "deviceStorageLimit": 8,
+      "packageVersion": "0.4.0",
+      "metadata": {
+        "version": 1,
+        "mask": 67108863,
+        "sensor": 67108864
+      },
+      "solidX": -0.6440294981002808,
+      "transit": {
+        "firstEvents": [
+          [
+            "begin",
+            45,
+            0
+          ],
+          [
+            "end",
+            86,
+            0
+          ]
+        ],
+        "resetX": 2,
+        "vx": 2
+      },
+      "pool": {
+        "oldId": 2,
+        "newId": 3,
+        "sensor": true
+      },
+      "callerDeviceRetained": true,
+      "gpuErrors": []
+    }
+  },
+  "acceptedContract": [
+    "BodyOptions.sensor optional boolean defaultfalse, readonly getter and strict setSensor; reporting independently explicit",
+    "built-in standard box/sphere/native hull, moving fixed/dynamic/sensor-sensor discrete contacts; fixed-fixed/joint/group exclusions retained",
+    "reset/disable retains configuration, pool leases restore copied template, replacement/newID attribution and parked slot clearing",
+    "source14hardware tests assert exact moving begin2/end4, frozen primitive/hull transit begin45/end86, raw zero response and masked controls",
+    "gravity/damping/forces/impulses and joint/spring behavior match noncollision controls",
+    "event capacity exact loss, tiny watch-set overflow and pair/contact/manifold overflow visible without OOB; loss is not contact-quality acceptance",
+    "sensor-free and explicitfalse default response exactly equal, no native activation for false/default",
+    "SDF/custom/preparing and fallback mixing refused before admission; activated lifetime standard-backend lock remains even if all flags false",
+    "raw advanced standard metadata version1, bit26 and featurebits0..25 exported; no SDF reinterpretation or stride/default-WGSL change"
+  ],
+  "limits": [
+    "no SDF/custom sensor support; recreate/separateWorld for those after first native activation",
+    "eight-storage primitive sensor Worlds cannot mix fallback hulls; native hull requires nine",
+    "fresh detection/no-reuse persists for activated lifetime, cost/large-scene startup/performance unqualified",
+    "small cube/primitive scenarios, no broad physical/energy/CCD/continuous-contact/cross-device or M1/GTX1080 qualification",
+    "native compute/readback is not browser/rendered QA or human acceptance",
+    "local0.4.0 pack is not npm publication or fresh registry consumer installation",
+    "pose cache/checkpoint/baked/replay work is separate"
+  ],
+  "failures": "No parent hardware/source failures in this candidate. Worker reported initial fixture errors and corrected them before return; only final worker source/patch preserved here, no claim to unavailable worker raw logs."
+}

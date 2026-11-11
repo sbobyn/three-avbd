@@ -69,7 +69,9 @@ storage. Physics state is transient: the demos do not save editable worlds.
    density/friction and material color separately: visual roughness does not alter physics friction.
 
 For a small mechanic or simulation-art variation, try the documented [per-body gravity scale
-and velocity damping](docs/USER_GUIDE.md#per-body-gravity-scale) in that same consumer. These
+and velocity damping](docs/USER_GUIDE.md#per-body-gravity-scale) in that same consumer. Add a
+[nonblocking trigger zone](docs/USER_GUIDE.md#sensors-and-trigger-zones) with `sensor: true` and
+independent `reportContacts: true`; this works on the standard backend, not SDF. These
 are current-source APIs; follow the local package recipe rather than registry0.3.0.
 
 Your durable result is the consumer's source and pinned dependency files. Reopening reconstructs
@@ -89,6 +91,7 @@ Those studies are proposals; the gallery lists implemented demos only.
 
 ## Learn and integrate
 
+- [Sensors and trigger zones](docs/USER_GUIDE.md#sensors-and-trigger-zones): nonblocking box/sphere/native-hull overlaps, async enter/exit, reset and pool behavior, and backend/device limits.
 - [Per-body gravity scale](docs/USER_GUIDE.md#per-body-gravity-scale): current candidate option and setter for floatier/reversed-gravity mechanics; ordinary stepping/rendering stays the same.
 - [Core concepts, APIs, demos and configuration](docs/USER_GUIDE.md): units, fixed stepping,
  bodies, materials, forces, joints, async readback, expected behavior and limitations.

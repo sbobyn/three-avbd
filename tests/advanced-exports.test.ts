@@ -49,3 +49,13 @@ test('advanced exports the joint record layout (40 floats since 0.3) and decodes
   raw[advanced.J_PEN_LIN + 3] = 3e38;
   assert.deepEqual(advanced.decodeJoint(raw, 0), { linear: 0, angular: 0, broken: false, rest: [0, 0, 0, 1], bend: 0 });
 });
+
+test('standard contact metadata declares the sensor flag without changing feature or stick bits', () => {
+  assert.equal(advanced.STANDARD_CONTACT_METADATA_VERSION, 1);
+  assert.equal(advanced.STANDARD_CONTACT_FEATURE_MASK, 0x03ffffff);
+  assert.equal(advanced.STANDARD_SENSOR_BIT, 0x04000000);
+  const key = (3 << 24) | advanced.STANDARD_SENSOR_BIT | advanced.STICK_BIT;
+  assert.equal(key & advanced.STANDARD_CONTACT_FEATURE_MASK, 3 << 24);
+  assert.equal(key & advanced.STANDARD_SENSOR_BIT, advanced.STANDARD_SENSOR_BIT);
+  assert.equal(advanced.STANDARD_CONTACT_FEATURE_MASK & advanced.STANDARD_SENSOR_BIT, 0);
+});

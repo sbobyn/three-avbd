@@ -1,7 +1,10 @@
-// Private experimental metadata, NOT the published body/filter/contact ABI.
+// Standard native contact metadata; never apply this mask or marker to SDF point IDs.
 import { PRELUDE_3D } from './layout.ts';
 
 export const SENSOR_PROOF_METADATA_VERSION = 1;
+/** Standard built-in contact keys: feature bits0..25, sensor bit26, STICK bit31. Strides unchanged. */
+export const STANDARD_CONTACT_METADATA_VERSION = 1;
+export const STANDARD_CONTACT_FEATURE_MASK = 0x03ffffff;
 // Standard features use bits0..25 and STICK31. SDF uses bit26: never apply there.
 export const STANDARD_SENSOR_BIT = 0x04000000;
 export const sensorPreparationWGSL = /* wgsl */ `

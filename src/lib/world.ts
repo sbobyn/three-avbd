@@ -9,7 +9,7 @@ import type { SdfCollisionBridge } from '../avbd3d/gpu/sdf-bridge.ts';
 import * as THREE from 'three/webgpu';
 import { releaseStorageAttribute } from './storage.ts';
 import { bodyFields, copyBodyPatch, observedField, assignBodyPatch, type BodyField, type BodyPatch } from './body-commands.ts';
-import { checkBodyMaterial, checkBodySize, checkDamping, checkDelta, checkDt, checkEffectiveDamping, checkEffectiveGravity, checkGravity, checkGravityScale, checkIterations, checkMaxSubsteps, checkRadius, type BodyDamping, type DampingOptions } from './world-validation.ts';
+import { checkBodyMaterial, checkBodySize, checkDamping, checkDelta, checkDt, checkEffectiveDamping, checkEffectiveGravity, checkGravity, checkGravityScale, checkIterations, checkMaxSubsteps, checkRadius, checkSensor, type BodyDamping, type DampingOptions } from './world-validation.ts';
 import { deviceCapabilities, worldCapabilities, checkRequiredHulls, type WorldCapabilities } from './capabilities.ts';
 import { BodyReset } from '../avbd3d/gpu/body-reset.ts';
 import { BodyDisabledError, BodyLifecycleError, UnsupportedLifecycleError, checkEnabled, resetBodyPatch } from './lifecycle.ts';
@@ -92,6 +92,8 @@ export interface BodyOptions extends BodyState {
   collidesWith?: number;
   /** Report when it starts and stops touching other bodies (World.onContact). */
   reportContacts?: boolean;
+  /** Suppress collision response, retaining discrete contacts. Default false; reporting is independent. */
+  sensor?: boolean;
   /**
    * Multiplier of the world's gravity for this body (dimensionless). Default 1; 0: no gravity;
    * negative: reversed. Finite as f32 within [-1000, 1000] (an API bound, not a stability claim),
@@ -290,6 +292,7 @@ export interface Reservation {
   readonly gravityScale: number;
   /** Its template's larger damping rate: World.dt refuses a step its leases could not decay over. */
   readonly dampingRate: number;
+  readonly sensor: boolean;
   state: 'active' | 'disposed';
 }
 
@@ -319,6 +322,7 @@ export class Body {
   /** @internal The first step it's in. */
   addedAt = 0;
   private reports: boolean;
+  private senses: boolean;
   private scale: number;
   private dampingPair: BodyDamping;
   private groups: number;
@@ -355,6 +359,7 @@ export class Body {
     this.groups = options.group ?? 1;
     this.mask = options.collidesWith ?? 0xffffffff;
     this.reports = options.reportContacts ?? false;
+    this.senses = options.sensor ?? false;
     this.scale = options.gravityScale ?? 1;
     // A fresh frozen copy (World and BodyPool pass their own checked copies; nothing aliases it)
     this.dampingPair = Object.freeze({ linear: options.damping?.linear ?? 0, angular: options.damping?.angular ?? 0 });
@@ -387,6 +392,16 @@ export class Body {
     this.groups = group;
     this.mask = collidesWith;
     this.world.refilter(this);
+  }
+  /** Authored configuration, effective on the next submitted detecting step. */
+  get sensor(): boolean { return this.senses; }
+  setSensor(sensor: boolean): void {
+    this.world.assertLive('Body.setSensor');
+    checkSensor(sensor, 'Body.setSensor');
+    if (sensor === this.senses) return;
+    if (this.alive) this.world.prepareSensor(sensor, this.shape === 'hull');
+    this.senses = sensor;
+    this.world.reaux(this);
   }
   /** Multiplier of the world's gravity for this body (BodyOptions.gravityScale). */
   get gravityScale(): number {
@@ -853,7 +868,7 @@ export class World {
    * Advanced custom backends have unknown shape support. */
   get capabilities(): Readonly<WorldCapabilities> {
     const backend = this.solver.activeCollisionBackend;
-    return worldCapabilities(deviceCapabilities(this.device), backend ? backend === this.sdfBridge ? 'sdf' : 'custom' : 'standard', this.solver.hulls, this.solver.customShaders, this.fixed !== null && !this.destroyed && !this.gpuError, this.solver.supportsBodyAux);
+    return worldCapabilities(deviceCapabilities(this.device), backend ? backend === this.sdfBridge ? 'sdf' : 'custom' : 'standard', this.solver.hulls, this.solver.customShaders, this.fixed !== null && !this.destroyed && !this.gpuError, this.solver.supportsBodyAux, this.solver.supportsNativeSensors);
   }
 
   /** The resolved storage plan: every fixed capacity and buffer size, or adaptive growth. */
@@ -1088,6 +1103,26 @@ export class World {
     return most;
   }
 
+  /** @internal Validate authored and uploaded shapes before accepting sensor intent; never flush. */
+  prepareSensor(sensor: boolean, hull: boolean): void {
+    const active = this.solver.nativeSensorsActive;
+    if (sensor) {
+      if (this.sdfState !== 'off' || !this.solver.supportsNativeSensors) throw new Error('Sensors require built-in standard collisions, outside SDF preparation');
+      if (!this.solver.hulls && (hull || this.slots.some(b => b?.alive && b.shape === 'hull') || [...this.reservations].some(r => r.state === 'active' && r.hull))) {
+        throw new Error('Sensors cannot mix with fallback hulls');
+      }
+      // Uploaded removed unsupported shapes may still need explicit normal parking/flush.
+      try {
+        this.solver.ensureNativeSensors();
+      } catch (error) {
+        if (error instanceof Error && error.message === 'Native sensors require standard boxes, spheres or native hulls') {
+          throw new Error('Sensors require standard boxes, spheres or native hulls; removed unsupported uploaded slots need an explicit normal flushCommands() before activation', { cause: error });
+        }
+        throw error;
+      }
+    } else if (active && hull && !this.solver.hulls) throw new Error('Native sensors cannot mix with fallback hulls');
+  }
+
   private add(shape: 'box' | 'sphere' | 'hull', size: Vec3, options: BodyOptions, hullShape: HullShape | null = null): Body | null {
     this.assertMutableTopology();
     if (options.enabled !== undefined) checkEnabled(options.enabled);
@@ -1098,10 +1133,22 @@ export class World {
     checkBodyMaterial(options, what);
     if (options.gravityScale !== undefined) this.checkGravityScale(options.gravityScale, what);
     const damping = this.checkDamping(options.damping, what);
-    options = { ...options, ...copyBodyPatch(options), damping } as BodyOptions;
+    const sensor = checkSensor(options.sensor, what, true);
+    const properties = options.massProperties;
+    let massProperties: BodyOptions['massProperties'];
+    if (properties) {
+      const { mass, moments } = properties;
+      if (!Array.isArray(moments) || moments.length !== 3 || ![mass, ...moments].every(v => Math.fround(v) > 0 && Number.isFinite(Math.fround(v)))) throw new Error('Mass and principal moments must be finite and positive');
+      massProperties = { mass, moments: [...moments] as Vec3 };
+    }
+    options = { ...options, ...copyBodyPatch(options), damping, sensor, massProperties } as BodyOptions;
     // A removed body's slot first, else the next one past the end (past any reserved tail)
     const index = this.free.length ? this.free[this.free.length - 1] : this.solver.bodyCount + this.appends.length;
     if (index >= this.maxBodies) return null;
+    if (this.bodyIds.remaining < 1) throw new Error('Body lifetime IDs exhausted');
+    // Obtain the solver's exact capacity error before activating sensor resources.
+    if (this.fixed && hullShape && this.solver.hulls && !this.solver.canPinHull(hullShape)) this.solver.pinHull(hullShape);
+    this.prepareSensor(sensor, shape === 'hull');
     // Fixed storage: the hull's room is taken now (or refused) rather than at the next flush
     const pin = this.fixed && hullShape && this.solver.hulls ? hullShape : null;
     if (pin) this.solver.pinHull(pin);
@@ -1155,18 +1202,21 @@ export class World {
    * @internal Reserve `capacity` slots (free holes first, then the tail) and pin `hull`, all or
    * nothing, before any body or ID exists. Ordinary adds never take reserved slots.
    */
-  reserveBodies(capacity: number, hull: HullShape | null, gravityScale = 1, dampingRate = 0): Reservation | ReserveFailure {
+  reserveBodies(capacity: number, hull: HullShape | null, gravityScale = 1, dampingRate = 0, sensor = false): Reservation | ReserveFailure {
     this.assertLive('BodyPool.create');
+    checkSensor(sensor, 'BodyPool.create');
     this.checkGravityScale(gravityScale, 'BodyPool.create');
     this.checkDamping({ linear: dampingRate }, 'BodyPool.create');
     if (!this.fixed) return 'fixed-storage-required';
     if (this.sdfState !== 'off' || this.solver.activeCollisionBackend || this.solver.customShaders) return 'unsupported-backend';
     if (hull && !this.solver.hulls) return 'resource-limit';
     // Hull room held by removed bodies' records is freed when their parking writes are flushed
-    if (hull && !this.solver.canPinHull(hull)) this.flush();
+    if (!sensor && !this.solver.nativeSensorsActive && hull && !this.solver.canPinHull(hull)) this.flush();
     const tail = this.maxBodies - (this.solver.bodyCount + this.appends.length);
     if (this.free.length + tail < capacity) return 'capacity';
     if (hull && !this.solver.canPinHull(hull)) return 'resource-limit';
+    if (sensor && !this.solver.supportsNativeSensors) return 'unsupported-backend';
+    this.prepareSensor(sensor, hull !== null);
     if (hull) this.solver.pinHull(hull);
     const indices: number[] = [];
     while (indices.length < capacity && this.free.length) indices.push(this.free.pop()!);
@@ -1174,7 +1224,7 @@ export class World {
       indices.push(this.solver.bodyCount + this.appends.length);
       this.appends.push(null);
     }
-    const reservation: Reservation = { capacity, indices: Object.freeze(indices), vacant: [...indices].reverse(), live: new Set(), hull, gravityScale, dampingRate, state: 'active' };
+    const reservation: Reservation = { capacity, indices: Object.freeze(indices), vacant: [...indices].reverse(), live: new Set(), hull, gravityScale, dampingRate, sensor, state: 'active' };
     for (const index of indices) {
       this.owners[index] = reservation;
       // A hole's parking write (if any) becomes the vacant record
@@ -1217,8 +1267,10 @@ export class World {
     // (World.gravity keeps the reservation's template scale valid; checked again before an ID is taken)
     if (options.gravityScale !== undefined) this.checkGravityScale(options.gravityScale, 'BodyPool.tryAcquire');
     const damping = this.checkDamping(options.damping, 'BodyPool.tryAcquire');
+    const sensor = checkSensor(options.sensor, 'BodyPool.tryAcquire', true);
+    this.prepareSensor(sensor, shape === 'hull');
     const index = reservation.vacant[reservation.vacant.length - 1];
-    const body = new Body(this, index, shape, [size[0], size[1], size[2]], { ...options, damping, enabled: true }, publicHull);
+    const body = new Body(this, index, shape, [size[0], size[1], size[2]], { ...options, damping, sensor, enabled: true }, publicHull);
     reservation.vacant.pop();
     body.solverHull = reservation.hull ?? publicHull;
     body.owner = reservation;
@@ -1690,6 +1742,7 @@ export class World {
       );
       this.rewrites.clear();
     }
+    for (const body of full) this.reauxes.add(body.index);
     // Full writes intentionally reset solver metadata; restore this life's desired flags below.
     for (const body of full) if (body.alive && (!body.enabledState || this.coldBodies.has(body))) this.lifecycleDirty.add(body);
     const resetting = [...this.resets].filter(body => body.alive);
@@ -1749,6 +1802,7 @@ export class World {
         list.map(index => occupant(index)?.damping.linear ?? 0),
         list.map(index => occupant(index)?.damping.angular ?? 0),
       );
+      if (this.solver.nativeSensorsActive) this.solver.setNativeSensorFlags(list, list.map(index => occupant(index)?.sensor ?? false));
       this.reauxes.clear();
     }
     if (this.pendingJoints.length) {
