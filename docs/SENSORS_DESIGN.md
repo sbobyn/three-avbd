@@ -396,3 +396,250 @@ moveTo/velocity-driven fixed sensors, dynamic/sensor-sensor shapes, hull/SDF/cus
 support, overflow and fresh installed consumer gates remain open. No new gallery or
 production sensor feature is advertised; no physical/performance/release/human
 acceptance follows. Default exported shader strings/record strides remain unchanged.
+
+## 13. D2 recommendation: coherent native-standard sensors — 2026-11-11 UTC
+
+[P] This follow-up supersedes the *recommended future API* in §§3,8, not their dated evidence or
+§11's proof authorization. Baseline `19290ae8636aa2d50394a76ec3444073b6a2692d`; source inspection
+only. PR96 merged the bounded proof (§12); it did not qualify public sensors. D2 recommendation:
+`BodyOptions.sensor?: boolean` default false, readonly `Body.sensor`, `Body.setSensor(on: boolean)`.
+Validate strict booleans (including explicit null/undefined setter arguments) before any mutation;
+repeat assignments are no-ops. Keep `reportContacts` independently explicit/default false.
+No `staticBoxSphereSensors` field, new event type, automatic listener, watch, readback or World opt-in.
+Getter reports authored state immediately; physics changes on the next submitted detecting step.
+Sensor means this pair contributes no collision force **or stiffness to either endpoint**; geometry,
+count and witnesses remain. Existing forces/impulses, gravityScale, damping, inertia, joints and springs
+continue normally. Fixed/kinematic means existing `fixed` plus prescribed motion, not a new body type.
+
+[P] Support target: standard built-in box/sphere pairs, native hull-box/hull-sphere/hull-hull pairs
+on a device negotiated for native hulls; fixed, moving-fixed and dynamic sensors, sensor-sensor.
+Keep `testPair`'s fixed-fixed and connected-joint exclusions: two fixed/kinematic sensors do not
+report each other. No CCD or swept overlap; discrete detection precedes integration. Events retain
+slot-ordered A/B conventions, detecting-step membership/final-pose witnesses and exactly zero sensor
+collision impulse (§3), existing async/loss behavior and ends-before-begins per step.
+
+[P] Change `WorldCapabilities.sensors` from literal false to boolean **only with accepted support**:
+true means built-in standard native primitive sensors are available, not every shape or backend.
+Hull sensor pairing additionally requires `hullCollisions === 'native'` and accepted native-hull
+sensor tests. SDF/custom return false; snapshots remain immutable/re-read after backend changes.
+Box-fallback hulls are never advertised as exact sensor geometry. Refuse worlds mixing authored
+sensors and fallback hull bodies/templates conservatively, regardless of masks/overlap, in both
+admission directions. Preserve fallback behavior for sensor-free worlds. No source-comment safety
+inference or silently treating SDF point-ID bit26 as a sensor. Capsules/compounds stay unsupported.
+Stages below keep public sensors false until the advertised matrix is accepted, not one tested pair.
+
+## 14. Activation and ABI: select lazy, per-solver native variants
+
+[E] [solver.ts](../src/avbd3d/gpu/solver.ts) currently selects `sensorProof` in `createPipelines`,
+allocates `sensorFlags` only then, and uses it in `step`, `encodeParams`, `setBodyAux`,
+`readContactList`, `rebuildBindings`, `assertBackendSwitchAllowed`. `setSensorFlags` requires an
+existing stationary fixed box; `sensorProofEligible` is packed at construction. `patchBody` updates
+current `dynamic`, but raw velocity/shape edits have no complete eligibility mirror. This hook is
+not a public runtime-add shortcut. `acquireHull` separately switches `contactShaders` to
+`contactsHullWGSL` on first hull: public activation must update that future selection too.
+
+[P] Introduce internal idempotent `ensureNativeSensors()` and distinct activated state; do not
+broaden `sensorProof`'s accepted meaning. Before first true body/template assignment, preflight
+support/storage/ID admission, then build only affected contact/solve variants and preparation layout,
+pipeline and both parity groups into temporary **instance-owned** objects. Commit the complete bundle
+and CPU flag array only after synchronous setup succeeds; invalidate manifolds. Do not rerun all
+`createPipelines`, mutate a global dictionary, replace buffers or recreate the integrate group.
+Reuse the compatible built-in `warmStartBodies`/joint/velocity entries where unchanged; replace
+`hashInsert`/`narrowphase`/history entry selection and `primal`/`primalSparse`/`dual` as needed.
+No source rewriting: extend existing template parameters for private native sensor variants.
+Choose hull/nonhull contact source from actual `hullShaders` state, and retain a sensor-aware hull
+factory for later `acquireHull`. A failed construction leaves authored metadata/IDs/slots unchanged;
+late WebGPU validation/device errors invalidate the owning World through its existing error path,
+not an invented synchronous validation guarantee. No further compile on ordinary steps/toggles.
+
+[P] Compared routes: always-on variants add setup/source changes even to sensor-free Worlds;
+World `{sensors:true}` makes runtime setSensor unexpectedly fail and burdens every consumer/pool
+with advance planning. Neither is necessary: lazy setup fits synchronous add/set and existing lazy
+hull compilation. First sensor can incur synchronous setup; no cache, startup or pipeline speed
+claim. A sensor pool prewarms at create, so acquire/release retain their no-compilation promise.
+Untouched solvers retain exact exported/default generated text and dispatch/setup sequence; no
+sensor pipelines/groups/flag array until activation. After activation retain native variants and
+force BOTH contact and manifold reuse off for remaining native lifetime, even after last sensor
+turns off; document this execution-policy cost. Preparation runs every native step, including zero
+iterations/no reporting, after collision before topology using `IA_CONTACTS`, as in the proof.
+Backend phases never run preparation or reinterpret their keys; returning to native detects fresh.
+
+[P] Body40float/filter8B/joint40float and lifecycleABI1 (DIRTY/DISABLED/COLD only) remain unchanged;
+all32 group/mask bits remain available, including31. Aux16B w is numeric0/1, xyz retain G1 semantics.
+Promoting bit26 from private proof to **declared standard built-in contact metadata** is a real
+semantic ABI decision for advanced raw consumers: publish its version/feature mask, qualified to
+native standard records; `readContactList` strips it only there. Exported legacy WGSL/default
+strings stay unchanged. Custom overrides (even one override or byte-identical supplied text) refuse
+sensors, rather than claim compatibility from source text; sensor:false/custom behavior is retained.
+Arbitrary raw advanced buffer mutation remains outside the public World contract; supported advanced
+write/rewrite/patch helpers must reject unsupported shape modes before mutation and maintain current
+shape/mass metadata. Never reuse `sensorProofEligible` for public eligibility. No filter migration.
+
+[E/P] [wgsl-hull.ts](../src/avbd3d/gpu/wgsl-hull.ts) `hullFaceContact`/`hullEdgeContact` key
+expressions use AXIS_FACE_A/B/EDGE (0/1/2) <<24 plus face/edge indices clamped255 in lower lanes;
+standard sphere uses3<<24. Thus those inspected producers do not occupy bit26. This is feasibility,
+not hull sensor proof: add private `makeContactsTemplate(true,true)` selection; check every hull
+producer, copying/matching and marker stripping with executable fixtures, then actual hull contacts.
+No blanket comment proves it. Preserve explicit contacts8/9(native hull), solve8, preparation5
+storage layouts; never add aux to solve/contact layouts. Existing contact growth rebuilds sensor
+parity groups; fixed stepping adds no allocation. Destroy only owned helpers, never borrowed device.
+
+## 15. Ownership, command order and atomic refusal
+
+[P] World owns authored booleans and queued intent; solver owns CPU slot flags/aux and activated
+resources. Extend `reauxes`/`flush` rather than a separate sensor command architecture. Full records
+append/rewrite first, then resets/patches/lifecycle, then aux xyz and sensor flags before `slide`,
+`push`, collision and solve. Upload true flags on newly added slots **before their first physics**.
+Activation happens before accepting a true intent, not deferred until a partially mutating flush.
+Validate the complete `setSensorFlags` batch (including duplicates with last assignment winning)
+before writes, then dirty changed slots preserving DISABLED/COLD and invalidate `manifoldsValid`.
+Use current supported shape metadata, not original fixedness or velocities. Standard target supports
+both masses and prescribed velocities; raw sail/unsupported shapes must be refused on add/rewrite
+or activation scan, regardless of group masks. No overlap-dependent admission or dynamic-mode hack.
+
+[P] Live `setSensor` asserts World liveness, strict boolean/support first, then own metadata and
+`reaux`. Removed handle: validate boolean and update only its own metadata, never activate resources,
+queue a flag, block a backend or write its former slot. Disabled live bodies retain/block on true.
+Repeated true/false toggles between steps use last assignment; true→false may retain lazy resources
+but creates no CPU events. Toggle while touching keeps pair membership/ID; dirty both transition
+histories so false cannot revive old lambda/stick state. `flushCommands`/`read` upload commands but
+create no detection/events; reads may deliver already-submitted events. Reset keeps sensor, scale,
+damping, filters and reporting; `BodyState` cannot change sensor. Disable preserves flag, excludes
+collision; a disabled detecting step ends overlap, re-enable can begin. Between-step toggles alone
+do not promise an end/begin. `setFixed` preserves sensor and existing velocity-zeroing semantics;
+`set`, `moveTo`, fixed velocity/angularVelocity drive remain supported, with detection-step timing.
+
+[P] `occupy`, `removeBody`, `vacantRigid`, `stage`, `rewrites` and `appends` must restore the current
+occupant's complete metadata: park/free/reserved-vacant aux.w=0, new ordinary life defaults false,
+new pool lease uses copied template. Preserve w on ALL xyz aux writes, including contiguous runs,
+scale-only calls and reset/full-body restore; do not copy an old slot's flag into a replacement.
+Pool `checkOptions` copies/strictly validates sensor; extend `Reservation` with template intent.
+`BodyPool.create` validates/activates before `reserveBodies`/hull pin/slot mutation, prewarms once;
+`acquireReserved` rechecks backend/support before allocating ID/popping vacancy. Lease toggles do
+not change template. Release clears parked flag; next lease has new `Body.id`. True templates block
+backend changes even with no leases; disposed templates and removed handles do not. Capacity/ID
+refusal must leave flags, free lists and ID allocator untouched; unsupported support throws first.
+
+[P] Keep `BodyIds`, `RetiredBodies.snapshot` and `orderedEvents` unchanged: pending reads resolve
+captured lifetime IDs, never current slot occupant or current sensor value. Removal/reuse generates
+old end then new begin on a detecting step; bounded eight-retired-generations and dropped-event
+accounting persist. Group changes preserve both 32-bit tests, dirty history and end/begin next step;
+no synthetic mode event. Watch/set/contact/pair/manifold overflow remains bounded and observable,
+not lossless. No extra contact watch or scheduled read when sensor:true alone; existing World's
+adaptation/automatic-read policies remain independently configured.
+
+[P] Centralize a pure sensor/backend preflight plus solver pending-intent callback (parallel to
+`lifecyclePending`, assigned by World). Guard `assertBackendSwitchAllowed` and direct advanced
+`setCollisionBackend` BEFORE backend.prepare/old.destroy/clear/assign: refuse nonnull backend with
+any live authored sensor (including disabled/unflushed adds), pending sensor changes/removal cleanup,
+nonzero uploaded flags or active true pool template. Require a normal native flush to settle false/
+removal intent; do not flush implicitly to pass a backend check. No guard based only on GPU flags.
+After all intent/flags clear, adaptive solver may switch; fixed World's existing refusal remains.
+
+[P] `enableSdfCollisions` must call that check before setting `sdfState='preparing'`, flush/import/
+bridge allocation. During preparing, refuse true sensor admission/toggles/template creation before
+metadata mutation; recheck before bridge installation. `installSdfCollisions` retains previous
+backend/bindings/state on refusal, destroys only the newly made bridge, restores on/off in finally.
+A direct advanced install during SDF preparation must be refused by the shared pending guard too.
+Use an owner-scoped installation permit for the current SDF transaction at final commit, checking
+all sensor predicates again; a blanket preparing refusal must not deadlock SDF's own installation.
+Never install a backend that cannot interpret flags then roll CPU metadata forward to match it.
+No SDF sensor extension is included. Existing SDF failures may have unrelated flush effects; this
+contract requires sensor incompatibility rejection *before* those effects, not universal rollback.
+
+## 16. Acceptance stages and ONE ready implementation brief
+
+[P] A — activation/metadata foundation (next brief below), no public API/capability yet. CPU recording
+fakes prove no untouched default/custom source/setup/dispatch change, per-instance isolation, lazy
+idempotence/failure ownership, full-batch refusal, current shape/mass writes, aux retention/clearing,
+8/9 layouts, late hull factory selection, pending/direct backend guards and fixed-storage allocation
+rules. These are encoding assertions, never motion proof. Existing proof remains bounded evidence.
+B — coupled public World/Body/pool contract + box-box/box-sphere/sphere-sphere across fixed/moving/
+dynamic roles and sensor-sensor, complete §15 CPU admission/lifecycle fixtures. C — native hull-box,
+hull-sphere and hull-hull, including sensor on either side, plus fallback refusal in both admission
+directions; native hull key/decoder fixtures. Keep public capability false/unreleased until B/C's
+applicable matrix passes; eight-buffer devices expose only boxes/spheres and refuse hull mixing.
+
+[P] Freeze exact candidate/protocol and reuse existing fixture tolerances before later hardware:
+untouched default/custom/G1 motion; each B/C target geometry with swap order, zero iterations and
+no reporting; zero lambda/penalty/STICK + matched free flight on both endpoints; dynamic gravity/
+linear-angular damping/force and impulse controls; joints/springs still acting and pair exclusions;
+moving fixed translation AND rotation via moveTo and velocity drive with detection-step events.
+Include toggle force-bearing→sensor→solid, disable/reset/removal/reuse with pending reads/IDs/end
+order, pool template/lease/reset churn, bit31 filters, tiny exact pair/contact/manifold/watch/event
+capacities with overflow counters and atomic admission refusal. Dedicated8-storage primitive and
+negotiated9-storage native-hull devices, qualified actual hardware first. No invented relaxed numeric
+tolerance, CCD, physical/performance winner, broad benchmark or target-device extrapolation.
+
+[P] **Ready brief A — reusable native activation and atomic slot metadata, local-only.** Existing
+STE-3330 under InProgress STE-3326; persistent lead owns acceptance. Codex/Sol High, no children;
+base19290ae on the supplied task checkout, preserve all existing holds. Own only
+`src/avbd3d/gpu/{solver.ts,sensor-preparation.ts,wgsl-collision.ts,wgsl-solve.ts}` and
+`tests/sensor-preparation.test.ts`; do not add Body API/World wiring or flip capability. Implement
+`ensureNativeSensors()`, native flag writer/current-shape guards, separate proof restriction, marker
+metadata declaration and nullable pending-intent guard hook (§§14–15), private hull variant/factory,
+all supported helper rewrite/patch/reset flag semantics. Retain old proof tests. This replaces the
+construction-only bottleneck with the actual runtime-add mechanism B will consume, not another
+geometry prototype. Bound to one cohesive source/CPU slice (roughly1–2 implementation days,
+estimate not commitment); return if raw helper shape ownership or atomic setup cannot fit it.
+Checks when authorized: focused `node --experimental-transform-types --test
+ tests/sensor-preparation.test.ts tests/gravity-scale.test.ts tests/damping.test.ts
+ tests/lifecycle.test.ts tests/capabilities.test.ts`, then `pnpm typecheck`; no worker GPU/build/full
+suite. Parent owns World callback wiring/B/C, docs/API map and advanced migration declaration,
+consumer/packed strict-types checks, actual-device protocol and repository `pnpm check` gate or
+explicit existing-evidence reconciliation before completion, Linear, integration and Git receipt.
+Return diff/source/checks/limits only, no commit/push/merge. Lead gates: ratify D2 and public native
+bit26 semantic ABI; refuse fallback/SDF/custom as above; accept staged hardware/consumer evidence
+before advertising support. G2 remains separate/ineligible, F2/G1 accepted; no routine user question.
+
+
+## 17. Lead ratification and bounded A1 scope — 2026-11-11T01:20:16.247103+00:00
+
+D2's public direction is accepted: body boolean option/getter/setter, independent
+reporting, no special-case capability and no World-level opt-in. This is approval
+of the target contract, not implementation or hardware acceptance. Public capability
+remains false until the coupled advertised standard-shape/lifecycle matrix passes.
+Standard bit26 semantics are ratified **only for explicitly activated native sensor
+records**; legacy exported/default shader sources and SDF key meanings stay intact.
+The native metadata version/feature-mask declaration will accompany public exposure;
+A1 keeps constants/internal hooks out of package export barrels. No default ABI rewrite.
+
+The broad brief A above is too large for one bounded worker. Execute **A1: lazy
+activation plus atomic native slot flags**, then parent reviews before World wiring:
+
+- `ensureNativeSensors()` is an internal, idempotent synchronous setup boundary for
+  built-in standard solvers. Build changed pipelines/layout/parity groups into local
+  objects before committing instance state; no buffer replacement, default pipeline
+  rebuild or integrate-group recreation. Preserve ordinary/proof modes. Private
+  nonhull and hull contact variants must remain selectable when the first hull arrives.
+- A separate internal `setNativeSensorFlags` validates the whole copied boolean/index
+  batch before activation or writes; true requires supported current native shapes,
+  not initial mass/stationarity. No-op false writes on untouched solvers do not activate.
+  All-false activated solvers retain their resources/execution policy. No public API.
+- Track current standard shape kind (box/sphere/native hull vs unsupported sail or
+  hull fallback). Activation scans existing slots; append/full replacement rejects
+  incompatible shapes before pinning/writing/count changes. Native flags permit
+  both masses and prescribed motion. Existing proof still restricts stationary boxes.
+- Masked patch/mass/velocity edits preserve native flags and actual shape metadata.
+  Full replacement helpers (`rewriteBodies`, `rewriteFixed`, `seedFrom`) explicitly
+  clear native flags for the replaced slots; appended slots start false. This is the
+  advanced full-replacement contract. Future World reset/lease flush must restore
+  authored flags after rewrites and before physics; it must not infer identity from
+  a raw slot. Proof's prior semantics remain separate. Preserve aux.xyz on sensor
+  writes and aux.w on every gravity/damping whole-record write.
+- **Temporary A1 restriction:** once native activation succeeds, refuse every non-null
+  collision backend, even after flags clear, as the existing proof does. This prevents
+  private solve variants from interpreting SDF bit26. Do not pretend that suppressing
+  preparation alone protects SDF: private primal/dual guards would still misread it.
+  The recommended backend switching after all intent clears in §§14–15 remains a
+  coupled-stage gate until solver pipeline selection and owner-scoped SDF transaction
+  are implemented together. Do not add an unwired pending-callback protocol in A1.
+
+A1 owns only solver/preparation/private collision+solve generators and the existing
+CPU sensor-preparation test file. No World/pool/capability/export or GPU test changes.
+Focused CPU tests/typecheck only; preserve old proof/source hashes. Parent owns actual
+hardware checks, source/API map/migration and normal ticket delivery. Full GPU/World
+lifecycle/geometry/overflow acceptance is still open. Aim90–120min bounded, not the
+prior1–2day all-A estimate; if a material ownership conflict cannot fit, return exact
+partial evidence rather than guess or expand. The next task must implement code, not
+another design note. No new solver architecture, install, live process or user copy.
