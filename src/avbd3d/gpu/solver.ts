@@ -11,6 +11,9 @@
 // the CPU owns: body shapes (broadphase configuration), joint endpoints and no-collide pairs.
 
 import { makeArgsWGSL, ARGS_WORDS, BIG, COLOR_WG, C_CLASHES, C_CONTACTS, C_NUM_COLORS, C_OVERFLOW, C_PAIRS, COUNTER_WORDS, IA_COLOR, IA_CONSTRAINTS, IA_CONTACTS, IA_PAIRS, IA_PREV, MAX_COLORS, NO_COLOR, PASS_STRIDE, T_NONE, WORKGROUP_SIZE } from '../../avbd2d/gpu/layout.ts';
+import { checkWorldAnchorPolicy, checkWorldAnchorCoordinates, worldAnchorFloor, type WorldAnchorPolicy, type WorldAnchorMaterial } from './world-anchor-policy.ts';
+import { worldAnchorPolicyWGSL } from './wgsl-world-anchor-policy.ts';
+import { WORLD_ANCHOR_INERTIAL_HARD } from './layout.ts';
 import type { BodyField } from '../../lib/body-commands.ts';
 import { PrefixScan } from '../../avbd2d/gpu/scan.ts';
 import { type GpuCounters, PHASES, type StepProfile } from '../../avbd2d/gpu/layout.ts';
@@ -271,7 +274,7 @@ export interface GpuSolverOptions {
 }
 
 /** Per-body static data the host needs: broadphase radius and whether the body moves. */
-interface BodyInfo {
+interface BodyInfo extends WorldAnchorMaterial {
   sensorProofEligible: boolean;
   nativeShape: 'box' | 'sphere' | 'hull' | 'unsupported';
   radius: number;
@@ -607,6 +610,16 @@ export class GpuSolver3D {
   private readonly auxBuffer: GPUBuffer;
   /** warmStartBodies' group 0 (params, bodies, aux), made once; null when a custom solve module keeps the full layout. */
   private integrateGroup: GPUBindGroup | null = null;
+  private worldAnchorPipeline: GPUComputePipeline | null = null;
+  private readonly worldAnchorRows = new Map<number, { b: number; local: number[] }>();
+
+  private prepareWorldAnchorPipeline(): void {
+    if (this.worldAnchorPipeline) return;
+    const module = this.device.createShaderModule({ code: worldAnchorPolicyWGSL });
+    const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.layouts.solve, this.layouts.pass] });
+    // Publish only after successful construction: failure owns no buffers/groups and can retry.
+    this.worldAnchorPipeline = this.device.createComputePipeline({ label: 'prepareWorldAnchors', layout, compute: { module, entryPoint: 'prepareWorldAnchors' } });
+  }
   /** @internal Whether setBodyAux applies: built-in shaders (a custom solve module may ignore the record). */
   get supportsBodyAux(): boolean {
     return !this.customShaders && this.integrateGroup !== null;
@@ -1106,6 +1119,8 @@ export class GpuSolver3D {
     if (fixed) {
       write(B_SIZE + 3, 1); write(B_MOMENT, 3);
       this.bodies[index].dynamic = info.dynamic;
+      this.bodies[index].mass = info.mass;
+      this.bodies[index].moments = info.moments;
       this.radiiDirty = true;
       this.device.queue.writeBuffer(this.colorBuffer, index * 4, new Uint32Array([NO_COLOR]));
     }
@@ -1192,14 +1207,14 @@ export class GpuSolver3D {
       f[o + B_VEL + 3] = b.prevVelocityLin[0] * up[0] + b.prevVelocityLin[1] * up[1] + b.prevVelocityLin[2] * up[2];
       f.set(b.velocityAng, o + B_ANGVEL);
       // Masked commands upload no shape lane: retain the actual GPU geometry and hull lease.
-      if (current) return { ...current, dynamic: b.mass > 0 };
+      if (current) return { ...current, mass: Math.fround(b.mass), moments: Array.from(b.moment, Math.fround), dynamic: b.mass > 0 };
       const sphere = isSphere(b);
       const shape = this.hulls ? hullOf(b) : undefined;
       // A slot's old hull goes when nothing else uses it
       if (old && old !== shape) this.releaseHull(old);
       const hullAt = shape ? (old === shape ? this.hullSlots.get(shape)!.offset : this.acquireHull(shape)) : -1;
       f[o + B_ANGVEL + 3] = sphere ? SHAPE_SPHERE : hullAt >= 0 ? SHAPE_HULL + hullAt : isSail(b) ? SHAPE_SAIL : SHAPE_BOX;
-      return { nativeShape: this.nativeShape(b), sensorProofEligible: this.sensorProof && b.mass === 0 && !sphere && !hullOf(b) && !isSail(b) && [...b.velocityLin, ...b.velocityAng].every(v => v === 0), radius: b.radius, dynamic: b.mass > 0, sphere, size: [b.size[0], b.size[1], b.size[2]], hull: shape };
+      return { mass: Math.fround(b.mass), moments: Array.from(b.moment, Math.fround), nativeShape: this.nativeShape(b), sensorProofEligible: this.sensorProof && b.mass === 0 && !sphere && !hullOf(b) && !isSail(b) && [...b.velocityLin, ...b.velocityAng].every(v => v === 0), radius: b.radius, dynamic: b.mass > 0, sphere, size: [b.size[0], b.size[1], b.size[2]], hull: shape };
     }
   }
 
@@ -1573,6 +1588,40 @@ export class GpuSolver3D {
     return slot;
   }
 
+  /** @internal Hard ball joint from a world point to a body-local point, reusing released slots. */
+  appendWorldJoint(b: number, anchorWorld: ArrayLike<number>, anchorBody: ArrayLike<number>, policy: WorldAnchorPolicy = 'legacy'): number {
+    if (this.destroyed) throw new Error('Solver is destroyed');
+    checkWorldAnchorPolicy(policy);
+    if (policy === 'inertial-hard' && !this.supportsNativeSensors) throw new Error('World-anchor policy requires built-in standard shaders');
+    this.checkEndpoints('appendWorldJoint', [{ a: -1, b }]);
+    const copy = (v: ArrayLike<number>): number[] => {
+      if (v == null || v.length !== 3) throw new TypeError('appendWorldJoint: anchors need three finite f32 numbers');
+      const out = [v[0], v[1], v[2]];
+      if (!out.every(x => typeof x === 'number' && Number.isFinite(Math.fround(x)))) throw new TypeError('appendWorldJoint: anchors need three finite f32 numbers');
+      return out;
+    };
+    const rA = copy(anchorWorld), rB = copy(anchorBody);
+    const sb = this.bodies[b].size;
+    const torqueArm = sb[0] ** 2 + sb[1] ** 2 + sb[2] ** 2;
+    if (!Number.isFinite(Math.fround(torqueArm))) throw new RangeError('appendWorldJoint: torque arm must be finite as f32');
+    if (this.fixed && !this.freeSlots.length && this.jointCount >= this.jointCapacity) throw new StorageCapacityError('joints', this.jointCount + 1, this.jointCapacity);
+    if (policy === 'inertial-hard') {
+      checkWorldAnchorCoordinates([0, 0, 0], rA, rB);
+      worldAnchorFloor(this.bodies[b], this.params.dt, rB);
+      this.prepareWorldAnchorPipeline();
+    }
+    const slot = this.appendConstraints(1, (_, o) => {
+      freshJoint(o);
+      o[J_PEN_LIN + 3] = BIG;
+      o.set(rA, J_RA);
+      o.set(rB, J_RB);
+      o[J_LAM_ANG + 3] = torqueArm;
+      return [T_JOINT, -1, b];
+    }, policy === 'inertial-hard' ? WORLD_ANCHOR_INERTIAL_HARD : 0)[0];
+    if (policy === 'inertial-hard') this.worldAnchorRows.set(slot, { b, local: rB });
+    return slot;
+  }
+
   /**
    * Append joints between body pairs in one upload (appendJoint one at a time is a write per
    * joint): each holds `rA` on its first body to `rB` on its second, rigidly (or with `angular`
@@ -1657,7 +1706,7 @@ export class GpuSolver3D {
    * record filled by `fill` (it returns the type and the two bodies), uploaded in a write per
    * run of slots.
    */
-  private appendConstraints(n: number, fill: (k: number, record: Float32Array) => [number, number, number]): number[] {
+  private appendConstraints(n: number, fill: (k: number, record: Float32Array) => [number, number, number], metadata = 0): number[] {
     // Fixed storage: refused before a slot is taken, a count changes or anything is written
     if (this.fixed && n > this.freeSlots.length + this.jointCapacity - this.jointCount) {
       throw new StorageCapacityError('joints', this.jointCount - this.freeSlots.length + n, this.jointCapacity);
@@ -1675,7 +1724,7 @@ export class GpuSolver3D {
     const o = new Float32Array(n * JOINT_FLOATS);
     for (let k = 0; k < n; k++) {
       const [type, a, b] = fill(k, o.subarray(k * JOINT_FLOATS, (k + 1) * JOINT_FLOATS));
-      this.info.set([type, a, b, 0], slots[k] * 4);
+      this.info.set([type, a, b, metadata], slots[k] * 4);
       this.noCollide(a, b, slots[k]);
     }
     for (let k = 0; k < n; ) {
@@ -1698,6 +1747,7 @@ export class GpuSolver3D {
     const order = [...new Set(Array.from(slots))].filter((slot) => slot < this.jointCount && this.info[slot * 4] !== T_NONE).sort((x, y) => x - y);
     if (!order.length) return;
     for (const slot of order) {
+      this.worldAnchorRows.delete(slot);
       this.info.set([T_NONE, -1, -1, 0], slot * 4);
       this.freeSlots.push(slot);
     }
@@ -2060,6 +2110,12 @@ export class GpuSolver3D {
   }
 
   step(options: GpuStepOptions = {}): void {
+    if (this.destroyed) throw new Error('Solver is destroyed');
+    let liveWorldAnchors = false;
+    for (const { b, local } of this.worldAnchorRows.values()) {
+      worldAnchorFloor(this.bodies[b], this.params.dt, local);
+      if (this.bodies[b].dynamic && !(this.lifecycle[b] & BODY_DISABLED)) liveWorldAnchors = true;
+    }
     this.collisionBackend?.prepare(this);
     // An SDF backend writes its own contacts each step; manifold reuse applies to the built-in narrowphase.
     const reuseManifolds = !this.sensorProof && !this.nativeSensors && !this.collisionBackend && !!options.reuseManifolds && this.manifoldsValid && !!this.pipes.reuseManifolds;
@@ -2172,6 +2228,10 @@ export class GpuSolver3D {
     this.setPass(pass, 0);
     if (J > 0) {
       pass.setPipeline(this.pipes.warmStartJoints);
+      pass.dispatchWorkgroups(groups(J));
+    }
+    if (liveWorldAnchors) {
+      pass.setPipeline(this.worldAnchorPipeline!);
       pass.dispatchWorkgroups(groups(J));
     }
     // warmStartBodies binds its own group 0 (integrate layout); group 1 is the same pass
@@ -2291,7 +2351,8 @@ export class GpuSolver3D {
     return new Uint32Array(await this.read(this.pairBuffer, Math.min(pairs, this.pairCapacity) * 8));
   }
 
-  /** Joint slot types and endpoints (type, bodyA, bodyB, 0 per slot). */
+  /** Joint slot types/endpoints/metadata (type, bodyA, bodyB, policy marker).
+   * Metadata v1: 0 legacy; 1 inertial-hard world ball row. Stride remains 16 bytes. */
   jointInfo(): Int32Array {
     return this.info.subarray(0, this.jointCount * 4);
   }
@@ -2376,6 +2437,8 @@ export class GpuSolver3D {
   }
 
   destroy(): void {
+    this.worldAnchorRows.clear();
+    this.worldAnchorPipeline = null;
     this.collisionBackend?.destroy();
     this.collisionBackend = null;
     if (this.ownsBodyBuffer) this.bodyBuffer.destroy();

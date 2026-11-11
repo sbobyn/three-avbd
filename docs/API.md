@@ -23,13 +23,15 @@ The diagram is editable Mermaid; arrows describe source-inspected responsibiliti
 
 ```mermaid
 flowchart TD
-  App[Consumer or examples] --> World[World / Body / Joint]
+  App[Consumer or examples] --> World[World / Body / Joint / WorldJoint]
   World --> Commands[Masked commands, lifetime identity, capacity checks]
   World --> TimeDebt[CPU time debt / droppedTime; not GPU timing]
   Commands --> Aux[Private scale and damping record]
   Aux --> Integrate[Built-in warm-start predictor]
   Integrate --> Solver
   Commands --> Solver[GpuSolver3D.step]
+  Solver --> AnchorPrep[Optional world-anchor preparation after joint warm start]
+  AnchorPrep --> Solve
   Solver --> Collision[Built-in broadphase and narrowphase]
   Mesh[Input triangle mesh or analytic shape] --> Bake[CPU SDF bake / optional worker]
   Bake --> Fields[Fields, seeds, mass and inertia]
@@ -537,6 +539,7 @@ device, settings and provenance must accompany performance claims.
 | `src/comparison/`, `src/results/`, `scripts/` | AVBD/Rapier adapters, quality metrics, benchmark and provenance tools |
 | `examples/` | Public API consumer journeys, including lifecycle/pool/SDF and pose capture/playback; `examples/index.html` is the gallery |
 | `src/gallery/`, `public/gallery/` | Static demo gallery: dependency-free catalog, filters and SVG illustrations ([design](GALLERY_DESIGN.md)) |
+| `src/avbd3d/gpu/world-anchor-policy.ts`, `wgsl-world-anchor-policy.ts` | Private opt-in admission and preparation; `WorldJoint` commands own target/lifetime, legacy rows unchanged |
 | `src/avbd3d/gpu/sensor-preparation.ts`, native activation in `solver.ts` | Lazy native setup, current slot metadata and guarded contacts; public intent is owned by World/Body/pool |
 | `src/avbd2d/experiments/restitution.ts`, `tools/restitution-experiment.ts` | Isolated f64 research wrapper and report; not a public feature or GPU qualification |
 | `tools/qualification*.ts` | Opt-in predeclared three-scene direct-solver observations; separate timers, missing metrics unknown, no timing comparison |
@@ -854,6 +857,48 @@ All World methods accepting body handles reject handles from another World.
   sets are delivered with the next readback, before the new ones.
 
 ### Joints
+
+#### World-point ball joints (current source, 2026-11-11 UTC)
+
+`world.addWorldJoint(body, { anchorWorld, anchorBody?: [0,0,0], policy?: 'legacy' | 'inertial-hard' })`
+returns a separate `WorldJoint`; ordinary `Joint.a/b`, `onBreak` and joint observations keep their types.
+This holds a body-local point at an authored world point while allowing rotation; no hidden fixed body
+or body slot is allocated. `anchorWorld` and `anchorBody` return copies of authored commands, not GPU
+observations. `policy` is read-only. `setWorldAnchor(point)` copies/coalesces a target teleport for the
+next flush; it supplies no target velocity and can inject energy. Read/flush does not step physics.
+`remove()` cancels pending commands or releases its slot; `holding` includes pending handles,
+`suspended` means its body is disabled. Body removal and pool despawn cancel the handle by identity.
+Reset, disable/enable and fixed/dynamic transitions retain the target. Fixed bodies remain prescribed.
+World destruction owns the constraint; a caller's device remains caller-owned.
+
+The omitted/`'legacy'` policy preserves existing solver stabilization, including startup compliance
+and slow retarget error decay. **It failed** the dated 1 mm pendulum and retarget criteria.
+Explicit `'inertial-hard'` prepares only that row after ordinary joint warm start: zero retained C0
+and a penalty floor `max(PENALTY_MIN, mass / dt²)`, preserving existing multiplier decay. It adds one
+lazy pipeline and, while dynamic policy rows exist, one preparation dispatch over joint slots.
+This changes error correction and may inject energy; it is not a kinematic attachment or a universal
+1 mm guarantee. Zero solver iterations do not promise correction. Ordinary joints/default shaders
+and the oracle are unchanged. See [policy rationale](WORLD_ANCHOR_POLICY.md) and
+[dated bounded evidence](measurements/world-anchors-2026-11-11.json).
+
+Built-in **standard backend only**; SDF preparing/on, custom backend/shaders and sensor-proof mode
+for the opt-in refuse. Public SDF enabling refuses while any world-point handle remains; remove them
+first. Direct advanced backend replacement is outside this guarantee. Primitives need eight storage
+buffers; the feature adds no binding or shape support. Native hulls retain their nine-buffer requirement.
+Opt-in authored position/target/local-lever combined extent must be below 256 m. Dynamic mass/inertia,
+reciprocals, inertial floor (at most `PENALTY_MAX`) and required f32 products must be representable;
+unsupported admissions, retargets, dt or fixed/dynamic transitions throw before intent changes.
+The current policy qualification uses a box; sphere/hull-specific policy workloads remain unqualified.
+These guards do not certify arbitrary runtime poses, forces, conflicting constraints or velocities.
+No world-point fracture/plasticity, force listener, spring damping or SDF policy is provided.
+
+Advanced metadata: `jointInfo()` remains four i32 words per slot, now
+`[type, bodyA, bodyB, policy]`. `WORLD_ANCHOR_METADATA_VERSION = 1`,
+`WORLD_ANCHOR_LEGACY = 0`, `WORLD_ANCHOR_INERTIAL_HARD = 1` are exported from `/advanced`.
+Only opted-in world ball rows use 1; legacy/ordinary rows use 0. Readers that required word 3 to be
+zero must recognize this extension; body/joint record strides remain 40 floats, info stride 16 bytes.
+Do not pair a raw-buffer consumer with a different library artifact without compatibility checks.
+
 
 - `addJoint(a, b, { anchorA?, anchorB?, type?, breakForce?, breakOnPull?, rest?, yieldForce?,
   breakBend? })` returns a `Joint`: `type` 'fixed' (rigid, the default) or 'ball' (held at the

@@ -59,6 +59,11 @@ storage. Physics state is transient: the demos do not save editable worlds.
 
 ## First useful session — about 20 minutes
 
+For a small reusable mechanic, extend the existing consumer with the
+[world-point pendulum study](docs/USER_GUIDE.md#world-point-pendulum-study--about-20-minutes):
+explicit opt-in anchoring, impulses, damping, reset and disposal. See its standard-backend
+and bounded-qualification limits; source 0.4.0 remains unpublished.
+
 1. Open `/examples/`: try basic bodies/materials/joints, then lifecycle and body pool examples.
    Expect a box pyramid, falling spheres, convex rocks and a breakable hanging chain in basic.
 2. Open `/sdf.html`, press **Play**, drag a body, drop a shape, then **Pause**. Its 12-body start
