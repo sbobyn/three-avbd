@@ -899,3 +899,7 @@ export const contactsHullWGSL = makeContactsWGSL(true);
 
 /** @internal Experimental standard-contact proof only; bit26 is occupied in SDF. */
 export const sensorProofContactsWGSL = makeContactsTemplate(false, true);
+
+// Private native activation variants; the proof retains its separate host restrictions.
+export const nativeSensorContactsWGSL = makeContactsTemplate(false, true);
+export const nativeSensorContactsHullWGSL = makeContactsTemplate(true, true);

@@ -252,6 +252,52 @@ stationary-box/sphere proof from public lifecycle/pool/shape validation, moving 
 sensors, SDF/hulls, overflow and installed-consumer acceptance. No performance, continuous
 collision, broad physical-correctness, target-device or human acceptance follows.
 
+### Lazy native activation foundation — 2026-11-10, STE-3330 A1
+
+Source: frozen contract `ad6d75b983059be302369d5d40b0a5a438efa32d`, hardware protocol
+`5632b02` and the scoped native-activation patch. [Exact checked-source hashes/results](measurements/native-sensor-activation-2026-11-10.json)
+qualify this internal foundation, not a public sensor API. `World`, `BodyPool`,
+`BodyOptions` and `capabilities.sensors` remain unchanged/false.
+
+```mermaid
+flowchart LR
+  Call[Internal ensureNativeSensors / validated flag batch] --> Check[Current uploaded shape and mode preflight]
+  Check --> Temp[Instance-local temporary pipelines / parity groups]
+  Temp -->|synchronous setup succeeded| Active[Commit lazy native mode and slot flags]
+  Active --> Prepare[Existing five-buffer preparation / guarded native solve]
+  Replace[Full body replacement] --> Clear[Clear replaced native flags]
+  Patch[Masked state or mass patch] --> Keep[Keep uploaded shape / native flags / hull lease]
+```
+
+[`GpuSolver3D.ensureNativeSensors`](../src/avbd3d/gpu/solver.ts) compiles only affected
+contact/primal/dual variants and preparation, preserving the integrate group and existing
+buffers. Temporary setup is committed only after synchronous construction succeeds;
+WebGPU validation/device errors remain the device owner's responsibility. The internal
+`setNativeSensorFlags` validates/copies the whole batch, resolves duplicates with last
+assignment winning, and avoids activation for effective false-only input. Untouched
+solvers keep their default generated shader strings/setup/dispatch; activated solvers
+retain their resources and disable contact/manifold reuse for life. This is not a
+shader-cache or startup/performance claim.
+
+Current uploaded-shape metadata distinguishes boxes, spheres and native hulls from
+sails/fallback hulls; unsupported mixing is refused before activation or full replacement.
+A masked command preserves actual geometry and hull leases, even when its source Rigid
+has an unuploaded shape mark. Full `rewriteBodies`, `rewriteFixed` and `seedFrom` clear
+native flags in replaced slots; append starts false. A later public World implementation
+must restore authored reset/pool flags after full replacement and before physics.
+Aux xyz/w writes preserve one another, and existing DIRTY/DISABLED/COLD semantics remain.
+
+Native hull contacts are selected both when a hull exists at activation and when the
+first hull arrives later. Record strides/storage budgets/default exported sources remain
+unchanged. **A1 refuses every non-null collision backend after activation, even when
+all flags clear.** Owner-safe pipeline switching/SDF transactions remain a coupled-stage
+gate; private guards must never interpret SDF bit26. The separate fixed-box proof's
+restrictions remain intact. No package-barrel export or public sensor capability is added.
+
+The [design and remaining acceptance](SENSORS_DESIGN.md) separate bounded primitive/hull
+source-selection and dynamic-sphere coasting evidence from moving sensors, full native
+geometry/lifecycle/pool/overflow/consumer qualification and human/release acceptance.
+
 ### Isolated restitution research — 2026-11-10, STE-3329
 
 [`restitution.ts`](../src/avbd2d/experiments/restitution.ts) subclasses the f64 2D reference's
@@ -440,7 +486,7 @@ device, settings and provenance must accompany performance claims.
 | `src/comparison/`, `src/results/`, `scripts/` | AVBD/Rapier adapters, quality metrics, benchmark and provenance tools |
 | `examples/` | Public API consumer journeys, including lifecycle/pool/SDF and pose capture/playback; `examples/index.html` is the gallery |
 | `src/gallery/`, `public/gallery/` | Static demo gallery: dependency-free catalog, filters and SVG illustrations ([design](GALLERY_DESIGN.md)) |
-| `src/avbd3d/gpu/sensor-preparation.ts` | Opt-in standard-only internal sensor proof; private aux/contact semantics, no public sensor capability |
+| `src/avbd3d/gpu/sensor-preparation.ts`, native activation in `solver.ts` | Internal proof/lazy native setup, current slot metadata and guarded contacts; no public sensor capability |
 | `src/avbd2d/experiments/restitution.ts`, `tools/restitution-experiment.ts` | Isolated f64 research wrapper and report; not a public feature or GPU qualification |
 | `tools/qualification*.ts` | Opt-in predeclared three-scene direct-solver observations; separate timers, missing metrics unknown, no timing comparison |
 | `tools/world-determinism*.ts` | Opt-in public-World repeatability diagnostic; fixed-storage final fields only, no hidden-state replay guarantee |

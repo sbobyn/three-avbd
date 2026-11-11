@@ -27,8 +27,8 @@ import {
 } from './layout.ts';
 import { hullOf, isSail, isSphere, type HullShape } from '../shapes.ts';
 import { rotate, vec3 } from '../ref/math.ts';
-import { broadphaseWGSL, contactsHullWGSL, contactsWGSL, sensorProofContactsWGSL, refsWGSL } from './wgsl-collision.ts';
-import { solveBodyAuxWGSL, sensorProofSolveWGSL } from './wgsl-solve.ts';
+import { broadphaseWGSL, contactsHullWGSL, contactsWGSL, sensorProofContactsWGSL, nativeSensorContactsWGSL, nativeSensorContactsHullWGSL, refsWGSL } from './wgsl-collision.ts';
+import { solveBodyAuxWGSL, sensorProofSolveWGSL, nativeSensorSolveWGSL } from './wgsl-solve.ts';
 import { LARGE_FACTOR, largestSmall } from './radii.ts';
 import { IGNORE_SLOT, NoCollideTable } from './no-collide.ts';
 import { type FixedStoragePlan, hullVec4s as hullSize, StorageCapacityError } from '../../lib/storage-budget.ts';
@@ -273,6 +273,7 @@ export interface GpuSolverOptions {
 /** Per-body static data the host needs: broadphase radius and whether the body moves. */
 interface BodyInfo {
   sensorProofEligible: boolean;
+  nativeShape: 'box' | 'sphere' | 'hull' | 'unsupported';
   radius: number;
   dynamic: boolean;
   sphere: boolean;
@@ -595,11 +596,12 @@ export class GpuSolver3D {
     return this.filterBuffer;
   }
   private readonly sensorProof: boolean;
-  private readonly sensorFlags: Uint8Array;
+  private sensorFlags: Uint8Array;
+  private nativeSensors = false;
   private sensorLayout: GPUBindGroupLayout | null = null;
   private sensorGroups: GPUBindGroup[] = [];
   /**
-   * @internal Per body slot: gravity/damping, and numeric w=0/1 only in sensorProof mode.
+   * @internal Per body slot: gravity/damping, and numeric w=0/1 in activated native or sensorProof mode.
    * Allocated once at bodyCapacity; never read back or grown.
    */
   private readonly auxBuffer: GPUBuffer;
@@ -1064,23 +1066,24 @@ export class GpuSolver3D {
 
   /** Pack reference bodies into GPU records and upload them in one write, starting at `first`. */
   private writeBodies(first: number, bodies: Rigid[], resetContacts = true): void {
+    if (this.nativeSensors) for (const b of bodies) this.assertNativeShape(this.nativeShape(b));
     this.manifoldsValid = false;
     const f = new Float32Array(Math.max(bodies.length, 1) * BODY_FLOATS);
     bodies.forEach((b, k) => {
       const info = this.pack(b, f, k * BODY_FLOATS, this.bodies[first + k]?.hull);
-      if (!resetContacts) f[k * BODY_FLOATS + B_INITIAL_POS + 3] = 0;
+      if (!resetContacts) f[k * BODY_FLOATS + B_INITIAL_POS + 3] = this.nativeSensors ? BODY_DIRTY | this.lifecycle[first + k] : 0;
       else this.lifecycle[first + k] = 0;
       if (this.bodies[first + k]?.radius !== info.radius || this.bodies[first + k]?.dynamic !== info.dynamic) this.radiiDirty = true;
       this.bodies[first + k] = info;
+      if (this.nativeSensors) this.writeNativeFlag(first + k, false);
     });
     this.device.queue.writeBuffer(this.bodyBuffer, first * BODY_FLOATS * 4, f, 0, bodies.length * BODY_FLOATS);
   }
 
   /** Masked public-body command. Preserve all unrelated lanes and the existing hull slot. */
   patchBody(index: number, fields: ReadonlySet<BodyField>, body: Rigid, fixed = false, marker = true): void {
-    this.preflightHulls(1, () => index, () => body);
     const f = new Float32Array(BODY_FLOATS);
-    const info = this.pack(body, f, 0, this.bodies[index]?.hull);
+    const info = this.pack(body, f, 0, this.bodies[index]?.hull, this.bodies[index]);
     const write = (offset: number, count: number) => this.device.queue.writeBuffer(this.bodyBuffer, (index * BODY_FLOATS + offset) * 4, f, offset, count);
     if (fields.has('position')) {
       for (const offset of [B_POS, B_INITIAL_POS, B_INERTIAL_POS]) {
@@ -1145,6 +1148,7 @@ export class GpuSolver3D {
         for (let a = 0; a < 3; a++) f[o + B_POS + a] = positions[3 * i + a];
         if (rotations) for (let a = 0; a < 4; a++) f[o + B_ROT + a] = rotations[4 * i + a];
         this.lifecycle[indices[i]] = 0;
+        if (this.nativeSensors) this.writeNativeFlag(indices[i], false);
         const was = this.bodies[indices[i]];
         if (was?.radius !== info.radius || was?.dynamic !== info.dynamic) this.radiiDirty = true;
         // Boxes now: a hull the slot collided as goes when nothing else uses it
@@ -1161,7 +1165,7 @@ export class GpuSolver3D {
    * A body's floats into `f` at `o`; returns what the CPU keeps of it. `old`: the hull the slot
    * collided as before (released if the body no longer uses it).
    */
-  private pack(b: Rigid, f: Float32Array, o: number, old?: HullShape): BodyInfo {
+  private pack(b: Rigid, f: Float32Array, o: number, old?: HullShape, current?: BodyInfo): BodyInfo {
     {
       f.set(b.positionLin, o + B_POS);
       f[o + B_POS + 3] = b.friction;
@@ -1181,13 +1185,15 @@ export class GpuSolver3D {
       const up = this.params.up;
       f[o + B_VEL + 3] = b.prevVelocityLin[0] * up[0] + b.prevVelocityLin[1] * up[1] + b.prevVelocityLin[2] * up[2];
       f.set(b.velocityAng, o + B_ANGVEL);
+      // Masked commands upload no shape lane: retain the actual GPU geometry and hull lease.
+      if (current) return { ...current, dynamic: b.mass > 0 };
       const sphere = isSphere(b);
       const shape = this.hulls ? hullOf(b) : undefined;
       // A slot's old hull goes when nothing else uses it
       if (old && old !== shape) this.releaseHull(old);
       const hullAt = shape ? (old === shape ? this.hullSlots.get(shape)!.offset : this.acquireHull(shape)) : -1;
       f[o + B_ANGVEL + 3] = sphere ? SHAPE_SPHERE : hullAt >= 0 ? SHAPE_HULL + hullAt : isSail(b) ? SHAPE_SAIL : SHAPE_BOX;
-      return { sensorProofEligible: this.sensorProof && b.mass === 0 && !sphere && !hullOf(b) && !isSail(b) && [...b.velocityLin, ...b.velocityAng].every(v => v === 0), radius: b.radius, dynamic: b.mass > 0, sphere, size: [b.size[0], b.size[1], b.size[2]], hull: shape };
+      return { nativeShape: this.nativeShape(b), sensorProofEligible: this.sensorProof && b.mass === 0 && !sphere && !hullOf(b) && !isSail(b) && [...b.velocityLin, ...b.velocityAng].every(v => v === 0), radius: b.radius, dynamic: b.mass > 0, sphere, size: [b.size[0], b.size[1], b.size[2]], hull: shape };
     }
   }
 
@@ -1351,7 +1357,7 @@ export class GpuSolver3D {
     // Fixed: refused before anything changes (the hull pipeline compiled, the allocator)
     if (!slot && this.fixed) this.fixedHullFit(this.hullFree, this.hullTop, hullSize(shape));
     if (!this.hullShaders && !this.contactShaders.custom) {
-      this.contactShaders.make(contactsHullWGSL);
+      this.contactShaders.make(this.nativeSensors ? nativeSensorContactsHullWGSL : contactsHullWGSL);
       this.hullShaders = true;
     }
     if (slot) {
@@ -1449,6 +1455,7 @@ export class GpuSolver3D {
    * against a copy of the allocator, so a batch that frees space before it takes some fits.
    */
   private preflightHulls(count: number, slot: (k: number) => number, body: (k: number) => Rigid): void {
+    if (this.nativeSensors) for (let k = 0; k < count; k++) this.assertNativeShape(this.nativeShape(body(k)));
     if (!this.fixed || !this.hulls) return;
     let sim: { slots: Map<HullShape, HullSlot>; free: HullBlock[]; top: number; written: Map<number, HullShape | undefined> } | null = null;
     for (let k = 0; k < count; k++) {
@@ -1768,12 +1775,12 @@ export class GpuSolver3D {
       if (e - k === 1 && !rates) {
         this.device.queue.writeBuffer(this.auxBuffer, indices[k] * stride + A_GRAVITY_SCALE * 4, new Float32Array([scales[k]]));
       } else {
-        // Whole records for a run: default rates when not given; retain the private proof flag.
+        // Whole records for a run: default rates when not given; retain the private sensor flag.
         const f = new Float32Array((e - k) * BODY_AUX_FLOATS);
         for (let i = k; i < e; i++) {
           const at = (i - k) * BODY_AUX_FLOATS;
           f.set(BODY_AUX_DEFAULT, at);
-          if (this.sensorProof) f[at + 3] = this.sensorFlags[indices[i]];
+          if (this.sensorProof || this.nativeSensors) f[at + 3] = this.sensorFlags[indices[i]];
           f[at + A_GRAVITY_SCALE] = scales[i];
           if (rates) { f[at + A_LINEAR_DAMPING] = linear[i]; f[at + A_ANGULAR_DAMPING] = angular[i]; }
         }
@@ -1781,6 +1788,71 @@ export class GpuSolver3D {
       }
       k = e;
     }
+  }
+
+  private nativeShape(body: Rigid): BodyInfo['nativeShape'] {
+    if (isSail(body)) return 'unsupported';
+    if (hullOf(body)) return this.hulls ? 'hull' : 'unsupported';
+    return isSphere(body) ? 'sphere' : 'box';
+  }
+
+  private assertNativeShape(shape: BodyInfo['nativeShape']): void {
+    if (shape === 'unsupported') throw new Error('Native sensors require standard boxes, spheres or native hulls');
+  }
+
+  /** @internal Lazy built-in standard setup. Synchronous exceptions leave the solver unchanged.
+   * Device validation errors remain the device owner's responsibility. */
+  ensureNativeSensors(): void {
+    if (this.destroyed) throw new Error('Solver is destroyed');
+    if (this.sensorProof || this.customShaders || this.collisionBackend) throw new Error('Native sensors require built-in standard shaders, outside sensorProof');
+    if (this.nativeSensors) return;
+    for (const body of this.bodies) this.assertNativeShape(body.nativeShape);
+    const d = this.device, L = this.layouts;
+    const pipes: Record<string, GPUComputePipeline> = {};
+    const make = (code: string, layouts: GPUBindGroupLayout[], entries: string[]) => {
+      const module = d.createShaderModule({ code });
+      const layout = d.createPipelineLayout({ bindGroupLayouts: layouts });
+      for (const entryPoint of entries) pipes[entryPoint] = d.createComputePipeline({ label: entryPoint, layout, compute: { module, entryPoint } });
+    };
+    make(this.hullShaders ? nativeSensorContactsHullWGSL : nativeSensorContactsWGSL, [L.contacts], ['narrowphase']);
+    make(nativeSensorSolveWGSL, [L.solve, L.pass], ['primal', 'dual', 'primalSparse']);
+    const types: GPUBufferBindingType[] = ['uniform', 'read-only-storage', 'read-only-storage', 'read-only-storage', 'read-only-storage', 'storage'];
+    const layout = d.createBindGroupLayout({ label: 'sensor preparation', entries: types.map((type, binding) => ({ binding, visibility: GPUShaderStage.COMPUTE, buffer: { type } })) });
+    make(sensorPreparationWGSL, [layout], ['prepareSensors']);
+    const groups = [0, 1].map(i => d.createBindGroup({ layout, entries: [this.paramsBuffer, this.bodyBuffer, this.auxBuffer, this.manifoldBuffers[i], this.counterBuffer, this.contactBuffers[i]].map((buffer, binding) => ({ binding, resource: { buffer } })) }));
+    const flags = new Uint8Array(this.bodyCapacity);
+    Object.assign(this.pipes, pipes);
+    this.sensorLayout = layout;
+    this.sensorGroups = groups;
+    this.sensorFlags = flags;
+    this.nativeSensors = true;
+    this.manifoldsValid = false;
+  }
+
+  private writeNativeFlag(index: number, flag: boolean): void {
+    const value = Number(flag);
+    if (this.sensorFlags[index] === value) return;
+    this.sensorFlags[index] = value;
+    this.device.queue.writeBuffer(this.auxBuffer, index * BODY_AUX_FLOATS * 4 + 12, new Float32Array([value]));
+    this.device.queue.writeBuffer(this.bodyBuffer, (index * BODY_FLOATS + B_INITIAL_POS + 3) * 4, new Float32Array([BODY_DIRTY | this.lifecycle[index]]));
+    this.manifoldsValid = false;
+  }
+
+  /** @internal Atomic copied batch; full replacements clear these slot flags. */
+  setNativeSensorFlags(indices: ArrayLike<number>, flags: ArrayLike<boolean>): void {
+    if (this.destroyed) throw new Error('Solver is destroyed');
+    if (this.sensorProof || this.customShaders || this.collisionBackend) throw new Error('Native sensors require built-in standard shaders, outside sensorProof');
+    const slots = Array.from(indices), values = Array.from(flags);
+    if (slots.length !== values.length) throw new Error('One sensor boolean per index');
+    for (let k = 0; k < slots.length; k++) {
+      const i = slots[k];
+      if (!Number.isInteger(i) || i < 0 || i >= this.bodyCount || typeof values[k] !== 'boolean') throw new Error('Invalid sensor boolean/index');
+      this.assertNativeShape(this.bodies[i].nativeShape);
+    }
+    const batch = new Map(slots.map((i, k) => [i, values[k]]));
+    if (!this.nativeSensors && ![...batch.values()].some(Boolean)) return;
+    this.ensureNativeSensors();
+    for (const [i, flag] of batch) this.writeNativeFlag(i, flag);
   }
 
   /** @internal Experimental proof hook. CPU flags are copied; no public lifecycle promise. */
@@ -1837,7 +1909,7 @@ export class GpuSolver3D {
     f[3] = p.betaAng;
     f[4] = p.gamma;
     f[5] = p.alpha;
-    u[6] = (p.matchNearest ? FLAG_MATCH_NEAREST : 0) | (p.faceBias ? FLAG_FACE_BIAS : 0) | (!this.sensorProof && p.reuseContacts ? FLAG_REUSE_CONTACTS : 0) | (p.startAtRest ? FLAG_START_AT_REST : 0) | (p.massPenalty ? FLAG_MASS_PENALTY : 0) | (reuseManifolds ? FLAG_REUSE_MANIFOLDS : 0) | (this.useSparseColors ? FLAG_SPARSE_COLORS : 0);
+    u[6] = (p.matchNearest ? FLAG_MATCH_NEAREST : 0) | (p.faceBias ? FLAG_FACE_BIAS : 0) | (!this.sensorProof && !this.nativeSensors && p.reuseContacts ? FLAG_REUSE_CONTACTS : 0) | (p.startAtRest ? FLAG_START_AT_REST : 0) | (p.massPenalty ? FLAG_MASS_PENALTY : 0) | (reuseManifolds ? FLAG_REUSE_MANIFOLDS : 0) | (this.useSparseColors ? FLAG_SPARSE_COLORS : 0);
     u[7] = this.bodyCount;
     u[8] = this.jointCount;
     u[9] = this.colorCap;
@@ -1931,6 +2003,8 @@ export class GpuSolver3D {
   /** Reject before allocating/destroying a backend that cannot interpret lifecycle state. */
   assertBackendSwitchAllowed(): void {
     if (this.sensorProof) throw new Error('sensorProof refuses collision backends');
+    // A1 keeps the private solve pipelines for life, even with all flags clear. SDF owns bit26.
+    if (this.nativeSensors) throw new Error('Native sensors refuse collision backends');
     if (this.fixed) throw new Error('Fixed storage: collision backends are not available (a fixed solver keeps the standard narrowphase; use adaptive storage for SDF collisions)');
     if (this.lifecycle.some(bits => bits !== 0) || this.lifecyclePending?.()) throw new Error('Submit an enabled standard step before switching collision backends: pending body lifecycle state');
   }
@@ -1982,7 +2056,7 @@ export class GpuSolver3D {
   step(options: GpuStepOptions = {}): void {
     this.collisionBackend?.prepare(this);
     // An SDF backend writes its own contacts each step; manifold reuse applies to the built-in narrowphase.
-    const reuseManifolds = !this.sensorProof && !this.collisionBackend && !!options.reuseManifolds && this.manifoldsValid && !!this.pipes.reuseManifolds;
+    const reuseManifolds = !this.sensorProof && !this.nativeSensors && !this.collisionBackend && !!options.reuseManifolds && this.manifoldsValid && !!this.pipes.reuseManifolds;
     if (this.radiiDirty || this.noCollideTable.dirty) this.uploadStatics();
     const p = this.params;
     if (this.fixedColors) {
@@ -2046,7 +2120,7 @@ export class GpuSolver3D {
         manifolds: this.manifoldBuffers[cur],
       });
     } else {
-      if (!this.sensorProof && p.reuseContacts) this.run(pass, 'updateRefs', G.refs, groups(N));
+      if (!this.sensorProof && !this.nativeSensors && p.reuseContacts) this.run(pass, 'updateRefs', G.refs, groups(N));
       this.run(pass, 'argsPrev', G.args, 1);
       if (reuseManifolds) {
         this.runIndirect(pass, 'reuseManifolds', G.contacts[cur], IA_PREV);
@@ -2062,7 +2136,7 @@ export class GpuSolver3D {
       }
     }
     this.run(pass, 'argsContacts', G.args, 1);
-    if (this.sensorProof) this.runIndirect(pass, 'prepareSensors', this.sensorGroups[cur], IA_CONTACTS);
+    if (this.sensorProof || this.nativeSensors) this.runIndirect(pass, 'prepareSensors', this.sensorGroups[cur], IA_CONTACTS);
 
     // Adjacency
     beginPhase();
@@ -2191,7 +2265,7 @@ export class GpuSolver3D {
         out.push({
           a: mu[o],
           b: mu[o + 1],
-          feature: (key & ~(STICK_BIT | SDF_ROLLING_BIT | (this.sensorProof && !this.collisionBackend ? STANDARD_SENSOR_BIT : 0))) >>> 0,
+          feature: (key & ~(STICK_BIT | SDF_ROLLING_BIT | ((this.sensorProof || this.nativeSensors) && !this.collisionBackend ? STANDARD_SENSOR_BIT : 0))) >>> 0,
           stick: (key & STICK_BIT) !== 0,
           rolling: (key & SDF_ROLLING_BIT) !== 0,
           rA: [...cf.subarray(k + K_RA, k + K_RA + 3)],

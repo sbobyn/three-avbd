@@ -8,7 +8,7 @@ import { assessAdapter } from '../src/comparison/interlocking-trial.ts';
 import { GpuSolver3D } from '../src/avbd3d/gpu/solver.ts';
 import { Solver } from '../src/avbd3d/ref/solver.ts';
 import { Rigid } from '../src/avbd3d/ref/body.ts';
-import { sphere } from '../src/avbd3d/shapes.ts';
+import { sphere, hull, convexHull } from '../src/avbd3d/shapes.ts';
 import { ContactWatch, BEGIN, END, type RawContactEvent } from '../src/lib/contacts.ts';
 import { B_POS, B_VEL, B_ANGVEL, BODY_FLOATS, CONTACT_WORDS, K_RA, K_LAM, K_PEN, STICK_BIT, BODY_DISABLED } from '../src/avbd3d/gpu/layout.ts';
 import { STANDARD_SENSOR_BIT } from '../src/avbd3d/gpu/sensor-preparation.ts';
@@ -19,17 +19,26 @@ const near=(actual:number,expected:number,why:string)=>{
   assert.ok(Number.isFinite(actual),why+': finite');
   assert.ok(Math.abs(actual-expected)<=Math.max(1e-6,Math.abs(expected)*1e-4), `${why}: ${actual} vs ${expected}`);
 };
-function fixture(device:GPUDevice, options:{control?:boolean;swap?:boolean;report?:'sensor'|'partner'|'none';iterations?:number;ordinary?:boolean;custom?:boolean}={}) {
+function fixture(device:GPUDevice, options:{control?:boolean;swap?:boolean;report?:'sensor'|'partner'|'none';iterations?:number;ordinary?:boolean;custom?:boolean;native?:boolean;hull?:'early'|'late'}={}) {
   const ref=new Solver(); ref.gravity=0; ref.dt=DT;
-  const addBox=()=>new Rigid(ref,[1,4,4],0,0.5,[0,0,0]);
+  const cube = () => { const shape=convexHull(new Float32Array([-0.5,-0.5,-0.5, -0.5,-0.5,0.5, -0.5,0.5,-0.5, -0.5,0.5,0.5, 0.5,-0.5,-0.5, 0.5,-0.5,0.5, 0.5,0.5,-0.5, 0.5,0.5,0.5])); assert.ok(shape); return shape; };
+  const addBox=()=>options.hull==='early'?hull(ref,cube(),0,0.5,[0,0,0]):new Rigid(ref,[1,4,4],0,0.5,[0,0,0]);
   const addSphere=()=>sphere(ref,1/8,1,0.5,[-2,0,0],[2,0,0]);
   let box:Rigid,ball:Rigid;
   if(options.swap){ball=addSphere();box=addBox();}else{box=addBox();ball=addSphere();}
-  const gpu=new GpuSolver3D(device,ref,{hulls:false,spatialSort:false,bodyCapacity:2,sensorProof:!options.ordinary,...(options.custom?{shaders:{solve:solveWGSL,contacts:contactsWGSL}}:{})});
+  const gpu=new GpuSolver3D(device,ref,{hulls:!!options.hull,spatialSort:false,bodyCapacity:2,sensorProof:!options.ordinary&&!options.native,...(options.custom?{shaders:{solve:solveWGSL,contacts:contactsWGSL}}:{})});
   gpu.params.gravity=0; gpu.params.up=[0,1,0];
   if(options.iterations!==undefined)gpu.params.iterations=options.iterations;
   const boxSlot=options.swap?1:0,ballSlot=1-boxSlot;
-  if(!options.ordinary)gpu.setSensorFlags([boxSlot],[!options.control]);
+  if(options.hull==='late') {
+    gpu.ensureNativeSensors();
+    box=hull(new Solver(),cube(),0,0.5,[0,0,0]);
+    gpu.rewriteBodies([boxSlot],[box]);
+  }
+  if(!options.ordinary) {
+    if(options.native)gpu.setNativeSensorFlags([boxSlot],[!options.control]);
+    else gpu.setSensorFlags([boxSlot],[!options.control]);
+  }
   if (options.custom) assert.throws(() => gpu.setBodyAux([0,1],[1,1],[0,0],[0,0]), /built-in solve shaders/);
   else gpu.setBodyAux([0,1],[1,1],[0,0],[0,0]);
   if(options.control)gpu.setFilters([boxSlot],[1],[0]);
@@ -62,8 +71,9 @@ async function assertRawZero(device:GPUDevice,gpu:GpuSolver3D,expected:boolean) 
   const decoded=await gpu.readContactList();
   assert.ok(decoded.every(c=>c.feature===(3<<24)), 'standard proof decoder hides only marker');
 }
-async function flight(device:GPUDevice,report:'sensor'|'partner'|'none',swap=false,iterations?:number) {
-  const a=fixture(device,{report,swap,iterations}),b=fixture(device,{control:true,report:'none',swap,iterations});
+async function flight(device:GPUDevice,report:'sensor'|'partner'|'none',swap=false,iterations?:number, activation?:'native'|'native-hull-early'|'native-hull-late') {
+  const mode={native:activation!==undefined,hull:activation==='native-hull-early'?'early' as const:activation==='native-hull-late'?'late' as const:undefined};
+  const a=fixture(device,{report,swap,iterations,...mode}),b=fixture(device,{control:true,report:'none',swap,iterations,...mode});
   const events:RawContactEvent[]=[];
   try {
     assert.equal(a.boxSlot,swap?1:0);assert.equal(a.ballSlot,swap?0:1);
@@ -94,18 +104,19 @@ async function flight(device:GPUDevice,report:'sensor'|'partner'|'none',swap=fal
     assert.deepEqual(end.point,[0,0,0]);assert.deepEqual(end.normal,[0,0,0]);
   }finally{a.destroy();b.destroy();}
 }
-async function lifecycleAndToggle(device:GPUDevice) {
-  const f=fixture(device,{report:'partner'});
+async function lifecycleAndToggle(device:GPUDevice,native=false) {
+  const f=fixture(device,{report:'partner',native});
+  const setFlag=(flag:boolean)=>native?f.gpu.setNativeSensorFlags([0],[flag]):f.gpu.setSensorFlags([0],[flag]);
   try {
     // Establish a real force-bearing old contact before enabling the proof flag.
-    f.gpu.setSensorFlags([0],[false]);
+    setFlag(false);
     f.ball.positionLin.set([-0.55,0,0]);f.ball.velocityLin.fill(0);
     f.gpu.patchBody(1,new Set(['position','velocity']),f.ball);
     f.gpu.step();
     const old=await f.gpu.readContactList();assert.ok(old.some(c=>c.lam.some(v=>v!==0)&&c.pen.some(v=>v!==0)), 'old contact carries force and penalty');
     // Restore a known detecting pose. Flag changes must invalidate all history.
     f.gpu.patchBody(1,new Set(['position','velocity']),f.ball);
-    f.gpu.setSensorFlags([0],[true]);f.gpu.step({reuseManifolds:true});await assertRawZero(device,f.gpu,true);
+    setFlag(true);f.gpu.step({reuseManifolds:true});await assertRawZero(device,f.gpu,true);
     let step=1;
     const observe=async()=>{f.gpu.step({reuseManifolds:true});f.watch.run(f.gpu.contactStorage,f.gpu.manifoldCapacity,step++,DT);return (await f.watch.read()).events;};
     assert.equal((await observe())[0]?.kind,BEGIN);
@@ -116,7 +127,7 @@ async function lifecycleAndToggle(device:GPUDevice) {
     f.gpu.setFilters([1],[0x80000000],[0]);assert.equal((await observe())[0]?.kind,END);
     f.gpu.setFilters([1],[0x80000000],[0x80000000]);assert.equal((await observe())[0]?.kind,BEGIN);
     await assertRawZero(device,f.gpu,true);
-    f.gpu.setSensorFlags([0],[false]);f.gpu.step({reuseManifolds:true});
+    setFlag(false);f.gpu.step({reuseManifolds:true});
     assert.ok((await f.gpu.readContactList()).some(c=>c.pen.some(v=>v>0)), 'turning off restores ordinary response from fresh detection');
   }finally{f.destroy();}
 }
@@ -136,4 +147,66 @@ test('qualified default-eight device: frozen flight/events/raw response, reporti
     try { for(let i=0;i<64;i++){a.gpu.step();b.gpu.step();} assert.deepEqual(await a.gpu.readBodies(),await b.gpu.readBodies()); }finally{a.destroy();b.destroy();}
     assert.equal(await device.popErrorScope(),null);await device.queue.onSubmittedWorkDone();assert.deepEqual(errors,[]);
   }finally{device.destroy();}
+});
+
+
+async function ownedHardware(t: {diagnostic(message:string):void}, storage:8|9, run:(device:GPUDevice)=>Promise<void>) {
+  const adapter=await createGpu().requestAdapter();assert.ok(adapter);
+  const assessment=assessAdapter(adapter.info,(adapter as GPUAdapter & {isFallbackAdapter?:boolean}).isFallbackAdapter);
+  assert.equal(assessment.ok,true,'qualified hardware required');
+  const device=await adapter.requestDevice({requiredLimits:{maxStorageBuffersPerShaderStage:storage}});
+  const errors:string[]=[];device.onuncapturederror=e=>errors.push(e.error.message);
+  t.diagnostic(JSON.stringify({at:new Date().toISOString(),assessment,deviceStorageLimit:device.limits.maxStorageBuffersPerShaderStage}));
+  try {
+    assert.equal(device.limits.maxStorageBuffersPerShaderStage,storage);device.pushErrorScope('validation');
+    await run(device);await device.queue.onSubmittedWorkDone();assert.equal(await device.popErrorScope(),null);assert.deepEqual(errors,[]);
+  } finally { device.destroy(); }
+}
+
+test('lazy native eight-buffer activation preserves frozen flight/events and toggle criteria', {skip},async t=>{
+  await ownedHardware(t,8,async device=>{
+    await flight(device,'sensor',false,undefined,'native');
+    await flight(device,'none',false,undefined,'native');
+    await flight(device,'partner',false,undefined,'native');
+    await flight(device,'sensor',true,undefined,'native');
+    await flight(device,'sensor',false,0,'native');
+    await lifecycleAndToggle(device,true);
+  });
+});
+
+test('native hull contact source works before activation and on later first acquisition', {skip},async t=>{
+  await ownedHardware(t,9,async device=>{
+    await flight(device,'sensor',false,undefined,'native-hull-early');
+    await flight(device,'sensor',false,undefined,'native-hull-late');
+  });
+});
+
+test('native dynamic sensor and sensor-sensor spheres coast without contact response', {skip},async t=>{
+  await ownedHardware(t,8,async device=>{
+    for(const flags of [[true,false],[true,true]]) {
+      const make=(control:boolean)=>{
+        const ref=new Solver();ref.gravity=0;ref.dt=DT;
+        sphere(ref,0.5,1,0.5,[-0.375,0,0],[1,0,0]);sphere(ref,0.5,1,0.5,[0.375,0,0],[-1,0,0]);
+        const gpu=new GpuSolver3D(device,ref,{hulls:false,spatialSort:false,bodyCapacity:2});
+        gpu.params.gravity=0;gpu.params.up=[0,1,0];
+        if(control)gpu.setFilters([0],[1],[0]);else gpu.setNativeSensorFlags([0,1],flags);
+        return gpu;
+      };
+      const sensor=make(false),control=make(true);
+      try {
+        for(let step=1;step<=16;step++) {
+          sensor.step({reuseManifolds:true});control.step({reuseManifolds:true});
+          const [actual,expected]=await Promise.all([sensor.readBodies(),control.readBodies()]);
+          for(let i=0;i<2;i++)for(let axis=0;axis<3;axis++) {
+            const at=i*BODY_FLOATS,velocity=i===0?1:-1,start=i===0?-0.375:0.375;
+            near(actual[at+B_POS+axis],expected[at+B_POS+axis],'dynamic masked position');
+            near(actual[at+B_VEL+axis],expected[at+B_VEL+axis],'dynamic masked velocity');
+            near(actual[at+B_POS+axis],axis===0?start+velocity*step*DT:0,'dynamic analytic position');
+            near(actual[at+B_VEL+axis],axis===0?velocity:0,'dynamic analytic velocity');
+          }
+          await assertRawZero(device,sensor,true);
+        }
+      } finally { sensor.destroy();control.destroy(); }
+    }
+  });
 });

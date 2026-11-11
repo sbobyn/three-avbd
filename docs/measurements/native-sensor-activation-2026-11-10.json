@@ -1,0 +1,135 @@
+{
+  "schema": "three-avbd.native-sensor-activation/v1",
+  "generatedAt": "2026-11-11T01:36:56.125229+00:00",
+  "source": {
+    "contractCommit": "ad6d75b983059be302369d5d40b0a5a438efa32d",
+    "hardwareProtocolCommit": "5632b021e506bf1e79f3618f68114a4f0bc016c2",
+    "branch": "feat/ste-3330-native-activation-20261110",
+    "dirty": true,
+    "sha256": {
+      "src/avbd3d/gpu/solver.ts": "c5102863bcb967549d03c6eb82af899326ffceb592b13668708d9a74551e883f",
+      "src/avbd3d/gpu/wgsl-collision.ts": "e182960c2d76ee7b78f240c34696f4a5a1c3285311440f3b9f5f8a01ed25c140",
+      "src/avbd3d/gpu/wgsl-solve.ts": "c1a0c08f0e2f50f423299758e1c59efbe7c79531f7f8f2f33535c7cecff55189",
+      "tests/sensor-preparation.test.ts": "e51122fbdb52fa7fd90a189a2d75b00e4bd951d619bafa7fe28837cec648d0a9",
+      "tests-gpu/sensors.gpu.test.ts": "9c42e63eede373620c2b026264deaa99a0847b9ef65a4d3af92fb00036cc5eee"
+    },
+    "qualification": "protocol commits plus exact hashed overlay; merge does not rewrite run provenance"
+  },
+  "environment": {
+    "node": "25.2.1",
+    "dawnWebgpu": "0.6.1",
+    "three": "0.187.0",
+    "adapter": "Apple M4 Max / apple / metal-3, Metal on macOS26.6.2 build25G83",
+    "fallback": "preflight copied identity reported null; dedicated native fixture assessAdapter records isFallbackAdapter false",
+    "deviceStorageLimits": [
+      8,
+      9
+    ],
+    "rendering": "not run; compute/readback only"
+  },
+  "checks": {
+    "cpu": {
+      "pass": 61,
+      "fail": 0,
+      "skip": 0,
+      "files": [
+        "sensor-preparation",
+        "gravity-scale",
+        "damping",
+        "lifecycle",
+        "capabilities"
+      ]
+    },
+    "gpu": {
+      "pass": 159,
+      "fail": 0,
+      "skip": 0,
+      "files": [
+        "sensors",
+        "hulls",
+        "avbd3d-gpu",
+        "gravity-scale",
+        "damping",
+        "step-allocations",
+        "lib-lifecycle",
+        "body-commands",
+        "world-contracts",
+        "world-observations",
+        "pool",
+        "lib",
+        "sdf-world",
+        "comparison"
+      ],
+      "isolation": "default per-file processes, test-concurrency1, actual hardware preflight in each"
+    },
+    "typecheck": "passed",
+    "libraryBuild": "passed",
+    "siteBuild": "passed; existing chunk-size warning retained",
+    "fullGate": "not rerun under same-day user daily limit; affected shared host/hull ownership/default paths checked above",
+    "localPackage": {
+      "version": "0.4.0",
+      "sha256": "6790a9b8ed504ec3769693e2529393805607f2ce69ebf9b42a3165c6597ed72c",
+      "bytes": 396283,
+      "entries": 276,
+      "sourceBase": "5632b02",
+      "dirty": true,
+      "overlay": "reviewed native activation source + duplicate-final-false fix; final source hashes in dated record",
+      "dependencies": "existing local compatible peers linked; no install/download/publication"
+    },
+    "packedFiveEsmImports": [
+      {
+        "entry": "three-avbd",
+        "exports": 14
+      },
+      {
+        "entry": "three-avbd/sdf",
+        "exports": 11
+      },
+      {
+        "entry": "three-avbd/advanced",
+        "exports": 53
+      },
+      {
+        "entry": "three-avbd/queries",
+        "exports": 2
+      },
+      {
+        "entry": "three-avbd/pool",
+        "exports": 1
+      }
+    ],
+    "packedStrictTypes": "passed with skipLibCheck false, internal activation/boolean batches, no public Body sensor option; local peer links, not fresh registry install"
+  },
+  "boundedHardwareResults": {
+    "oldProof": "unchanged frozen eight-buffer fixture passed",
+    "lazyPrimitive": "five128-step dt1/64 arms passed frozen begin45/end86, point/normal, zero raw response, analytic/masked-control motion, no-report/partner/swap/iterations0 and lifecycle toggles",
+    "nativeHull": "nine-storage unit-cube trigger/sphere128-step fixture passes exact same event/motion bounds for hull present before activation and first acquisition after activation",
+    "dynamicSpheres": "eight-storage two radius0.5 spheres at\u00b10.375, velocities\u00b11, gravity0,16steps dt1/64; flags[true,false] and[true,true] coast within frozen masked/analytic bounds with zero raw lambda/penalty",
+    "observations": "test assertions; no separate trajectory capture or performance comparison"
+  },
+  "reviewCorrections": [
+    {
+      "kind": "source bug",
+      "detail": "duplicate batch [true,false] caused setup despite final false. New test failed before correction; resolve duplicates before deciding activation. Preserved duplicate-before.log."
+    },
+    {
+      "kind": "fixture type error",
+      "detail": "parent unit-cube factory omitted assert on nullable convexHull. Static errors retained in typecheck-fixture-nullability.log; assertion added, final typecheck/GPU batch pass. No geometry/tolerance changed."
+    }
+  ],
+  "contracts": [
+    "lazy per-instance temporary setup and idempotence; synchronous setup failures leave state intact, GPU validation remains asynchronous owner responsibility",
+    "current uploaded geometry tracked separately from mutable Rigid shape marks; masked commands preserve actual hull lease",
+    "full rewriteBodies/rewriteFixed/seedFrom clears native flags; append starts false; future World reset/pool must restore authored flags before physics",
+    "aux xyz/w preserve one another; standard bit26 only, default/exported shader strings/strides unchanged",
+    "all non-null collision backends refused for activated lifetime, even after clearing flags; no SDF switch claim",
+    "no World/Body/pool sensor API or true capability in this slice"
+  ],
+  "limits": [
+    "internal A1 only; public lifecycle/pool/native geometry/overflow/full consumer acceptance open",
+    "coasting sphere and cube/sphere fixtures are not general dynamic/hull/moving sensor qualification",
+    "no renderer/browser/physical-correctness/energy/CCD/performance/large-scene/M1/GTX1080/release/human acceptance",
+    "local0.4.0 pack not npm publication or fresh registry installation"
+  ],
+  "cost": "159 selected hardware regressions took about43s wall; repeated Dawn/pipeline setup and existing default behavior envelopes are the largest verification cost here. No compiler-cache claim, CI change or coverage reduction."
+}
