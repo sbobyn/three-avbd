@@ -27,11 +27,12 @@ import {
 } from './layout.ts';
 import { hullOf, isSail, isSphere, type HullShape } from '../shapes.ts';
 import { rotate, vec3 } from '../ref/math.ts';
-import { broadphaseWGSL, contactsHullWGSL, contactsWGSL, refsWGSL } from './wgsl-collision.ts';
-import { solveBodyAuxWGSL } from './wgsl-solve.ts';
+import { broadphaseWGSL, contactsHullWGSL, contactsWGSL, sensorProofContactsWGSL, refsWGSL } from './wgsl-collision.ts';
+import { solveBodyAuxWGSL, sensorProofSolveWGSL } from './wgsl-solve.ts';
 import { LARGE_FACTOR, largestSmall } from './radii.ts';
 import { IGNORE_SLOT, NoCollideTable } from './no-collide.ts';
 import { type FixedStoragePlan, hullVec4s as hullSize, StorageCapacityError } from '../../lib/storage-budget.ts';
+import { sensorPreparationWGSL, STANDARD_SENSOR_BIT } from './sensor-preparation.ts';
 
 export { PHASES, type StepProfile };
 
@@ -254,6 +255,8 @@ export interface GpuSolverOptions {
    * check is a migration diagnostic, not a WGSL parser or proof of a custom module's safety.
    */
   shaders?: { contacts?: string; solve?: string };
+  /** @internal Experimental nonresponse proof, not a supported sensor API. Requires hulls:false. */
+  sensorProof?: boolean;
   /** Collide hull shapes as hulls (default: when the device can bind nine storage buffers per stage; see GpuSolver3D.hulls). */
   hulls?: boolean;
   /**
@@ -269,6 +272,7 @@ export interface GpuSolverOptions {
 
 /** Per-body static data the host needs: broadphase radius and whether the body moves. */
 interface BodyInfo {
+  sensorProofEligible: boolean;
   radius: number;
   dynamic: boolean;
   sphere: boolean;
@@ -590,9 +594,13 @@ export class GpuSolver3D {
   get filterStorage(): GPUBuffer {
     return this.filterBuffer;
   }
+  private readonly sensorProof: boolean;
+  private readonly sensorFlags: Uint8Array;
+  private sensorLayout: GPUBindGroupLayout | null = null;
+  private sensorGroups: GPUBindGroup[] = [];
   /**
-   * @internal Per body slot: the aux record (layout.ts BODY_AUX_*), written by setBodyAux and read
-   * only by warmStartBodies. Allocated once at bodyCapacity; never read back, grown or rebound.
+   * @internal Per body slot: gravity/damping, and numeric w=0/1 only in sensorProof mode.
+   * Allocated once at bodyCapacity; never read back or grown.
    */
   private readonly auxBuffer: GPUBuffer;
   /** warmStartBodies' group 0 (params, bodies, aux), made once; null when a custom solve module keeps the full layout. */
@@ -691,6 +699,9 @@ export class GpuSolver3D {
   get isDestroyed(): boolean {return this.destroyed;}
 
   constructor(device: GPUDevice, ref: Solver, options: GpuSolverOptions = {}) {
+    if (options.sensorProof !== undefined && typeof options.sensorProof !== 'boolean') throw new Error('sensorProof must be boolean');
+    if (options.sensorProof && (options.hulls !== false || options.shaders !== undefined)) throw new Error('sensorProof requires explicit hulls:false and built-in shaders');
+    this.sensorProof = options.sensorProof ?? false;
     if (options.shaders?.solve !== undefined && !/\bfn\s+primalChunks\s*\(/.test(options.shaders.solve)) {
       throw new Error('GpuSolver3D shaders.solve must retain primalChunks and serialize clashing colours in primal/primalSparse; derive the module from the current solveWGSL.');
     }
@@ -712,6 +723,7 @@ export class GpuSolver3D {
         ? Math.floor(options.bodyBuffer.size / (BODY_FLOATS * 4))
         : Math.max(options.bodyCapacity ?? this.bodyCount + 1024, this.bodyCount, 1);
     this.lifecycle = new Uint8Array(this.bodyCapacity);
+    this.sensorFlags = new Uint8Array(this.sensorProof ? this.bodyCapacity : 0);
     if (this.bodyCapacity < this.bodyCount) throw new Error('body buffer too small');
     this.bodyBuffer = options.bodyBuffer ?? device.createBuffer({ label: 'bodies 3d', size: bodyBufferSize(this.bodyCapacity), usage: storageUsage() });
     // From here on a throw releases what this solver made (never a caller's body buffer or device)
@@ -889,12 +901,20 @@ export class GpuSolver3D {
       return module;
     };
     const L = this.layouts;
+    if (this.sensorProof) {
+      const types: GPUBufferBindingType[] = ['uniform', 'read-only-storage', 'read-only-storage', 'read-only-storage', 'read-only-storage', 'storage'];
+      this.sensorLayout = d.createBindGroupLayout({
+        label: 'sensor preparation',
+        entries: types.map((type, binding) => ({ binding, visibility: GPUShaderStage.COMPUTE, buffer: { type } })),
+      });
+      make(sensorPreparationWGSL, [this.sensorLayout], ['prepareSensors']);
+    }
     make(broadphaseWGSL, [L.broad], ['beginFrame', 'gridCount', 'gridScatter', 'findPairs', 'findFixedLarge']);
     make(refsWGSL, [L.refs], ['updateRefs']);
     // The hull narrowphase costs box scenes a few % of collision time (register pressure): it is
     // compiled when the first hull arrives (acquireHull). The layout binds the hull buffer anyway.
     const contactEntries = ['hashInsert', 'narrowphase', ...(!shaders.contacts ? ['reuseManifolds'] : [])];
-    make(shaders.contacts ?? contactsWGSL, [L.contacts], contactEntries);
+    make(shaders.contacts ?? (this.sensorProof ? sensorProofContactsWGSL : contactsWGSL), [L.contacts], contactEntries);
     this.contactShaders = { make: (code) => make(code, [L.contacts], contactEntries), custom: !!shaders.contacts };
     make(makeTopologyWGSL(PRELUDE_3D, TOPOLOGY_ACCESSORS_3D, `atomicStore(&counters[${C_TAIL_BODIES}u], atomicLoad(&color[params.colorHistOffset + MAX_COLORS * params.colorGroups]) - atomicLoad(&color[params.colorHistOffset + ${SPARSE_COLOR_START}u * params.colorGroups]));`, C_CLASHING_COLORS), [L.topo], [
       'degreeJoints', 'degreeContacts', 'fillJoints', 'fillContacts', 'sortAdjacency',
@@ -903,7 +923,7 @@ export class GpuSolver3D {
     // Built-in warmStartBodies reads aux through its own layout; the other entries retain the
     // full solve layout. Custom modules keep the established exported solveWGSL contract and
     // full layout, without inferring their resource use from source-text declarations.
-    const solveCode = shaders.solve ?? solveBodyAuxWGSL;
+    const solveCode = shaders.solve ?? (this.sensorProof ? sensorProofSolveWGSL : solveBodyAuxWGSL);
     const integrate = !shaders.solve;
     const solveModule = make(solveCode, [L.solve, L.pass], ['warmStartJoints', ...(integrate ? [] : ['warmStartBodies']), 'primal', 'dual', 'updateVelocities', ...(!shaders.solve ? ['primalSparse'] : [])]);
     if (integrate) {
@@ -1022,6 +1042,7 @@ export class GpuSolver3D {
     const adj = this.adjBuffer;
     const T = this.tableBuffer;
     const C = this.counterBuffer;
+    if (this.sensorLayout) this.sensorGroups = [0, 1].map(i => group(this.sensorLayout!, [P, this.bodyBuffer, this.auxBuffer, [m0, m1][i], C, [c0, c1][i]]));
     this.groups = {
       broad: group(this.layouts.broad, [P, this.bodyBuffer, this.gridBuffer, this.pairBuffer, C, this.staticBuffer, this.jointBuffer, this.filterBuffer]),
       contacts: [
@@ -1166,7 +1187,7 @@ export class GpuSolver3D {
       if (old && old !== shape) this.releaseHull(old);
       const hullAt = shape ? (old === shape ? this.hullSlots.get(shape)!.offset : this.acquireHull(shape)) : -1;
       f[o + B_ANGVEL + 3] = sphere ? SHAPE_SPHERE : hullAt >= 0 ? SHAPE_HULL + hullAt : isSail(b) ? SHAPE_SAIL : SHAPE_BOX;
-      return { radius: b.radius, dynamic: b.mass > 0, sphere, size: [b.size[0], b.size[1], b.size[2]], hull: shape };
+      return { sensorProofEligible: this.sensorProof && b.mass === 0 && !sphere && !hullOf(b) && !isSail(b) && [...b.velocityLin, ...b.velocityAng].every(v => v === 0), radius: b.radius, dynamic: b.mass > 0, sphere, size: [b.size[0], b.size[1], b.size[2]], hull: shape };
     }
   }
 
@@ -1747,17 +1768,40 @@ export class GpuSolver3D {
       if (e - k === 1 && !rates) {
         this.device.queue.writeBuffer(this.auxBuffer, indices[k] * stride + A_GRAVITY_SCALE * 4, new Float32Array([scales[k]]));
       } else {
-        // Whole records for a run: the reserved lane (and rates, when not given) at their defaults
+        // Whole records for a run: default rates when not given; retain the private proof flag.
         const f = new Float32Array((e - k) * BODY_AUX_FLOATS);
         for (let i = k; i < e; i++) {
           const at = (i - k) * BODY_AUX_FLOATS;
           f.set(BODY_AUX_DEFAULT, at);
+          if (this.sensorProof) f[at + 3] = this.sensorFlags[indices[i]];
           f[at + A_GRAVITY_SCALE] = scales[i];
           if (rates) { f[at + A_LINEAR_DAMPING] = linear[i]; f[at + A_ANGULAR_DAMPING] = angular[i]; }
         }
         this.device.queue.writeBuffer(this.auxBuffer, indices[k] * stride, f);
       }
       k = e;
+    }
+  }
+
+  /** @internal Experimental proof hook. CPU flags are copied; no public lifecycle promise. */
+  setSensorFlags(indices: ArrayLike<number>, flags: ArrayLike<boolean>): void {
+    if (this.destroyed) throw new Error('Solver is destroyed');
+    if (!this.sensorProof || this.collisionBackend) throw new Error('setSensorFlags requires standard sensorProof mode');
+    const slots = Array.from(indices);
+    const values = Array.from(flags);
+    if (slots.length !== values.length) throw new Error('One sensor boolean per index');
+    for (let k = 0; k < slots.length; k++) {
+      const i = slots[k];
+      if (!Number.isInteger(i) || i < 0 || i >= this.bodyCount || typeof values[k] !== 'boolean') throw new Error('Invalid sensor boolean/index');
+      if (values[k] && (this.bodies[i].dynamic || !this.bodies[i].sensorProofEligible)) throw new Error('sensorProof requires a stationary fixed box');
+    }
+    for (let k = 0; k < slots.length; k++) {
+      const i = slots[k], value = Number(values[k]);
+      if (this.sensorFlags[i] === value) continue;
+      this.sensorFlags[i] = value;
+      this.device.queue.writeBuffer(this.auxBuffer, i * BODY_AUX_FLOATS * 4 + 12, new Float32Array([value]));
+      this.device.queue.writeBuffer(this.bodyBuffer, (i * BODY_FLOATS + B_INITIAL_POS + 3) * 4, new Float32Array([BODY_DIRTY | this.lifecycle[i]]));
+      this.manifoldsValid = false;
     }
   }
 
@@ -1793,7 +1837,7 @@ export class GpuSolver3D {
     f[3] = p.betaAng;
     f[4] = p.gamma;
     f[5] = p.alpha;
-    u[6] = (p.matchNearest ? FLAG_MATCH_NEAREST : 0) | (p.faceBias ? FLAG_FACE_BIAS : 0) | (p.reuseContacts ? FLAG_REUSE_CONTACTS : 0) | (p.startAtRest ? FLAG_START_AT_REST : 0) | (p.massPenalty ? FLAG_MASS_PENALTY : 0) | (reuseManifolds ? FLAG_REUSE_MANIFOLDS : 0) | (this.useSparseColors ? FLAG_SPARSE_COLORS : 0);
+    u[6] = (p.matchNearest ? FLAG_MATCH_NEAREST : 0) | (p.faceBias ? FLAG_FACE_BIAS : 0) | (!this.sensorProof && p.reuseContacts ? FLAG_REUSE_CONTACTS : 0) | (p.startAtRest ? FLAG_START_AT_REST : 0) | (p.massPenalty ? FLAG_MASS_PENALTY : 0) | (reuseManifolds ? FLAG_REUSE_MANIFOLDS : 0) | (this.useSparseColors ? FLAG_SPARSE_COLORS : 0);
     u[7] = this.bodyCount;
     u[8] = this.jointCount;
     u[9] = this.colorCap;
@@ -1886,6 +1930,7 @@ export class GpuSolver3D {
    * backend carries them over itself (SdfCollisionBridge.grown does). */
   /** Reject before allocating/destroying a backend that cannot interpret lifecycle state. */
   assertBackendSwitchAllowed(): void {
+    if (this.sensorProof) throw new Error('sensorProof refuses collision backends');
     if (this.fixed) throw new Error('Fixed storage: collision backends are not available (a fixed solver keeps the standard narrowphase; use adaptive storage for SDF collisions)');
     if (this.lifecycle.some(bits => bits !== 0) || this.lifecyclePending?.()) throw new Error('Submit an enabled standard step before switching collision backends: pending body lifecycle state');
   }
@@ -1937,7 +1982,7 @@ export class GpuSolver3D {
   step(options: GpuStepOptions = {}): void {
     this.collisionBackend?.prepare(this);
     // An SDF backend writes its own contacts each step; manifold reuse applies to the built-in narrowphase.
-    const reuseManifolds = !this.collisionBackend && !!options.reuseManifolds && this.manifoldsValid && !!this.pipes.reuseManifolds;
+    const reuseManifolds = !this.sensorProof && !this.collisionBackend && !!options.reuseManifolds && this.manifoldsValid && !!this.pipes.reuseManifolds;
     if (this.radiiDirty || this.noCollideTable.dirty) this.uploadStatics();
     const p = this.params;
     if (this.fixedColors) {
@@ -2001,7 +2046,7 @@ export class GpuSolver3D {
         manifolds: this.manifoldBuffers[cur],
       });
     } else {
-      if (p.reuseContacts) this.run(pass, 'updateRefs', G.refs, groups(N));
+      if (!this.sensorProof && p.reuseContacts) this.run(pass, 'updateRefs', G.refs, groups(N));
       this.run(pass, 'argsPrev', G.args, 1);
       if (reuseManifolds) {
         this.runIndirect(pass, 'reuseManifolds', G.contacts[cur], IA_PREV);
@@ -2017,6 +2062,7 @@ export class GpuSolver3D {
       }
     }
     this.run(pass, 'argsContacts', G.args, 1);
+    if (this.sensorProof) this.runIndirect(pass, 'prepareSensors', this.sensorGroups[cur], IA_CONTACTS);
 
     // Adjacency
     beginPhase();
@@ -2145,7 +2191,7 @@ export class GpuSolver3D {
         out.push({
           a: mu[o],
           b: mu[o + 1],
-          feature: (key & ~(STICK_BIT | SDF_ROLLING_BIT)) >>> 0,
+          feature: (key & ~(STICK_BIT | SDF_ROLLING_BIT | (this.sensorProof && !this.collisionBackend ? STANDARD_SENSOR_BIT : 0))) >>> 0,
           stick: (key & STICK_BIT) !== 0,
           rolling: (key & SDF_ROLLING_BIT) !== 0,
           rA: [...cf.subarray(k + K_RA, k + K_RA + 3)],

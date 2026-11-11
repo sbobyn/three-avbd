@@ -213,7 +213,7 @@ the initial In Progress leaves were F2 and B1, followed by G1 after its design g
 | F2 | [STE-3327](https://linear.app/sbobyn/issue/STE-3327/three-avbd-f2-body-auxiliary-record-and-feature-flag-pattern-design) | Body auxiliary record and feature-flag pattern (design note, then code) | In Progress — bounded first slice |
 | G1 | [STE-3328](https://linear.app/sbobyn/issue/STE-3328/three-avbd-g1-linear-and-angular-damping-gravity-scale-dropped-time) | Linear and angular damping, gravity scale, dropped-time counter | Backlog |
 | G2 | [STE-3329](https://linear.app/sbobyn/issue/STE-3329/three-avbd-g2-restitution-with-a-combine-rule) | Restitution with a combine rule | Backlog |
-| G3 | [STE-3330](https://linear.app/sbobyn/issue/STE-3330/three-avbd-g3-sensors) | Sensors | Backlog |
+| G3 | [STE-3330](https://linear.app/sbobyn/issue/STE-3330/three-avbd-g3-sensors) | Sensors | In Progress: internal proof; public support absent |
 | G4 | [STE-3331](https://linear.app/sbobyn/issue/STE-3331/three-avbd-g4-opt-in-ccd-by-speculative-contacts) | Opt-in CCD by speculative contacts | Backlog |
 | G5 | [STE-3332](https://linear.app/sbobyn/issue/STE-3332/three-avbd-g5-native-sleeping-with-island-wake) | Native sleeping with island wake | Backlog |
 | G6 | [STE-3333](https://linear.app/sbobyn/issue/STE-3333/three-avbd-g6-contact-force-events-and-event-lifecycle-contract) | Contact force events and event lifecycle contract | Backlog |
@@ -574,7 +574,7 @@ Fit: Fable Medium note, Opus Medium code.
 - [U] The method (velocity pass or modified contact target) is a design question; no oracle.
 - Deps: F2, G1. First slice: method note with a 2D reference experiment behind an opt-in.
 
-**G3 · Sensors** — Backlog, High. Fit: Opus Medium.
+**G3 · Sensors** — In Progress (internal proof only), High. Current implementation route: Codex High, explicitly authorized after Claude access failed.
 - API: `sensor: true` on a body (per collider after C2): overlap events, no response.
 - Accept: a body passes through a sensor with unchanged momentum; begin and end arrive with the
   existing step ordering; a moving fixed sensor reports dynamic bodies; overflow counted as today.
@@ -899,3 +899,13 @@ A fixed G2 CPU attribution control rejects the proposed impact-lambda-release ex
 isolates a narrow Hessian-rescaling effect, but every control still fails the unchanged height
 goal. [Measured controls](RESTITUTION_DESIGN.md#16-attribution-control-observations--local-nov10--utc-nov11)
 do not establish production restitution support or an alternative acceptance shortcut.
+
+
+### G3 proof boundary — 2026-11-10
+
+[The frozen sensor contract](SENSORS_DESIGN.md) permits only an explicit internal standard
+solver proof. Five-buffer preparation and private primal/dual guards preserve contact
+observations while suppressing collision response. Public World/pool/capabilities remain
+unchanged and sensors remain unsupported. Public lifecycle/atomic shape refusal, moving and
+dynamic sensors, overflow and consumer gates must pass separately; one box/sphere proof does
+not complete STE-3330 or the broader parity roadmap. See the [dated checked-source record](measurements/sensors-proof-2026-11-10.json).

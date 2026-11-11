@@ -19,7 +19,7 @@ const DAMPING_WGSL = `  if (dynamic && (aux.y > 0.0 || aux.z > 0.0)) {
   }
 `;
 
-function makeSolveWGSL(bodyAux: boolean): string {
+function makeSolveWGSL(bodyAux: boolean, sensorProof = false): string {
   return /* wgsl */ `
 ${PRELUDE_3D}
 ${PRIMAL_LANES_WGSL}
@@ -470,8 +470,11 @@ fn accumulate(i: u32, lane: u32, lanes: u32) -> Acc {
         addJoint(&acc, id, pc.alpha, i);
         continue;
       }
-      let mf = manifolds[id - params.jointCount];
-      isA = i == mf.ids.x;
+${sensorProof ? '      if (id - params.jointCount >= manifoldCount()) { continue; }\n' : ''}      let mf = manifolds[id - params.jointCount];
+${sensorProof ? `      let count = pairCount(mf);
+      if (count == 0u || mf.ids.z >= params.contactCapacity || count > params.contactCapacity - mf.ids.z) { continue; }
+      if ((contacts[mf.ids.z].key & 0x04000000u) != 0u) { continue; }
+` : ''}      isA = i == mf.ids.x;
       A = pairBody(mf.ids.x);
       B = pairBody(mf.ids.y);
       normal = mf.geo.xyz;
@@ -633,7 +636,10 @@ fn dualJoint(j: u32) {
 
 fn dualManifold(m: u32) {
   let mf = manifolds[m];
-  let A = pairBody(mf.ids.x);
+${sensorProof ? `  let count = pairCount(mf);
+  if (count == 0u || mf.ids.z >= params.contactCapacity || count > params.contactCapacity - mf.ids.z) { return; }
+  if ((contacts[mf.ids.z].key & 0x04000000u) != 0u) { return; }
+` : ''}  let A = pairBody(mf.ids.x);
   let B = pairBody(mf.ids.y);
   let basis = orthonormal(mf.geo.xyz);
   let end = mf.ids.z + pairCount(mf);
@@ -683,3 +689,6 @@ fn updateVelocities(@builtin(global_invocation_id) gid: vec3u) {
 export const solveWGSL = makeSolveWGSL(false);
 /** @internal Built-in integrator variant; only warmStartBodies uses the aux binding. */
 export const solveBodyAuxWGSL = makeSolveWGSL(true);
+
+/** @internal Experimental standard-contact proof only. */
+export const sensorProofSolveWGSL = makeSolveWGSL(true, true);

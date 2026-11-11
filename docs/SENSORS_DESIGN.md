@@ -356,3 +356,43 @@ worker. Parent owns qualified 8-buffer hardware proof, unchanged default/custom/
 regressions, API-map/migration note and delivery. Reuse today's already-run full
 gate; do not repeat an app-wide suite. Keep every raw failed run and threshold.
 No source/runtime acceptance is recorded by these decisions alone.
+
+
+## 12. Bounded proof result — 2026-11-10 local / 2026-11-11 UTC
+
+Protocol `6bf85224` preceded code. [Exact source hashes and check scope](measurements/sensors-proof-2026-11-10.json)
+identify the dirty overlay used for qualification; its later delivery does not make that
+run clean. The Codex worker delivered six owned source/test files, 50 focused CPU
+checks and typecheck, without GPU execution. Lead review added one meaningful regression
+and current dynamic-mode validation: a fixed-to-dynamic patched slot must not reuse its
+construction-time eligibility. It failed before the fix; the final focused CPU batch
+passes51/51. Broader raw advanced edits and public lifecycle remain unqualified.
+
+On actual Apple M4 Max / Metal3, the dedicated proof device negotiated the default
+eight storage buffers. The binding did not report `isFallbackAdapter`; the known
+Apple hardware identity passed `assessAdapter`, rather than being called a measured
+false fallback flag. Five128-step flight variants passed the frozen §9 predicates:
+sensor/partner/no reporting, swapped creation and zero iterations. Normal creation
+emitted begin45/end86, zero impulse, expected point/normal and no extra transition.
+Every sampled pose/velocity/momentum matched both free flight and the masked control
+at the declared tolerance; raw overlap lambda/penalty stayed zero with STICK clear.
+Toggle from a force-bearing contact, disable/re-enable and mask bit31 cases passed.
+One custom-control fixture initially failed by calling the deliberately unsupported
+aux setter; the corrected test asserts that refusal. No shader/physics threshold was
+changed to resolve it. Failed logs and initial files are retained privately.
+
+Final selected hardware integration passes114/114, no failures/skips: the proof plus
+G1/default/custom/lifecycle/commands/observations/pool/SDF/comparison regressions.
+All test processes assess hardware first; no renderer/browser or large scene runs.
+Typecheck, library/site builds and a packed five-entry strict-types/import check
+pass (existing site chunk-size warning retained). Packaging reused local compatible
+peers; no install/download/registry publication or user copy was touched. The same-day
+full gate is not repeated under Steven's daily limit; affected-area evidence above
+is distinct from a release gate or comprehensive final-source qualification.
+
+D1's **internal** nonresponse proof is accepted for this exact stationary fixture.
+STE-3330 remains In Progress. D2/public API, complete atomic lifecycle/shape validation,
+moveTo/velocity-driven fixed sensors, dynamic/sensor-sensor shapes, hull/SDF/custom
+support, overflow and fresh installed consumer gates remain open. No new gallery or
+production sensor feature is advertised; no physical/performance/release/human
+acceptance follows. Default exported shader strings/record strides remain unchanged.

@@ -327,7 +327,7 @@ fn findFixedLarge(@builtin(global_invocation_id) gid: vec3u) {
  * The contacts module; with `hulls`, it also binds the hull buffer (binding 9) and collides hull
  * shapes (./wgsl-hull.ts). Without, hull bodies are written as boxes (GpuSolver3D).
  */
-export const makeContactsWGSL = (hulls: boolean): string => /* wgsl */ `
+const makeContactsTemplate = (hulls: boolean, sensorProof: boolean): string => /* wgsl */ `
 ${PRELUDE_3D}
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -853,7 +853,7 @@ fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
     // the pair's previous point nearest in A-local anchor position
     var j = -1;
     for (var c = prevFirst; c < prevFirst + prevCount; c++) {
-      if ((prevContacts[c].key & ~STICK_BIT) == found.feature[i]) { j = i32(c); break; }
+      if ((prevContacts[c].key & ${sensorProof ? '~(STICK_BIT | 0x04000000u)' : '~STICK_BIT'}) == found.feature[i]) { j = i32(c); break; }
     }
     if (j < 0 && matchNearest) {
       var bestDist = NEAREST_FRACTION * minSide;
@@ -892,5 +892,10 @@ fn narrowphase(@builtin(global_invocation_id) gid: vec3u) {
 }
 `;
 
+export const makeContactsWGSL = (hulls: boolean): string => makeContactsTemplate(hulls, false);
+
 export const contactsWGSL = makeContactsWGSL(false);
 export const contactsHullWGSL = makeContactsWGSL(true);
+
+/** @internal Experimental standard-contact proof only; bit26 is occupied in SDF. */
+export const sensorProofContactsWGSL = makeContactsTemplate(false, true);

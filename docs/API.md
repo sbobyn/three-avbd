@@ -211,6 +211,47 @@ See [consumer example](USER_GUIDE.md#per-body-velocity-damping) and
 [lifecycle](BODY_LIFECYCLE.md). M4 Max focused numerical/lifecycle checks are feature evidence,
 not a performance, large-scene, target-device or physical-correctness qualification.
 
+### Opt-in internal sensor proof — 2026-11-10, STE-3330
+
+Source: protocol commit `6bf85224c524ec32c69709018b2b4a5d37f45e2a` and the scoped
+`feat/ste-3330-sensor-proof-20261110` patch; exact checked source hashes accompany the
+[dated hardware record](measurements/sensors-proof-2026-11-10.json). This is an **internal
+proof**, not public sensor support. `World`, `BodyPool`, their options and `capabilities.sensors`
+are unchanged; the capability remains false.
+
+```mermaid
+flowchart LR
+  Option[Explicit advanced sensorProof mode] --> Flags[CPU-owned boolean flags / numeric private aux.w]
+  Detect[Fresh standard narrowphase / no reuse] --> Prepare[Five-storage-buffer sensor preparation]
+  Flags --> Prepare
+  Prepare -->|keep geometry; mark contacts; zero lambda and penalty| Solve[Private primal and dual guards]
+  Prepare --> Watch[Existing ContactWatch / async lifetime-ID events]
+  Solve --> Motion[Unconstrained motion for marked pairs]
+```
+
+[`sensor-preparation.ts`](../src/avbd3d/gpu/sensor-preparation.ts) defines numeric aux.w=0/1
+and contact bit26 **only inside the explicit proof mode**. `GpuSolver3D` prewarms its parity
+bind groups and dispatches preparation after standard detection. Private variants in
+[`wgsl-solve.ts`](../src/avbd3d/gpu/wgsl-solve.ts) skip marked contacts before force/stiffness
+and dual work; the private contact variant strips the marker for feature matching.
+The standard proof decoder hides the marker; SDF decoding never does. Default exported and
+built-in shader strings, buffer strides and ordinary dispatch schedules stay unchanged.
+No new storage buffer or mandatory device feature is added.
+
+The advanced option `sensorProof` and `setSensorFlags` hook are explicitly internal,
+experimental spellings, visible through the advanced class/types rather than a supported
+sensor API. Construction requires `hulls:false`, rejects custom shaders, and refuses non-null
+collision backends before preparation or mutation. A true flag initially requires a stationary
+fixed box; the current CPU dynamic-mode check also rejects a later converted slot. This does
+not certify arbitrary raw advanced body edits or ongoing moving-sensor validation.
+The entire proof mode disables contact/manifold reuse without mutating caller parameters,
+even after flags are off. Geometry still consumes normal pair/contact/adjacency capacity.
+
+[Design, frozen criteria and remaining public gates](SENSORS_DESIGN.md) distinguish the bounded
+stationary-box/sphere proof from public lifecycle/pool/shape validation, moving and dynamic
+sensors, SDF/hulls, overflow and installed-consumer acceptance. No performance, continuous
+collision, broad physical-correctness, target-device or human acceptance follows.
+
 ### Isolated restitution research — 2026-11-10, STE-3329
 
 [`restitution.ts`](../src/avbd2d/experiments/restitution.ts) subclasses the f64 2D reference's
@@ -399,6 +440,7 @@ device, settings and provenance must accompany performance claims.
 | `src/comparison/`, `src/results/`, `scripts/` | AVBD/Rapier adapters, quality metrics, benchmark and provenance tools |
 | `examples/` | Public API consumer journeys, including lifecycle/pool/SDF and pose capture/playback; `examples/index.html` is the gallery |
 | `src/gallery/`, `public/gallery/` | Static demo gallery: dependency-free catalog, filters and SVG illustrations ([design](GALLERY_DESIGN.md)) |
+| `src/avbd3d/gpu/sensor-preparation.ts` | Opt-in standard-only internal sensor proof; private aux/contact semantics, no public sensor capability |
 | `src/avbd2d/experiments/restitution.ts`, `tools/restitution-experiment.ts` | Isolated f64 research wrapper and report; not a public feature or GPU qualification |
 | `tools/qualification*.ts` | Opt-in predeclared three-scene direct-solver observations; separate timers, missing metrics unknown, no timing comparison |
 | `tools/world-determinism*.ts` | Opt-in public-World repeatability diagnostic; fixed-storage final fields only, no hidden-state replay guarantee |
@@ -883,7 +925,8 @@ option checks initial standard support, and does not prohibit later backend swit
 native hull SAT is running. SDF fields replace collision geometry only; mass,
 inertia and meshes remain caller-owned. `boxes`/`spheres` report built-in support
 and are false (unverified) for custom backends. `capsules`, `compounds`, `sensors`
-remain false: there are no native body helpers/encodings for those features. An
+remain false: there are no supported public body helpers/encodings for those features. The
+internal standard-only sensor proof above does not change this public contract. An
 analytic capsule SDF field does not provide a native capsule body API.
 `hullsEnabled` retains its historical meaning (standard solver hull support), even
 while SDF is installed. Direct advanced backend installation is reflected as

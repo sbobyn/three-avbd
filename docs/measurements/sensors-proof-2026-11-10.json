@@ -1,0 +1,173 @@
+{
+  "schema": "three-avbd.internal-sensor-proof/v1",
+  "generatedAt": "2026-11-11T01:07:50.463949+00:00",
+  "source": {
+    "protocolCommit": "6bf85224c524ec32c69709018b2b4a5d37f45e2a",
+    "branch": "feat/ste-3330-sensor-proof-20261110",
+    "dirty": true,
+    "qualification": "protocol commit plus the exact hashed source/test overlay; later merge does not rewrite run provenance",
+    "sha256": {
+      "src/avbd3d/gpu/solver.ts": "c1bd705928ad8adc8dbdd72a9909061ca84bce76a2f7df8fb686a9edf98e2f8b",
+      "src/avbd3d/gpu/wgsl-solve.ts": "a553c69804123ccdb002b3fd51e2f59eb11edad587504be648dfe07e5d7c3534",
+      "src/avbd3d/gpu/wgsl-collision.ts": "d76867128162a69f0b79cdc3c0cf4d27f2207c18f716a0b175e6d75fb0913368",
+      "src/avbd3d/gpu/sensor-preparation.ts": "5d78cfbe3d1f786c09dc733bbf7fc1db8f60a70ea8cd2ad0832905a644f8610a",
+      "tests/sensor-preparation.test.ts": "f1ae09d89625e1daef09e995b9c8fe617e8af16043ef433a5f2512658cebc965",
+      "tests-gpu/sensors.gpu.test.ts": "c2df88812aef5a7f40c98eaee799f46ee5c7ff51b9ec7e8cb367f27384e23f56"
+    }
+  },
+  "runtime": {
+    "node": "25.2.1",
+    "webgpu": "0.6.1",
+    "three": "0.187.0",
+    "renderer": "not used; compute/readback only",
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "apple-m4-max",
+      "description": "Metal driver on macOS Version 26.6.2 (Build 25G83)",
+      "isFallbackAdapter": null
+    },
+    "hardwareGate": "known Apple hardware accepted by assessAdapter; binding fallback flag unavailable, not asserted false",
+    "proofDeviceMaxStorageBuffersPerShaderStage": 8,
+    "integrationNegotiatedStorageLimit": 10
+  },
+  "checks": {
+    "focusedCpu": {
+      "passed": 51,
+      "failed": 0,
+      "skipped": 0,
+      "scope": [
+        "sensor-preparation",
+        "gravity-scale",
+        "damping",
+        "lifecycle",
+        "storage-budget"
+      ]
+    },
+    "focusedGpuIntegration": {
+      "passed": 114,
+      "failed": 0,
+      "skipped": 0,
+      "scope": [
+        "sensors",
+        "gravity-scale",
+        "damping",
+        "step-allocations",
+        "lib-lifecycle",
+        "body-commands",
+        "world-contracts",
+        "world-observations",
+        "pool",
+        "lib",
+        "sdf-world",
+        "comparison"
+      ],
+      "processIsolation": "Node default file isolation, concurrency1; hardware assessment before each file"
+    },
+    "typecheck": "passed",
+    "libraryBuild": "passed",
+    "siteBuild": "passed; existing chunk-size warning",
+    "fullGate": "not rerun; reuse same-day integration evidence for unchanged areas under user once-per-project/day limit",
+    "localPack": {
+      "version": "0.4.0",
+      "sha256": "3d5be0876c215c68ac4bf1db9b6946e0eb2799d8e3bcffccedb6b929c8e5e2ff",
+      "bytes": 393890,
+      "entries": 276,
+      "sourceBase": "6bf85224c524ec32c69709018b2b4a5d37f45e2a",
+      "dirty": true,
+      "overlay": "six reviewed proof source/test files plus scoped docs; source hashes in proof record",
+      "dependencyMethod": "existing local compatible peers, no install/download/registry publication"
+    },
+    "packedFiveEsmImports": [
+      {
+        "entry": "three-avbd",
+        "exports": 14
+      },
+      {
+        "entry": "three-avbd/sdf",
+        "exports": 11
+      },
+      {
+        "entry": "three-avbd/advanced",
+        "exports": 53
+      },
+      {
+        "entry": "three-avbd/queries",
+        "exports": 2
+      },
+      {
+        "entry": "three-avbd/pool",
+        "exports": 1
+      }
+    ],
+    "packedStrictTypes": "passed with skipLibCheck false, all five entries, internal proof types and rejection of a public Body sensor option; locally linked compatible peers, no fresh registry installation"
+  },
+  "proof": {
+    "status": "bounded internal proof passed; public sensors unsupported",
+    "dt": 0.015625,
+    "steps": 128,
+    "dynamicBodies": 1,
+    "fixedBodies": 1,
+    "shapes": "stationary fixed box [1,4,4]; sphere radius1/8 at[-2,0,0] with velocity[2,0,0]",
+    "events": {
+      "normalCreationOrder": [
+        [
+          "begin",
+          45,
+          2,
+          1
+        ],
+        [
+          "end",
+          86,
+          2,
+          1
+        ]
+      ],
+      "beginPoint": [
+        -0.46875,
+        0,
+        0
+      ],
+      "beginNormal": [
+        -1,
+        0,
+        0
+      ],
+      "impulse": 0,
+      "swappedOrder": "same lifetime IDs ordered by slot, normal reverses, A-local box point[-0.5,0,0]",
+      "noReport": "no events, motion still unaffected"
+    },
+    "checksPassed": [
+      "every step finite/free-flight and masked-control-matched position/velocity/momentum; max(1e-6,abs(expected)*1e-4)",
+      "angular speed <=1e-6",
+      "raw overlap contacts exactly zero lambda and penalty, STICK clear, marker set and decoded sphere feature unchanged",
+      "report sensor/partner/none; swapped creation; iterations0",
+      "force-bearing old-contact toggle; disabled/re-enabled pairs; full mask bit31; response returns after flag off",
+      "ordinary built-in and exported custom shader results exactly equal in small control",
+      "frozen default shader strings unchanged; five-storage prepare and zero per-step fixed allocation recording fixtures"
+    ],
+    "trajectoryFiles": "not captured; per-step assertions in executable fixture, no benchmark or graphical result"
+  },
+  "preservedFailures": [
+    {
+      "log": "gpu-initial.log",
+      "kind": "fixture setup error",
+      "detail": "final custom shader control incorrectly called setBodyAux; expected API refusal. Corrected fixture asserts refusal, default rates remain zero; no physics threshold changed."
+    },
+    {
+      "log": "cpu-review-regression-before.log",
+      "kind": "source validation defect",
+      "detail": "construction-time eligibility let a fixed-to-dynamic patched slot acquire a flag. Failing regression preserved; current dynamic check added."
+    }
+  ],
+  "limits": [
+    "no public World/Body/pool sensor API or true sensors capability",
+    "stationary box/sphere only; no moving/dynamic/hull/SDF/custom sensor support",
+    "no public lifecycle/shape-refusal/pool/overflow installed-consumer acceptance",
+    "advanced arbitrary raw/mass/velocity edits remain unqualified beyond declared fixture/current dynamic validation",
+    "no rendering/browser/human/continuous-contact/large-scene/physical-correctness/performance/M1/GTX1080 claim",
+    "proof mode explicitly disables contact/manifold reuse for its entire lifetime; cost unmeasured",
+    "source 0.4.0 not npm publication"
+  ]
+}
