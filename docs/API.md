@@ -211,6 +211,24 @@ See [consumer example](USER_GUIDE.md#per-body-velocity-damping) and
 [lifecycle](BODY_LIFECYCLE.md). M4 Max focused numerical/lifecycle checks are feature evidence,
 not a performance, large-scene, target-device or physical-correctness qualification.
 
+### Isolated restitution research — 2026-11-10, STE-3329
+
+[`restitution.ts`](../src/avbd2d/experiments/restitution.ts) subclasses the f64 2D reference's
+Manifold through an opt-in CPU wrapper; it never edits the reference or enters the public
+library/build graph. [`tools/restitution-experiment.ts`](../tools/restitution-experiment.ts)
+runs fixed drop/rest cases and separates measurement-harness success from method eligibility.
+Both GPU-like parameter variants failed the original height criterion; **restitution remains
+unsupported in the public library**. [Protocol and measured limits](RESTITUTION_DESIGN.md).
+
+```mermaid
+flowchart LR
+  Contract[Predeclared CPU experiment] --> Host[Fixed drop/rest report host]
+  Host --> Wrapper[Opt-in restitution Manifold subclass]
+  Wrapper --> Ref[Unmodified f64 2D reference]
+  Ref --> Record[Impact rows / sampled apex / exact zero control]
+  Record --> Gate[Original gates / ineligible or unknown]
+```
+
 ### Bounded qualification tooling — 2026-11-10, STE-3354
 
 Source: main `f9562db` plus the protocol committed as `6d1fb00` and this scoped
@@ -381,6 +399,7 @@ device, settings and provenance must accompany performance claims.
 | `src/comparison/`, `src/results/`, `scripts/` | AVBD/Rapier adapters, quality metrics, benchmark and provenance tools |
 | `examples/` | Public API consumer journeys, including lifecycle/pool/SDF and pose capture/playback; `examples/index.html` is the gallery |
 | `src/gallery/`, `public/gallery/` | Static demo gallery: dependency-free catalog, filters and SVG illustrations ([design](GALLERY_DESIGN.md)) |
+| `src/avbd2d/experiments/restitution.ts`, `tools/restitution-experiment.ts` | Isolated f64 research wrapper and report; not a public feature or GPU qualification |
 | `tools/qualification*.ts` | Opt-in predeclared three-scene direct-solver observations; separate timers, missing metrics unknown, no timing comparison |
 | `tools/world-determinism*.ts` | Opt-in public-World repeatability diagnostic; fixed-storage final fields only, no hidden-state replay guarantee |
 | `tests/`, `tests-gpu/`, `tools/cpp-oracle*/` | CPU/GPU checks and upstream-generated oracle fixtures; never regenerate fixtures to hide failures |

@@ -375,3 +375,82 @@ record the approach speed before and after; they are not proof of collision corr
 The unchanged reference/defaults/fixtures remain read-only. Lead owns final documentation,
 result acceptance and ticket/PR integration. A first falsifying case can stop further expansion
 while the bounded report preserves completed and not-run cases.
+
+
+## 13. CPU experiment results — 2026-11-10
+
+[Source-qualified summary](measurements/restitution-cpu-2026-11-10.json), clean base `0f77819`,
+contract committed as `ab0a438` before trials, then a recorded/hash-qualified new-file overlay.
+Codex inherited Sol6.1 High implemented the experiment; the accountable lead reviewed it.
+The original failed-provider draft and worker raw report remain preserved separately.
+
+The experiment is in `src/avbd2d/experiments/restitution.ts`; the bounded report command is:
+
+```sh
+node --experimental-transform-types --no-warnings tools/restitution-experiment.ts --json
+```
+
+It emits JSON to stdout: 54 fixed drops and 12 rest/stack cases, no graphics or GPU. Harness
+correctness tests are distinct from method eligibility; successful JSON generation does not
+mean restitution is supported. No production solver, reference/default/oracle/fixture, library
+export, rendering or dependency changed.
+
+| Parameter set | Variant | A2 passes (of 6) | Original A3r height passes (of 6) |
+|---|---|---:|---:|
+| P-ref | V0 | 2 | 2 |
+| P-ref | V1 | 6 | 6 |
+| P-par | V0 | 2 | 1 |
+| P-par | V1 | 6 | 5 |
+| P-3d | V0 | 2 | 1 |
+| P-3d | V1 | 6 | 5 |
+
+**Neither P-3d variant is eligible for GPU promotion.** In the first falsifying case,
+h=1 m, dt=1/60 s, e=0.5, both contact rows entered at -4.5 m/s. V0 returned about 2.25 m/s
+(ratio 0.4999999914) but its sampled margin-referenced apex was 0.2327425619 m against the 0.25 m
+target (-6.903%). V1 also met the impact ratio but reached 0.2277632468 m (-8.895%). The original
+5% goal remains unchanged. A velocity-ratio pass does not substitute for a height pass.
+
+All 18 zero-coefficient drops and 12 rest/stack zero controls exactly matched the plain Solver.
+All 6 initially touching single-box rest cases matched the zero control with no firing;
+P-3d's largest approach speed was 0.006171953 m/s. The six frozen Stack A6 cases failed at step 28,
+but source inspection shows that fixture starts with 1 m gaps. The failed criterion is retained;
+it cannot establish a quiet-stack defect. A corrected future resting-stack fixture would be
+a new prospective protocol, not a replacement for this result.
+
+A1 stays unknown: no contact-free zero-control apex was observed. A4's signed response ceiling,
+absolute normal-speed proxy and first-apex limit are separate observations, not total mechanical
+energy proof. Five-apex, coupled and oblique qualification remain notRun. Convergence is unknown;
+fixed-J row residuals are recorded without inventing a tolerance after the run.
+
+Final focused harness tests 14/14 and typecheck pass. Lead review tightened finite/missing-apex
+classification, froze exported workload records and used Object.is for exact zero controls.
+A new missing-apex regression failed before that fix; original worker report/hash is retained.
+No full-suite, GPU, browser, build, performance or physical-certification claim follows.
+
+**Next boundary:** investigate height loss and contact-memory/position handling in CPU before
+selecting another method. Do not expose restitution, change the production contact buffer or
+weaken the gate based on this experiment. The five-apex and initially settled-stack controls
+also remain unfinished acceptance work under G2.
+
+
+## 14. Follow-up diagnostic contract — before trace, 2026-11-10
+
+Only the known P-3d first failure is traced: h=1 m, dt=1/60 s, e=0.5, variants V0/V1, 45 steps,
+unchanged threshold/iterations and method. Read body pose/velocity and contact-row outputs after
+each step. From the actual first-impact endpoint, advance a separate arithmetic-only free-flight
+counterfactual (`v += g*dt; y += v*dt`) without feeding it into the Solver. Also record each step's
+actual vertical velocity minus the prior actual velocity plus gravity. These are diagnostics,
+not new acceptance gates, corrections or an energy proof. Preserve the frozen results above.
+No production, reference, fixture or GPU change is authorized by this trace.
+
+
+### Fixed trace observations
+
+The final report was regenerated from the final source and remained byte-identical to the
+pre-trace report. The 45-step traces use the same failing inputs. At step 29, after the impact,
+actual vertical velocity exceeds a pure-gravity continuation by 0.0462478 m/s (V0) and
+0.0232667 m/s (V1). Both current restitution biases and both final normal lambdas are zero.
+These observations expose additional post-impact response but do not identify its precise
+iteration/cache cause. A future source-level experiment must separate intermediate constraint
+updates from final output; the trace is not a contact-impulse or energy measurement. It changes
+neither method eligibility nor production behavior.
