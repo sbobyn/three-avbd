@@ -643,3 +643,31 @@ lifecycle/geometry/overflow acceptance is still open. Aim90–120min bounded, no
 prior1–2day all-A estimate; if a material ownership conflict cannot fit, return exact
 partial evidence rather than guess or expand. The next task must implement code, not
 another design note. No new solver architecture, install, live process or user copy.
+
+
+## 18. A1 native hardware acceptance protocol (before trials) — 2026-11-11 UTC
+
+Use the accepted §9 binary-fraction fixed-box/sphere fixture through lazy native
+activation as well as the unchanged proof mode: same128steps/dt1/64, five report/
+swap/zero-iteration arms, enter45/end86, raw zero lambda/penalty/STICK and the same
+control/analytic1e-6-or1e-4-relative bounds. Native lifecycle toggles reuse §12's
+force-bearing/disable/bit31 cases. Dedicated device storage limit8; no renderer.
+
+On a separately negotiated9-storage hardware device, replace the fixed trigger by
+a native convex unit cube at origin: vertices all combinations of±0.5; same moving
+sphere and timing/normal/witness criteria. Exercise hull present before activation
+and first hull acquired by full replacement after activation, sensor flag restored
+after that replacement. This qualifies the two source-selection orders only, not
+the full hull-pair matrix. Existing default/custom/hull/G1 regressions remain required.
+
+A bounded dynamic primitive screen uses two radius0.5 spheres at x=±0.375 with
+velocities+1/-1m/s, gravity0,dt1/64 for16steps. Test flag pairs[true,false] and
+[true,true]; compare each body's position/velocity to an identical mask-excluded
+control and analytic coasting with the existing bounds, and inspect zero raw response.
+No events, energy, gravity/damping/joints or broad dynamic support is inferred here.
+
+Lead review found that a duplicate batch[true,false] activated resources before
+considering final assignment. A failing-before-fix CPU regression is retained;
+resolve duplicates before deciding whether untouched native resources are needed.
+Public World/pool/capability remain absent/false. Raw files/source hashes and every
+failed hardware run must be kept; do not relax criteria after a run.
