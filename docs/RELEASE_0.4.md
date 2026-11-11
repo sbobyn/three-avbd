@@ -11,6 +11,15 @@ Read [breaking changes and migration](#breaking-changes-and-migration) before up
 
 ## Highlights
 
+- **World-point ball joints (current source).** Separate `WorldJoint` handle, copied/coalesced
+  retargets and identity-safe slot reuse, without a hidden fixed body. Legacy remains default;
+  explicit `policy: 'inertial-hard'` adds current-error/inertial preparation for standard built-in
+  worlds. [Pendulum guide](USER_GUIDE.md#world-point-pendulum-study--about-20-minutes).
+  Only bounded M4 Max fixtures are qualified; no SDF/custom support, spring damping or general
+  physical/performance guarantee. Advanced `jointInfo()` word 3 now carries versioned policy
+  metadata (0 legacy, 1 inertial-hard); record strides are unchanged. Readers requiring zero
+  must adopt the extension before consuming opted-in rows. See [API](API.md#joints).
+
 - **Native sensors (current source).** `sensor: true`, `body.sensor` and `setSensor`
   suppress standard collision response while retaining independently requested
   async overlaps. Reset/pools preserve authored intent and lifetime IDs. Primitive

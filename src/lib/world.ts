@@ -1,3 +1,4 @@
+import { checkWorldAnchorPolicy, checkWorldAnchorCoordinates, worldAnchorFloor, type WorldAnchorPolicy } from '../avbd3d/gpu/world-anchor-policy.ts';
 import type { SdfBroadphaseOptions } from '../avbd3d/gpu/sdf-broadphase.ts';
 import type { SdfCollisionBridge } from '../avbd3d/gpu/sdf-bridge.ts';
 // three-avbd's world: rigid boxes and spheres, and joints between them, simulated on the GPU by
@@ -482,6 +483,7 @@ export class Body {
     if (!this.isFixed) return this.set({ position, rotation });
     if (!this.enabled) throw new BodyDisabledError();
     const patch = copyBodyPatch({ position, rotation });
+    this.world.validateWorldAnchorBody(this, patch);
     this.world.move(this, patch.position as Vec3, patch.rotation as Quat | undefined);
   }
 
@@ -493,6 +495,7 @@ export class Body {
     this.world.assertLive('Body.setFixed');
     if (fixed === this.isFixed) return;
     if (!this.alive) return;
+    this.world.validateWorldAnchorBody(this, {}, fixed);
     this.isFixed = fixed;
     this.world.write(this, { velocity: [0, 0, 0], angularVelocity: [0, 0, 0] }, true);
   }
@@ -534,6 +537,60 @@ export class Body {
     this.isAlive = false;
     this.world.removeBody(this);
   }
+}
+
+/** A hard ball joint between an explicit world point and an explicit body-local point. */
+export interface WorldJointOptions {
+  anchorWorld: Vec3;
+  anchorBody?: Vec3;
+  /** Explicit current-error/inertial floor; legacy remains the default. Immutable per handle. */
+  policy?: WorldAnchorPolicy;
+}
+
+function worldAnchor(value: Vec3, what: string): Vec3 {
+  if (value == null || value.length !== 3) throw new TypeError(`${what}: anchor must have three finite f32 numbers`);
+  const copy: Vec3 = [value[0], value[1], value[2]];
+  if (!copy.every(x => typeof x === 'number' && Number.isFinite(Math.fround(x)))) throw new TypeError(`${what}: anchor must have three finite f32 numbers`);
+  return copy;
+}
+
+/** Nonbreaking world-point ball joint. Anchor getters report authored commands, not GPU observations. */
+export class WorldJoint {
+  readonly type = 'ball';
+  private readonly selectedPolicy: WorldAnchorPolicy;
+  readonly world: World;
+  readonly body: Body;
+  /** @internal Solver slot, owned by this handle alone. */
+  slot = -1;
+  private removed = false;
+  private target: Vec3;
+  private readonly local: Vec3;
+
+  /** @internal Made by World.addWorldJoint. */
+  constructor(world: World, body: Body, anchorWorld: Vec3, anchorBody: Vec3, policy: WorldAnchorPolicy = 'legacy') {
+    this.world = world;
+    this.body = body;
+    this.selectedPolicy = policy;
+    this.target = [...anchorWorld];
+    this.local = [...anchorBody];
+  }
+  get policy(): WorldAnchorPolicy { return this.selectedPolicy; }
+  get anchorWorld(): Vec3 { return [...this.target]; }
+  get anchorBody(): Vec3 { return [...this.local]; }
+  get holding(): boolean { return this.world.holdsWorldJoint(this); }
+  get suspended(): boolean { return this.holding && !this.body.enabled; }
+
+  /** Queue a target teleport; this can inject energy and supplies no target velocity. */
+  setWorldAnchor(point: Vec3): void { this.world.retargetWorldJoint(this, point); }
+  remove(): void {
+    if (this.removed) return;
+    this.world.assertLive('WorldJoint.remove');
+    this.world.removeWorldJoint(this);
+  }
+  /** @internal Command bookkeeping, never a GPU observation. */
+  setTarget(point: Vec3): void { this.target = point; }
+  /** @internal Owner cleanup can run after device loss without public liveness checks. */
+  markRemoved(): void { this.removed = true; }
 }
 
 /** What World makes a Joint from: a joint's options (with its rest turn worked out), or a spring's. */
@@ -709,6 +766,9 @@ export class World {
   private readonly lifecycleDirty = new Set<Body>();
   private readonly coldBodies = new Set<Body>();
   private pendingJoints: Joint[] = [];
+  private pendingWorldJoints: WorldJoint[] = [];
+  private readonly worldJoints = new Set<WorldJoint>();
+  private readonly worldRetargets = new Map<WorldJoint, Vec3>();
   private readonly joints = new Set<Joint>();
   /** Joints placed in the solver so far (Joint.placed). */
   private placements = 0;
@@ -899,6 +959,7 @@ export class World {
     checkDt(dt);
     // Every damped body's (and pooled template's) decay exponent stays finite as f32, or nothing changes
     checkEffectiveDamping(this.maxDampingRate(), dt, 'World.dt');
+    for (const j of [...this.worldJoints, ...this.pendingWorldJoints]) if (j.policy === 'inertial-hard') this.validateWorldAnchor(j.body, j.anchorWorld, j.anchorBody, dt);
     this.solver.params.dt = dt;
   }
   get iterations(): number {
@@ -915,6 +976,7 @@ export class World {
    */
   async enableSdfCollisions(bindings: readonly SdfBodyBinding[] = [], params: Partial<CollisionParams> = {}, broadphase: SdfBroadphaseOptions = {}): Promise<void> {
     if(this.destroyed || this.sdfState!=='off') throw new Error('SDF collisions already enabled/preparing, or World destroyed');
+    if (this.pendingWorldJoints.length || this.worldJoints.size) throw new Error('Remove world joints before enabling SDF collisions');
     if(this.fixed) throw new Error("SDF collisions need an adaptive-storage World: this one has storage.growth 'fixed'");
     this.solver.assertBackendSwitchAllowed();
     await this.installSdfCollisions(bindings,params,broadphase);
@@ -1287,6 +1349,9 @@ export class World {
     if (reservation.state !== 'active') return;
     const usable = !this.destroyed && !this.gpuError;
     if (usable) for (const body of [...reservation.live]) body.remove();
+    else for (const joint of [...this.worldJoints, ...this.pendingWorldJoints]) {
+      if (reservation.live.has(joint.body)) this.removeWorldJoint(joint);
+    }
     reservation.state = 'disposed';
     reservation.live.clear();
     reservation.vacant.length = 0;
@@ -1331,6 +1396,7 @@ export class World {
     checkEnabled(enabled);
     this.assertLifecycle(body);
     if (body.enabledState === enabled) return;
+    this.validateWorldAnchorBody(body);
     body.enabledState = enabled;
     body.written = ++this.writes;
     this.coldBodies.add(body);
@@ -1363,6 +1429,7 @@ export class World {
   write(body: Body, patch: BodyPatch, fixed = false): void {
     assertOwner(this, body);
     if (!body.alive) return;
+    this.validateWorldAnchorBody(body, patch);
     if (this.sliding.has(body)) patch = { velocity: [0, 0, 0], angularVelocity: [0, 0, 0], ...patch };
     this.moves.delete(body);
     this.sliding.delete(body);
@@ -1385,6 +1452,7 @@ export class World {
     this.lifecycleDirty.delete(body);
     this.coldBodies.delete(body);
     for (const j of [...this.joints, ...this.pendingJoints]) if (j.a === body || j.b === body) j.remove();
+    for (const j of [...this.worldJoints, ...this.pendingWorldJoints]) if (j.body === body) this.removeWorldJoint(j);
     this.patches.delete(body);
     this.moves.delete(body);
     this.sliding.delete(body);
@@ -1478,6 +1546,70 @@ export class World {
     return spring;
   }
 
+  /** Hard ball joint to an authored world point. Built-in standard backend only; no body is allocated. */
+  addWorldJoint(body: Body, options: WorldJointOptions): WorldJoint {
+    this.assertWorldJointBody(body, 'addWorldJoint');
+    if (options === null || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('addWorldJoint: options must be an object');
+    for (let object: object | null = options; object && object !== Object.prototype; object = Object.getPrototypeOf(object)) {
+      for (const key of Reflect.ownKeys(object)) if (key !== 'anchorWorld' && key !== 'anchorBody' && key !== 'policy') throw new TypeError(`addWorldJoint: unsupported option ${String(key)}`);
+    }
+    const policy = options.policy === undefined ? 'legacy' : options.policy;
+    checkWorldAnchorPolicy(policy);
+    if (policy === 'inertial-hard' && !this.solver.supportsNativeSensors) throw new Error('World-anchor policy requires built-in standard shaders');
+    const target = worldAnchor(options.anchorWorld, 'addWorldJoint.anchorWorld');
+    const local = worldAnchor(options.anchorBody === undefined ? [0, 0, 0] : options.anchorBody, 'addWorldJoint.anchorBody');
+    const size = body.size;
+    if (!Number.isFinite(Math.fround(size[0] ** 2 + size[1] ** 2 + size[2] ** 2))) throw new RangeError('addWorldJoint: torque arm must be finite as f32');
+    if (policy === 'inertial-hard') this.validateWorldAnchor(body, target, local);
+    this.checkJointRoom();
+    const joint = new WorldJoint(this, body, target, local, policy);
+    this.pendingWorldJoints.push(joint);
+    return joint;
+  }
+
+  private validateWorldAnchor(body: Body, target: Vec3, local: Vec3, dt = this.dt, fixed = body.fixed, patch: BodyPatch = {}): void {
+    checkWorldAnchorCoordinates(patch.position ?? body.state.position, target, local);
+    const r = this.rigid(body, fixed);
+    worldAnchorFloor({ mass: r.mass, moments: r.moment }, dt, local);
+  }
+
+  /** @internal Validate the whole proposed transition before changing CPU intent or queues. */
+  validateWorldAnchorBody(body: Body, patch: BodyPatch = {}, fixed = body.fixed): void {
+    for (const j of [...this.worldJoints, ...this.pendingWorldJoints]) if (j.body === body && j.policy === 'inertial-hard') {
+      this.validateWorldAnchor(body, j.anchorWorld, j.anchorBody, this.dt, fixed, patch);
+    }
+  }
+
+  private assertWorldJointBody(body: Body, what: string): void {
+    this.assertLive(what);
+    if (!(body instanceof Body) || body.world !== this || !body.alive || this.slots[body.index] !== body) throw new Error(`${what}: body must be a live body owned by this World`);
+    if (this.sdfState !== 'off' || this.solver.activeCollisionBackend || this.solver.customShaders) throw new Error(`${what}: world joints require built-in standard shaders, outside SDF preparation`);
+  }
+
+  /** @internal Registration includes queued handles, but never survives World destruction. */
+  holdsWorldJoint(joint: WorldJoint): boolean {
+    return !this.destroyed && (this.worldJoints.has(joint) || this.pendingWorldJoints.includes(joint));
+  }
+
+  /** @internal Validate before changing either command intent or the queue. */
+  retargetWorldJoint(joint: WorldJoint, point: Vec3): void {
+    this.assertWorldJointBody(joint.body, 'WorldJoint.setWorldAnchor');
+    if (!this.holdsWorldJoint(joint)) throw new Error('WorldJoint was removed');
+    const copy = worldAnchor(point, 'WorldJoint.setWorldAnchor');
+    if (joint.policy === 'inertial-hard') this.validateWorldAnchor(joint.body, copy, joint.anchorBody);
+    joint.setTarget(copy);
+    if (joint.slot >= 0) this.worldRetargets.set(joint, copy);
+  }
+
+  /** @internal Cancel by handle before a slot can be reused; safe during owner teardown. */
+  removeWorldJoint(joint: WorldJoint): void {
+    this.pendingWorldJoints = this.pendingWorldJoints.filter(j => j !== joint);
+    this.worldRetargets.delete(joint);
+    const placed = this.worldJoints.delete(joint);
+    joint.markRemoved();
+    if (placed && !this.destroyed && !this.gpuError) this.solver.releaseJoints([joint.slot]);
+  }
+
   /** Warn about how joints are set up, once per world however many joints are (a scene adds hundreds). */
   private warnOnce(kind: string, message: string): void {
     if (this.warned.has(kind)) return;
@@ -1487,7 +1619,7 @@ export class World {
 
   /** Fixed storage: a joint slot for one more joint, counting those placed and those queued. */
   private checkJointRoom(): void {
-    const used = this.pendingJoints.length + this.joints.size;
+    const used = this.pendingJoints.length + this.joints.size + this.pendingWorldJoints.length + this.worldJoints.size;
     if (this.fixed && used >= this.fixed.joints) throw new StorageCapacityError('joints', used + 1, this.fixed.joints);
   }
 
@@ -1727,6 +1859,7 @@ export class World {
   flushCommands(): void { this.assertLive('flushCommands'); this.flush(); }
 
   private flush(): void {
+    for (const j of [...this.worldJoints, ...this.pendingWorldJoints]) if (j.policy === 'inertial-hard') this.validateWorldAnchor(j.body, j.anchorWorld, j.anchorBody);
     const full = [...this.appends, ...this.rewrites.values()].filter((b): b is Body => b !== null);
     if (this.appends.length) {
       const count = this.solver.bodyCount;
@@ -1845,6 +1978,22 @@ export class World {
         for (const j of pending) if (j.slot < 0) j.remove();
       }
     }
+    if (this.pendingWorldJoints.length) {
+      const pending = this.pendingWorldJoints;
+      this.pendingWorldJoints = [];
+      try {
+        for (const joint of pending) {
+          joint.slot = this.solver.appendWorldJoint(joint.body.index, joint.anchorWorld, joint.anchorBody, joint.policy);
+          this.worldJoints.add(joint);
+        }
+      } finally {
+        for (const joint of pending) if (joint.slot < 0) this.removeWorldJoint(joint);
+      }
+    }
+    for (const [joint, point] of this.worldRetargets) {
+      if (this.worldJoints.has(joint)) this.solver.setWorldAnchor(joint.slot, point);
+    }
+    this.worldRetargets.clear();
   }
 
   /**
@@ -1881,16 +2030,16 @@ export class World {
   }
 
   /** A body as the solver takes it (built in a scratch reference solver, then let go). */
-  private rigid(body: Body): Rigid {
+  private rigid(body: Body, fixed = body.fixed): Rigid {
     const parked = !body.alive;
-    const density = body.fixed || parked ? 0 : body.density;
+    const density = fixed || parked ? 0 : body.density;
     const { position, rotation, velocity, angularVelocity } = body.state;
     const r =
       parked ? new Rigid(this.scratch, [0.1, 0.1, 0.1], 0, 0, position)
       : body.shape === 'sphere' ? sphere(this.scratch, body.size[0] / 2, density, body.friction, position, velocity)
       : body.solverHull ? hull(this.scratch, body.solverHull, density, body.friction, position, rotation, velocity)
       : new Rigid(this.scratch, body.size, density, body.friction, position, velocity);
-    if (!parked && !body.fixed && body.massProperties) {
+    if (!parked && !fixed && body.massProperties) {
       r.mass = body.massProperties.mass; r.moment.set(body.massProperties.moments);
     }
     r.positionAng.set(normalised(rotation));
@@ -2139,6 +2288,9 @@ export class World {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed=true;
+    this.pendingWorldJoints = [];
+    this.worldJoints.clear();
+    this.worldRetargets.clear();
     for (const reservation of [...this.reservations]) this.releaseReservation(reservation);
     this.hullPins.clear();
     this.pusher.destroy();

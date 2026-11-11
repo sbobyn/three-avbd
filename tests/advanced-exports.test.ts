@@ -59,3 +59,12 @@ test('standard contact metadata declares the sensor flag without changing featur
   assert.equal(key & advanced.STANDARD_SENSOR_BIT, advanced.STANDARD_SENSOR_BIT);
   assert.equal(advanced.STANDARD_CONTACT_FEATURE_MASK & advanced.STANDARD_SENSOR_BIT, 0);
 });
+
+// Opt-in extension is explicit: legacy rows retain zero and both record strides stay intact.
+test('advanced names world-anchor info metadata without changing record strides', () => {
+  assert.equal(advanced.WORLD_ANCHOR_METADATA_VERSION, 1);
+  assert.equal(advanced.WORLD_ANCHOR_LEGACY, 0);
+  assert.equal(advanced.WORLD_ANCHOR_INERTIAL_HARD, 1);
+  assert.equal(advanced.JOINT_FLOATS, 40);
+  assert.equal(advanced.BODY_FLOATS, 40);
+});

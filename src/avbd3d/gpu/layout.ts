@@ -75,6 +75,12 @@ export const B_ANGVEL = 36;
  *   a plastic joint has bent is the turn from one to the other (decodeJoint's `bend`).
  */
 export const JOINT_FLOATS = 40;
+/** @internal info.w metadata v1: 0 legacy, 1 opt-in inertial-hard world ball row.
+ * Endpoints and 16-byte info/160-byte joint strides are unchanged; old w==0 readers
+ * must recognize this extension before consuming opted-in rows. */
+export const WORLD_ANCHOR_METADATA_VERSION = 1;
+export const WORLD_ANCHOR_LEGACY = 0;
+export const WORLD_ANCHOR_INERTIAL_HARD = 1;
 export const J_PEN_LIN = 0; // xyz, w: stiffness (joint lin; spring: its stiffness)
 export const J_PEN_ANG = 4; // xyz, w: angular stiffness
 export const J_LAM_LIN = 8; // xyz, w: fracture threshold on |lambdaAng| (negative: on |lambdaLin| too)

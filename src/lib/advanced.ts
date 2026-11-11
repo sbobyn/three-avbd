@@ -25,6 +25,7 @@ export {
   // Joint records: JOINT_FLOATS (40 since 0.3, 32 before) strides the buffer, and these are field
   // offsets in it, each field documented in layout.ts
   JOINT_FLOATS,
+  WORLD_ANCHOR_METADATA_VERSION, WORLD_ANCHOR_LEGACY, WORLD_ANCHOR_INERTIAL_HARD,
   J_PEN_LIN,
   J_PEN_ANG,
   J_LAM_LIN,

@@ -1,0 +1,152 @@
+{
+  "schema": "three-avbd/source-qualified-feature-evidence/v1",
+  "at": "2026-11-11T03:03:23.546283+00:00",
+  "issue": "STE-3335",
+  "source": {
+    "baseHead": "2a176d6c3300841b94f1b8f3b9d8e70136860c9f",
+    "branch": "feat/ste-3335-world-anchor-20261110",
+    "dirty": true,
+    "sha256": {
+      "src/lib/world.ts": "0988f235a6c95019e475031b2859d10438e5aa5f0acb7854eb6147b05326ec1f",
+      "src/lib/index.ts": "8f7ab2d761f5266db8a85e05a8103965b9b0fd872ed557d267eecb5e94a705ba",
+      "src/lib/advanced.ts": "2a0e8e1b883708e7617ff2666c6f0f456c52ba7764166ec98fd8e5b70b361463",
+      "src/avbd3d/gpu/solver.ts": "3d022ac6b79b98de79ea6eaf44b7b05e3cfe935e58a740695bc3bd977be6fbe3",
+      "src/avbd3d/gpu/layout.ts": "e87db0f65b82e3fe54a3c3c287d7ee6c9599e67e1f681e1513d356d2ae7b29eb",
+      "src/avbd3d/gpu/world-anchor-policy.ts": "18f774d8722db07eac0f5b3046aad2a185cb3f8277e82f2266e57f8d61ea0fbc",
+      "src/avbd3d/gpu/wgsl-world-anchor-policy.ts": "9c1ad5bfffd69ea0579af838a3546292e1f2e3c895d8acc483b83562993d5041",
+      "src/avbd3d/gpu/wgsl-solve.ts": "c1a0c08f0e2f50f423299758e1c59efbe7c79531f7f8f2f33535c7cecff55189",
+      "tests/world-anchors.test.ts": "89af92d35bb95fa07b7ea75bb672146d840790487fb8fbb1e2700a9fb4a5b491",
+      "tests-gpu/world-anchors.gpu.test.ts": "6dfca0bd3590823dbdeefdae3e4387548eea5f39e3d0a8fd148cded65bfef720"
+    }
+  },
+  "environment": {
+    "node": "25.2.1",
+    "dawn": "0.6.1",
+    "three": "0.187.0",
+    "device": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "apple-m4-max",
+      "description": "Metal driver on macOS Version 26.6.2 (Build 25G83)"
+    },
+    "fallbackFlag": null,
+    "adapterGate": "identified apple/metal hardware before requestDevice; no software override",
+    "storageBuffers": 8,
+    "rendering": "not run"
+  },
+  "criteria": {
+    "invocationAmendment": "Separate explicit policy:'inertial-hard' arm; original no-option invocations remain failed",
+    "dt": 0.008333333333333333,
+    "iterations": 20,
+    "pendulumSteps": 1200,
+    "pendulumSamples": 1201,
+    "retargetSteps": 240,
+    "maximumPivotErrorM": 0.001,
+    "counts": "one body, no hidden fixed body or instance allocation"
+  },
+  "legacyOriginal": {
+    "status": "failed",
+    "pendulumMaxErrorM": 0.00258417532032685,
+    "worstStep": 4,
+    "retargetErrorM": 0.004481133371235788,
+    "raw": "preserved privately; not replaced or reclassified"
+  },
+  "optIn": {
+    "status": "passed-bounded-fixtures",
+    "pendulumMaxErrorM": 2.982381033391471e-08,
+    "pendulumRmsErrorM": 1.2730786666931362e-08,
+    "worstStep": 667,
+    "maxAngleRad": 0.6799746628976875,
+    "retargetErrorM": 3.045992600472497e-08,
+    "retargetSubmittedStep": 244,
+    "removeReuseAssertions": "reached and passed"
+  },
+  "checks": {
+    "focusedCpu": {
+      "passed": 123,
+      "failed": 0,
+      "skipped": 0
+    },
+    "newGpu": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "two frozen-criteria opt-in arms plus legacy equality/mixed sensor/ordinary fixed+adaptive slot reuse"
+    },
+    "existingGpu": {
+      "passed": 53,
+      "failed": 0,
+      "skipped": 0,
+      "files": [
+        "lib",
+        "lib-lifecycle",
+        "world-contracts",
+        "body-commands"
+      ]
+    },
+    "typecheck": "passed",
+    "fullSuite": "not repeated; Nov10 483CPU/267GPU gate reused for unchanged source, affected contracts covered here",
+    "siteBuild": "passed; existing chunk-size warning",
+    "libraryBuild": "passed",
+    "packedConsumer": {
+      "esm": [
+        {
+          "entry": "three-avbd",
+          "exports": 15
+        },
+        {
+          "entry": "three-avbd/sdf",
+          "exports": 11
+        },
+        {
+          "entry": "three-avbd/advanced",
+          "exports": 59
+        },
+        {
+          "entry": "three-avbd/queries",
+          "exports": 2
+        },
+        {
+          "entry": "three-avbd/pool",
+          "exports": 1
+        }
+      ],
+      "strictTypes": "passed; skipLibCheck false",
+      "hardware": {
+        "at": "2026-11-11T03:05:01.698Z",
+        "adapter": {
+          "vendor": "apple",
+          "architecture": "metal-3",
+          "device": "apple-m4-max"
+        },
+        "storageBuffers": 8,
+        "packageVersion": "0.4.0",
+        "metadataVersion": 1,
+        "createdRetargetedResetRemoved": true,
+        "ordinaryEndpointContract": true,
+        "slotReused": 0,
+        "callerDeviceRetained": true,
+        "gpuErrors": []
+      },
+      "guideFreshProjectBuild": "passed against extracted package and existing Three0.187 peers",
+      "limits": "no registry install, browser rendering, publication or user acceptance; dependencies reused locally"
+    }
+  },
+  "limits": [
+    "numerical residuals from reported GPU poses, not physical accuracy or energy certification",
+    "no broad scale/performance, M1, GTX1080, renderer/browser or DCC acceptance",
+    "opt-in sphere/hull-specific workload qualification not run",
+    "SDF/custom policy unsupported; spring damping still open",
+    "no npm publication, user install, replay or release acceptance"
+  ],
+  "artifact": {
+    "filename": "three-avbd-0.4.0.tgz",
+    "version": "0.4.0",
+    "sha256": "d408e67ba66bbb76bbd886264860a6355be16c99cbc10b9dfdc11288174fe93d",
+    "bytes": 408133,
+    "entries": 284,
+    "sourceBase": "2a176d6c3300841b94f1b8f3b9d8e70136860c9f",
+    "dirty": true,
+    "method": "npm pack --ignore-scripts; no install/publication; local peers reused"
+  }
+}

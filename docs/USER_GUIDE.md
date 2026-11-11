@@ -474,3 +474,44 @@ Support and limits:
 On teardown, call `unsubscribe()` and destroy your owned World; continue disposing
 your own renderer/meshes as in the consumer. State is transient and does not become
 a snapshot/save file. [API and source-qualified evidence](API.md#public-native-sensors).
+
+## World-point pendulum study — about 20 minutes
+
+Use the [fresh Three.js consumer](SETUP.md#fresh-threejs-consumer) with a **current source-built
+local package**, not registry 0.3.0. Reuse its renderer, scene, camera and fixed-step loop.
+In `main.js`, replace only the `crate = world.addBox(...)` line with:
+
+```js
+world.dt = 1 / 120;
+world.iterations = 20;
+const initialRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 9);
+const localPivot = new THREE.Vector3(0, 0.5, 0);
+const centre = localPivot.clone().applyQuaternion(initialRotation).negate().add(new THREE.Vector3(0, 3, 0));
+const crate = world.addBox({ size: [0.1, 1, 0.1], density: 100,
+  position: centre.toArray(), rotation: initialRotation.toArray() });
+if (!crate) throw new Error('Body capacity exhausted');
+const anchor = world.addWorldJoint(crate, { anchorWorld: [0, 3, 0], anchorBody: [0, 0.5, 0],
+  policy: 'inertial-hard' });
+```
+
+The existing box `BodyMesh` draws it straight from GPU storage. No per-frame pose read is needed.
+The existing Kick button applies an impulse; it is not a torque motor. Keep the other sphere clear
+of the pendulum for an isolated study. Expected: gravity swings the bar about its top point; rotation
+is free. No hinge-axis restriction is provided. Try `crate.setDamping({linear: 0, angular: 1})`, then
+`{linear: 0, angular: 0}`; compare swing persistence. Try a horizontal centre impulse
+`crate.applyImpulse([0.2, 0, 0])`. These are behavior observations, not an energy benchmark.
+
+Reset safely with `crate.reset({position: centre.toArray(), rotation: initialRotation.toArray(),
+velocity: [0,0,0], angularVelocity: [0,0,0]})`; target and damping are retained. Restore zero damping
+explicitly if desired. `anchor.setWorldAnchor([0.25,3,0])` teleports the target and can inject energy.
+`await world.read([crate])` gives a stamped pose for occasional inspection, not a synchronous GPU query.
+Remove with `anchor.remove()` to release the constraint slot; a subsequent `addWorldJoint` creates a
+new handle. `world.destroy()` removes remaining constraints; dispose your owned `BodyMesh`, material,
+renderer and loop as in the integration/lifecycle guide. Never destroy another owner's device.
+
+The policy is explicit: omitted/`'legacy'` retains the old solver's startup compliance and retarget
+error decay. Only the explicit opt-in was qualified against the dated one-body 1 mm fixture;
+changing loads, timestep, iterations, collisions or adding constraints is a new experiment.
+The app loop's capped delta/catch-up can drop time (`world.droppedTime`); use direct `step()` for a
+fixed count offline. There is no world snapshot or resumable/reproducible bake implied here.
+See [API limits and metadata migration](API.md#world-point-ball-joints-current-source-2026-11-11-utc).
