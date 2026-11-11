@@ -248,8 +248,13 @@ export function runRestitutionReport() {
 
 /** Fixed diagnostic witness for the already falsified case, not another search or tuning arm. */
 export function traceFirstFailure(variant: Variant) {
+  return traceMemoryArm(variant, false, false);
+}
+
+function traceMemoryArm(variant: Variant, releaseImpactLambda: boolean, stiffnessRescale: boolean) {
   if (!VARIANTS.includes(variant)) throw new RangeError('Unknown trace variant');
   const s = solverFor('P-3d', 1 / 60), body = buildDrop(s, 1);
+  s.stiffnessRescale = stiffnessRescale;
   const trace: {step:number; position:number[]; velocity:number[]; height:number; contactRows:NormalSample[];
     netVerticalResponse:number; ballistic:{y:number;vy:number}|null}[] = [];
   let ballistic: {y:number;vy:number}|null = null;
@@ -260,7 +265,7 @@ export function traceFirstFailure(variant: Variant) {
       ballistic.vy += s.gravity*s.dt;
       ballistic.y += ballistic.vy*s.dt;
     }
-    const result=stepWithRestitution(s,{restitution:()=>0.5,combine:'average',threshold:THRESHOLD,impactPenaltyFloor:variant==='V1'});
+    const result=stepWithRestitution(s,{restitution:()=>0.5,combine:'average',threshold:THRESHOLD,impactPenaltyFloor:variant==='V1',releaseImpactLambda});
     if (impactStep===null && impactRows(result.contacts).length) {
       impactStep=step;
       ballistic={y:body.position[1],vy:body.velocity[1]};
@@ -272,8 +277,64 @@ export function traceFirstFailure(variant: Variant) {
   return {variant,steps:45,impactStep,trace,scope:'Owned Solver, unchanged failing case. Ballistic counterfactual starts at the observed impact endpoint; netVerticalResponse includes all departures from a free gravity step, not an independently measured contact impulse or energy.'};
 }
 
+/** Fixed §15 factorial controls. No free-form sweep or replacement eligibility gate. */
+export function runMemoryControlReport() {
+  const arms = VARIANTS.flatMap((variant) => [false, true].flatMap((stiffnessRescale) =>
+    [false, true].map((releaseImpactLambda) => {
+      const observation = traceMemoryArm(variant, releaseImpactLambda, stiffnessRescale);
+      const baseline = traceFirstFailure(variant);
+      const state = flight();
+      // Replay only observations through the unchanged apex/impact measurement rules.
+      const observer = solverFor('P-3d', 1 / 60), body = buildDrop(observer, 1);
+      for (const row of observation.trace) {
+        body.position.set(row.position);
+        body.velocity.set(row.velocity);
+        sampleFlight(state, body, row.contactRows, row.step);
+      }
+      const zero = solverFor('P-3d', 1 / 60), plain = solverFor('P-3d', 1 / 60);
+      zero.stiffnessRescale = plain.stiffnessRescale = stiffnessRescale;
+      buildDrop(zero, 1); buildDrop(plain, 1);
+      let zeroExact = true;
+      for (let step = 1; step <= 45; step++) {
+        stepWithRestitution(zero, { restitution: () => 0, combine: 'average', threshold: THRESHOLD,
+          impactPenaltyFloor: variant === 'V1', releaseImpactLambda });
+        plain.step();
+        if (!equalTrajectory(zero, plain)) zeroExact = false;
+      }
+      const first28Exact = observation.trace.slice(0, 28).every((row, i) =>
+        [row.position, row.velocity].every((values, j) => values.every((v, k) =>
+          Object.is(v, (j === 0 ? baseline.trace[i].position : baseline.trace[i].velocity)[k]))));
+      const residual = observation.trace.find((row) => row.step === 29)?.netVerticalResponse ?? null;
+      const endpoint = observation.trace.find((row) => row.step === observation.impactStep);
+      const releaseCount = observation.trace.reduce((sum, row) => sum +
+        row.contactRows.reduce((count, c) => count + (c.releasedCount ?? 0), 0), 0);
+      return {
+        variant, control: releaseImpactLambda ? stiffnessRescale ? 'both' : 'impact-lambda-release' :
+          stiffnessRescale ? 'stiffnessRescale' : 'baseline',
+        options: { set: 'P-3d', h: 1, e: 0.5, steps: 45, threshold: THRESHOLD, combine: 'average',
+          impactPenaltyFloor: variant === 'V1', releaseImpactLambda,
+          solver: { ...defaultParams(), postStabilize: false, stiffnessRescale } },
+        impact: state.impact,
+        impactEndpoint: endpoint ? { step: endpoint.step, position: endpoint.position, velocity: endpoint.velocity } : null,
+        apex: state.apex, targetHeight: 0.25,
+        gates: { A2: ratioGate(state.impact, 0.5), A3r: heightGate(state.apex, 0.5, 1) },
+        step29NetVerticalResponse: residual,
+        hypothesisScreen: { tolerance: 1e-10, status: residual === null || !Number.isFinite(residual) ? 'unknown' :
+          Math.abs(residual) <= 1e-10 ? 'pass' : 'fail' },
+        controls: { zeroCoefficientMatchesSameOptionPlainSolver: zeroExact,
+          first28MatchesBaseline: first28Exact,
+          releaseOnlyFirst28Required: releaseImpactLambda && !stiffnessRescale },
+        releaseCount, trace: observation.trace,
+      };
+    })));
+  return { schema: 1, purpose: 'Fixed prospective CPU attribution controls, not physical accuracy or energy qualification',
+    originalHeightGoal: { target: 0.25, relativeTolerance: 0.05, unchanged: true },
+    scope: 'Owned f64 Solver only; existing clamped-force Hessian rescaling is an independent opt-in. No production inference. Original baseline A3r failures retained.',
+    arms };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  if (process.argv.length !== 3 || !['--json','--trace-first'].includes(process.argv[2])) throw new Error('Usage: node --experimental-transform-types tools/restitution-experiment.ts --json|--trace-first');
-  const report=process.argv[2]==='--trace-first'?{schema:1,purpose:'Fixed first-failure diagnostic, no method or gate changes',traces:VARIANTS.map(traceFirstFailure)}:runRestitutionReport();
+  if (process.argv.length !== 3 || !['--json','--trace-first','--trace-memory-control'].includes(process.argv[2])) throw new Error('Usage: node --experimental-transform-types tools/restitution-experiment.ts --json|--trace-first|--trace-memory-control');
+  const report=process.argv[2]==='--trace-memory-control'?runMemoryControlReport():process.argv[2]==='--trace-first'?{schema:1,purpose:'Fixed first-failure diagnostic, no method or gate changes',traces:VARIANTS.map(traceFirstFailure)}:runRestitutionReport();
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }

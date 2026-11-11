@@ -454,3 +454,67 @@ These observations expose additional post-impact response but do not identify it
 iteration/cache cause. A future source-level experiment must separate intermediate constraint
 updates from final output; the trace is not a contact-impulse or energy measurement. It changes
 neither method eligibility nor production behavior.
+
+
+## 15. Prospective CPU attribution controls — before trials
+
+The next slice tests two independent hypotheses on the same known failure, without changing
+any previous eligibility gate or physics default. Both P-3d V0/V1 cases remain h1m,dt1/60,e0.5,
+45steps. At most eight arms: each variant with baseline, impact-lambda release, existing
+`stiffnessRescale` opt-in, and both controls. This is an attribution experiment, not a new
+restitution implementation or a parameter search.
+
+- **Impact-lambda release control:** after contact initialization/feature matching, clear only
+  normal lambda inherited from a feature biased on the preceding step when that same feature
+  now has positive separating normal velocity. Keep penalties/tangent lambda/contact geometry.
+  Never clear an ordinary resting contact's lambda. Default off; coefficient-zero runs never
+  acquire impact history. Record old lambda/release counts. This cannot repair a height failure
+  by assertion; it tests whether that memory explains the next-step response.
+- **Existing Hessian-rescaling control:** use the reference's existing `stiffnessRescale:true`
+  on the owned Solver. It changes the clamped-force Hessian path, so its zero-coefficient control
+  must be a matched plain Solver with that same option. Do not call it unchanged default mode.
+  No reference implementation/default/fixture edit is permitted.
+- **Fixed observations:** first-impact rows/rho and endpoint, step29 departure from free gravity,
+  the subsequent body trajectory and apex within the45step trace, row bias/final lambda and
+  option provenance. A release-only control must leave the first28body states exactly unchanged.
+  Existing normal impulse/height goals remain reported; no new GPU-eligibility shortcut.
+- **Diagnostic hypothesis screen:** a proposed elimination of the step29 free-gravity residual
+  needs magnitude at most1e-10m/s in this f64 fixture. Retain nonzero/failing/unknown results;
+  no retuning after observations. This is not a physical accuracy tolerance or energy proof.
+
+The method remains CPU research. Whole-contract default report and default traces must remain
+byte-identical to the delivered baseline. All original raw/failed records remain preserved.
+Only the existing experimental module, report host and focused tests may change in the worker;
+lead owns result acceptance/docs/Git/Linear. Coupled/oblique/GPU/public API stay gated.
+
+
+## 16. Attribution-control observations — local Nov10 / UTC Nov11
+
+[Source-qualified summary](measurements/restitution-memory-controls-2026-11-10.json), protocol
+committed as `719b8ba` before trials. Only the experimental module/report/tests changed.
+Command:
+
+```sh
+node --experimental-transform-types --no-warnings tools/restitution-experiment.ts --trace-memory-control
+```
+
+The release-only hypothesis fails: clearing both inherited normal lambdas changes neither
+step29 residual nor apex in this fixture. V0 retains 0.0462477635 m/s; V1 retains 0.0232667481 m/s.
+The reference's existing `stiffnessRescale` opt-in, alone or with release, reduces the residual
+to about 4.44e-16 m/s in both variants. This is a controlled observation, not full iteration-level
+causality, an energy proof or evidence that a GPU solver should enable the option.
+
+**All eight arms still fail the original height gate.** With rescaling the sampled apex is
+about 0.2227222 m, still below the 0.25 m target. Removing this residual is not sufficient to
+qualify the restitution method. No production change follows from the control.
+
+Release-only first 28 positions/velocities exactly match baseline. All zero-coefficient controls
+match a plain Solver with the same rescale setting; opt-in rescaling is not relabelled default
+behavior. Default 54-drop/12-rest JSON and default traces remain byte-identical to delivered
+baseline evidence. The worker reports 18 focused harness tests and typecheck passing; lead
+review reproduced the raw report from current source and verified those baseline identities.
+No new GPU, browser, build, full-suite or performance check was warranted.
+
+Original failed arms, unknowns and applicability limits remain. G2 stays In Progress. A further
+method proposal must address finite-step contact/position handling before native restitution,
+while retaining the original target and separate energy/coupled/quiet-stack acceptance.

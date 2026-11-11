@@ -6,7 +6,7 @@ import { Manifold } from '../src/avbd2d/ref/manifold.ts';
 import { Solver } from '../src/avbd2d/ref/solver.ts';
 import { combineRestitution, RestitutionManifold, stepWithRestitution } from '../src/avbd2d/experiments/restitution.ts';
 import type { NormalSample, RestitutionOptions } from '../src/avbd2d/experiments/restitution.ts';
-import { DROP_CASES, heightGate, impactRows, normalSpeedNoGain, ratioGate, runRestitutionReport, traceFirstFailure } from '../tools/restitution-experiment.ts';
+import { DROP_CASES, heightGate, impactRows, normalSpeedNoGain, ratioGate, runRestitutionReport, runMemoryControlReport, traceFirstFailure } from '../tools/restitution-experiment.ts';
 
 const options = (e = 0.5): RestitutionOptions => ({ restitution: () => e, combine: 'average', threshold: 1 });
 
@@ -39,7 +39,7 @@ test('combine rules use the declared dimensionless coefficients', () => {
 test('invalid options and any invalid coefficient reject before solver mutation', () => {
   const invalid = [
     { threshold: NaN }, { threshold: -1 }, { threshold: 0.099 }, { threshold: Infinity },
-    { combine: 'bad' }, { impactPenaltyFloor: 1 }, { restitution: 0 },
+    { combine: 'bad' }, { impactPenaltyFloor: 1 }, { releaseImpactLambda: 1 }, { restitution: 0 },
   ];
   for (const patch of invalid) {
     const s = contactSolver(), before = snapshot(s);
@@ -270,4 +270,102 @@ test('fixed failure trace observes the same first impact without feeding ballist
     assert.deepEqual(traceFirstFailure(variant),report,'observer is reproducible and owns its state');
     assert.ok(report.trace.every(row=>row.position.every(Number.isFinite)&&row.velocity.every(Number.isFinite)));
   }
+});
+
+
+test('release follows the biased feature across row reorder, preserving penalties, tangents and geometry', () => {
+  const s = contactSolver(), plain = contactSolver();
+  const f = new RestitutionManifold(s, s.bodies[1], s.bodies[0]);
+  const reference = new Manifold(plain, plain.bodies[1], plain.bodies[0]);
+  f.prepare(0.5, 1, false, true);
+  f.initialize(); reference.initialize();
+  const biasedFeature = f.contacts[0].feature;
+  f.bias[1] = 0; // Controlled preceding-step history: only one feature was biased.
+  for (const manifold of [f, reference]) {
+    manifold.lambda.set([-7, 2, -11, 3]);
+    manifold.penalty.set([101, 102, 103, 104]);
+  }
+  // Simulate a different old row order while retaining each feature's own cache.
+  f.contacts.reverse(); f.bias.reverse();
+  f.lambda.set([-11, 3, -7, 2]); f.penalty.set([103, 104, 101, 102]);
+  s.bodies[1].velocity[1] = plain.bodies[1].velocity[1] = 4;
+  f.prepare(0.5, 1, false, true);
+  f.initialize(); reference.initialize();
+  assert.deepEqual(f.contacts, reference.contacts);
+  assert.deepEqual(f.penalty, reference.penalty);
+  const rows = f.samples();
+  rows.forEach((row, i) => {
+    assert.equal(f.lambda[i * 2 + 1], reference.lambda[i * 2 + 1]);
+    assert.equal(f.lambda[i * 2], row.feature === biasedFeature ? 0 : reference.lambda[i * 2]);
+    assert.equal(row.releasedCount, row.feature === biasedFeature ? 1 : 0);
+    assert.equal(row.releasedNormalLambda, row.feature === biasedFeature ? -7 : 0);
+  });
+  // A separating step has no bias; the history cannot linger for a later step.
+  f.lambda[0] = -23; f.lambda[2] = -24;
+  f.initialize();
+  assert.deepEqual([...f.lambda].filter((_, i) => i % 2 === 0), [-23, -24]);
+  assert.ok(f.samples().every((row) => row.releasedCount === 0));
+});
+
+test('release requires prior impact, matching feature, positive separation and current opt-in', () => {
+  for (const scenario of ['rest', 'zero-speed', 'approach', 'unmatched', 'disabled'] as const) {
+    const s = contactSolver();
+    const f = new RestitutionManifold(s, s.bodies[1], s.bodies[0]);
+    f.prepare(scenario === 'rest' ? 0 : 0.5, 1, false, true);
+    f.initialize();
+    f.lambda.set([-7, 2, -11, 3]);
+    if (scenario === 'unmatched') f.contacts.forEach((c) => { c.feature = -c.feature; });
+    s.bodies[1].velocity[1] = scenario === 'zero-speed' ? 0 : scenario === 'approach' ? -4 : 4;
+    f.prepare(0.5, 1, false, scenario !== 'disabled');
+    f.initialize();
+    if (scenario === 'unmatched') assert.deepEqual([...f.lambda], [0, 0, 0, 0]);
+    else assert.deepEqual([...f.lambda], [-7, 2, -11, 3]);
+    assert.ok(f.samples().every((row) => scenario === 'disabled' ?
+      !Object.hasOwn(row, 'releasedCount') && !Object.hasOwn(row, 'releasedNormalLambda') : row.releasedCount === 0));
+  }
+});
+
+test('wrapper refreshes release opt-in on persistent contacts without extra callbacks', () => {
+  for (const enabled of [false, true]) {
+    const s = contactSolver();
+    let calls = 0;
+    const config = { ...options(), restitution: () => { calls++; return 0.5; }, releaseImpactLambda: false };
+    stepWithRestitution(s, config);
+    const f = s.forces[0];
+    s.bodies[1].position.set([0, 0.99, 0]);
+    s.bodies[1].velocity.set([0, 4, 0]);
+    config.releaseImpactLambda = enabled;
+    const result = stepWithRestitution(s, config);
+    assert.equal(calls, 4);
+    assert.equal(s.forces[0], f);
+    assert.ok(result.contacts.every((row) => enabled ? row.releasedCount === 1 : !Object.hasOwn(row, 'releasedCount')));
+    s.bodies[1].position[1] = 10;
+    stepWithRestitution(s, config);
+    assert.equal(s.forces.length, 0, 'release diagnostic does not retain inactive manifolds');
+  }
+});
+
+test('fixed eight-arm memory report preserves controls and retains failed attribution/height observations', () => {
+  const report = runMemoryControlReport();
+  assert.equal(report.arms.length, 8);
+  for (const arm of report.arms) {
+    assert.equal(arm.trace.length, 45);
+    assert.equal(arm.options.solver.iterations, 10);
+    assert.equal(arm.options.solver.dt, 1 / 60);
+    assert.equal(arm.options.threshold, 1);
+    assert.equal(arm.controls.zeroCoefficientMatchesSameOptionPlainSolver, true);
+    if (arm.controls.releaseOnlyFirst28Required) assert.equal(arm.controls.first28MatchesBaseline, true);
+    assert.equal(arm.hypothesisScreen.status, Math.abs(arm.step29NetVerticalResponse!) <= 1e-10 ? 'pass' : 'fail');
+    assert.equal(arm.gates.A2, ratioGate(arm.impact, 0.5));
+    assert.equal(arm.gates.A3r, heightGate(arm.apex, 0.5, 1));
+    assert.equal(arm.gates.A3r, 'fail', 'control results cannot erase the original height failure');
+    if (arm.control === 'baseline') assert.deepEqual(arm.trace, traceFirstFailure(arm.variant).trace);
+    if (arm.options.releaseImpactLambda) {
+      assert.equal(arm.releaseCount, 2);
+      assert.ok(arm.trace[28].contactRows.every((row) => row.bias === 0 && row.normalLambda === 0 &&
+        row.releasedCount === 1 && row.releasedNormalLambda! < 0));
+      assert.ok(arm.trace.slice(0, 28).every((row) => row.contactRows.every((c) => c.releasedCount === 0)));
+    }
+  }
+  assert.deepEqual(JSON.parse(JSON.stringify(report)), report);
 });
